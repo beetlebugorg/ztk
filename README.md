@@ -1,21 +1,30 @@
 # ztk
 
-A Tk replacement in Zig, on the [ztcl](https://github.com/beetlebugorg/ztcl) interpreter, with a GPU renderer and stylesheets in a subset of CSS.
+An experimental Tk replacement in Zig, on the [ztcl](https://github.com/beetlebugorg/ztcl) interpreter. The plan has a GPU renderer and stylesheets in a subset of CSS.
 
 > [!WARNING]
-> **Experimental.** This repository has a plan and no toolkit code yet. ztk is not a drop-in Tk. The plan, the commands, and the behavior can change at any time.
+> **Experimental.** The `main` branch has a plan and no toolkit code yet. ztk has no release, and it is not a drop-in Tk. The plan, the commands, and the behavior can change at any time.
 
 > [!IMPORTANT]
 > **AI disclaimer.** The docs, and later the code, are written largely with AI coding agents, under human direction. Review the work before you depend on it. ztk comes with no warranty. See [LICENSE](LICENSE).
 
+**Docs:** https://beetlebug.org/ztk/
+
 ## Status
 
 - **Stage 0, the plan.** [The plan](docs/plan.md) has the goal, the architecture, the decisions, the performance targets, the verification strategy, and the stages.
-- [The Stage 1 tasks](docs/tasks/README.md) are 21 small tasks for the first demo. No task is done.
+- **Stage 1, the first demo, is in progress.** [The Stage 1 tasks](docs/tasks/README.md) are 21 small tasks. The work is on a development branch, and no task is on `main` yet.
+- **No release exists.** The repository has release workflows for later use.
 - [The review checklist](docs/review.md) is what a reviewer checks for each task.
 - [The size of Tk](docs/tk-size.md) has the measured size of the job.
 
+## Relationship to ztcl
+
+[ztcl](https://github.com/beetlebugorg/ztcl) is a separate project: an experimental Tcl interpreter in Zig. ztk adds the Tk commands to ztcl and uses it as a Zig package. ztk does not change ztcl.
+
 ## The goal
+
+These are the long-term goals. ztk does not do these things yet.
 
 A script that runs in `wish` 8.6 runs in ztk with no change. The test files of Tk 8.6.16 measure that.
 
@@ -66,6 +75,7 @@ Button:hover { background: var(--accent); color: var(--accent-fg) }
 - [The review checklist](docs/review.md)
 - [The size of Tk](docs/tk-size.md)
 - [References](docs/references/README.md)
+- [Changelog](CHANGELOG.md), [contributing](CONTRIBUTING.md), [security](SECURITY.md), and [releases](docs/release.md)
 - [Lessons from Printdeck](docs/references/printdeck.md)
 - [Writing rules](WRITING.md) and [agent instructions](AGENTS.md)
 
