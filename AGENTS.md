@@ -1,6 +1,6 @@
 # Agent instructions
 
-ztk is an experimental Tk replacement in Zig, on the ztcl interpreter. The repository has a plan and no toolkit code yet.
+ztk is an experimental Tk replacement in Zig, on the ztcl interpreter. The repository has the plan and the code of Stage 1.
 
 Read these pages before you work:
 
@@ -24,7 +24,14 @@ systemd-run --user --scope -q -p MemoryMax=4G -p MemorySwapMax=0 -- <command>
 | `xvfb-run -a wish tools/tk-introspect.tcl` | Counts the commands and the options of a real `wish`. |
 | `xvfb-run -a tools/tk-run.sh .tk-src/core-8-6-16 <work folder>` | Runs the tests of Tk on a real `wish`. |
 
-Task 01 adds `zig build`, `zig build test`, and `zig build run`. Each later task adds its commands to this table.
+| `zig build` | Builds `zig-out/bin/ztk`. |
+| `zig build test` | Runs all unit tests. `-Dtest-filter=<text>` runs the tests with that text in the name. |
+| `zig build run -- file.tcl` | Runs a script. |
+| `tools/oracle.sh script.tcl args` | Runs a script in `wish` and in `ztk --headless`, and prints the difference. |
+| `zig-out/bin/ztk [flags] script.tcl` | Runs a script. See `ztk --version` and the flags in `docs/tasks/17-wayland.md`. |
+| `tests/wayland-smoke.sh` | Runs `ztk` on a private headless compositor. |
+
+Each later task adds its commands to this table.
 
 ## Rules
 

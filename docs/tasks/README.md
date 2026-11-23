@@ -23,6 +23,7 @@ Do the tasks in order. One task is one commit, or a few commits when the task sa
 | 15 | [`entry`](15-entry.md) | 14 | uses 04 |
 | 16 | [The Vulkan renderer](16-vulkan.md) | 07 | |
 | 17 | [The Wayland backend and the `ztk` program](17-wayland.md) | 15, 16 | |
+| 17b | [The render thread](17b-render-thread.md) | 17 | |
 | 18 | [Frame pacing, transitions, statistics, and memory](18-frames.md) | 17 | uses 04 |
 | 19 | [The demo, the scene checks, and the end-to-end tests](19-demo.md) | 18 | |
 | 20 | [The direct backend](20-direct.md) | 19 | |

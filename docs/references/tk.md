@@ -33,3 +33,7 @@ ztcl. https://github.com/beetlebugorg/ztcl
 **License:** BSD-2-Clause
 
 **How ztk uses it:** ztk registers its commands in a ztcl interpreter. The docs of ztk follow the form of the docs of ztcl. `WRITING.md` and `AGENTS.md` are adapted from ztcl.
+
+## The grid algorithm
+
+The section "THE GRID ALGORITHM" of `doc/grid.n` gives the three steps and the rules for weights, uniform groups, and the minimum size. The rules that the page leaves open (the rounding of space, the order of spans, the pad of an empty line) come from runs of `wish` 8.6.16 and from `tools/oracle-grid.tcl`. The authors did not read `tkGrid.c`.

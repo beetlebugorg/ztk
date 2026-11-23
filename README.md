@@ -1,30 +1,33 @@
 # ztk
 
-An experimental Tk replacement in Zig, on the [ztcl](https://github.com/beetlebugorg/ztcl) interpreter. The plan has a GPU renderer and stylesheets in a subset of CSS.
+A Tk replacement in Zig, on the [ztcl](https://github.com/beetlebugorg/ztcl) interpreter, with a GPU renderer and stylesheets in a subset of CSS.
 
 > [!WARNING]
-> **Experimental.** The `main` branch has a plan and no toolkit code yet. ztk has no release, and it is not a drop-in Tk. The plan, the commands, and the behavior can change at any time.
+> **Experimental.** This repository has the code of Stage 1: a demo-sized toolkit. ztk is not a drop-in Tk. The plan, the commands, and the behavior can change at any time.
 
 > [!IMPORTANT]
-> **AI disclaimer.** The docs, and later the code, are written largely with AI coding agents, under human direction. Review the work before you depend on it. ztk comes with no warranty. See [LICENSE](LICENSE).
+> **AI disclaimer.** The docs and the code are written largely with AI coding agents, under human direction. Review the work before you depend on it. ztk comes with no warranty. See [LICENSE](LICENSE).
 
 **Docs:** https://beetlebug.org/ztk/
 
 ## Status
 
-- **Stage 0, the plan.** [The plan](docs/plan.md) has the goal, the architecture, the decisions, the performance targets, the verification strategy, and the stages.
-- **Stage 1, the first demo, is in progress.** [The Stage 1 tasks](docs/tasks/README.md) are 21 small tasks. The work is on a development branch, and no task is on `main` yet.
-- **No release exists.** The repository has release workflows for later use.
+Stage 1 is built. Four independent reviews said "do not merge" or "not yet". The fixes for the fourth review are in this code, and no review has checked them. Stage 1 has `frame`, `label`, `button`, `entry`, `grid`, `bind`, `event generate`, `focus`, `wm`, and `winfo` for `.`, a CSS subset with a modern theme, a font engine with no library, a CPU renderer, a Vulkan renderer (offscreen, checked against the CPU renderer on two GPUs), a render thread, and three backends: headless, Wayland (CPU renderer into shared memory), and direct (framebuffer and evdev). `examples/demo.tcl` runs in ztk and in `wish` 8.6.16. [The report](docs/stage1-report.md) has the test counts.
+
+What does not work: the Vulkan swapchain on a window and on a display, a window on the live desktop (not tried), the direct backend on a real device (not tried, and `--direct` needs the flag `--direct-unsafe-test-device`, because ztk does not own the VT), the other widgets and commands of Tk, and two rules of the `grid` solver (the oracle shows 11 differences in 600 random layouts). The tests run on Linux only. The headless program compiles for macOS and Windows, and no run on these systems has checked it. [The report](docs/stage1-report.md) has the numbers, and [the limits](docs/stage1-limits.md) list what each widget lacks.
+
+- [The plan](docs/plan.md) has the goal, the architecture, the decisions, the performance targets, the verification strategy, and the stages.
+- [The Stage 1 tasks](docs/tasks/README.md) are the 22 small tasks of the first demo.
 - [The review checklist](docs/review.md) is what a reviewer checks for each task.
 - [The size of Tk](docs/tk-size.md) has the measured size of the job.
+
+Run it: `zig build`, then `zig-out/bin/ztk --headless examples/demo.tcl`, or `zig-out/bin/ztk examples/demo.tcl` in a Wayland session. On Linux the default build needs `glslc`, the Wayland client library, `wayland-protocols`, and `libxkbcommon`. On macOS and Windows the default build has the headless backend only.
 
 ## Relationship to ztcl
 
 [ztcl](https://github.com/beetlebugorg/ztcl) is a separate project: an experimental Tcl interpreter in Zig. ztk adds the Tk commands to ztcl and uses it as a Zig package. ztk does not change ztcl.
 
 ## The goal
-
-These are the long-term goals. ztk does not do these things yet.
 
 A script that runs in `wish` 8.6 runs in ztk with no change. The test files of Tk 8.6.16 measure that.
 
@@ -75,7 +78,6 @@ Button:hover { background: var(--accent); color: var(--accent-fg) }
 - [The review checklist](docs/review.md)
 - [The size of Tk](docs/tk-size.md)
 - [References](docs/references/README.md)
-- [Changelog](CHANGELOG.md), [contributing](CONTRIBUTING.md), [security](SECURITY.md), and [releases](docs/release.md)
 - [Lessons from Printdeck](docs/references/printdeck.md)
 - [Writing rules](WRITING.md) and [agent instructions](AGENTS.md)
 

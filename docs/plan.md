@@ -79,7 +79,7 @@ Three widgets have a large part of the work. The eight `text*.test` files have 1
   +------------------------------------------------------------------+
 ```
 
-One thread runs the interpreter, the widget tree, the layout, and the paint. Stage 1 also draws on that thread.
+Two threads do the work. The UI thread runs the interpreter, the widget tree, the style, the layout, and the paint, and makes a scene. The render thread draws the scene and shows it. The hand-over is the scene: plain data with no pointer into the widget tree. Decision D23 has the reason.
 
 The core (the widget tree, the layout, the style system, the scene, the text code, and the CPU renderer) is Zig only and links no library. Each backend links only the interfaces of its platform. The same core runs on Linux, macOS, Windows, and the web. A build for a small device has the core and the direct backend, and is one static program.
 
@@ -144,6 +144,7 @@ Section 10 lists what ztk needs from ztcl.
 - Colors blend in sRGB space, as CSS does. So a color in a stylesheet looks the same as in a browser.
 - The CPU renderer draws the same scene with the same math. It is the reference for the tests, the renderer of the direct backend on a device with no GPU, and the fallback when a machine has no usable GPU.
 - A backend that shows CPU images writes only the rows that changed after the last frame. Printdeck measured 22 % of one core of a Raspberry Pi 5 before this rule and an image cache, and 3.5 % after them.
+- The render thread draws. The UI thread gives it each scene and never waits for a draw or for the display.
 - The scene is data with no pointers. It can go over a connection to another program that draws it (decision D22).
 - The scene is retained. ztk paints again only the toplevel that changed. A window with no change draws no frame.
 - The frame clock of the backend (the frame callback of Wayland, the display link of macOS) starts each frame. Animations (a CSS transition, the caret) ask for the next frame.
@@ -245,7 +246,7 @@ The style system computes a style only for a widget with the style flag. A chang
 
 A backend implements one interface: make and delete a window, set its title and size, wait for events with a timeout, give the time, give the clipboard, and give the surface for the renderer.
 
-The rule for each backend is the same on each platform: use the lowest interface that the platform gives to a program, and no library between ztk and it. That is the window system and Vulkan on a Linux desktop, AppKit and Metal on macOS, Win32 and Direct3D 12 on Windows, and the canvas and WebGL 2 in a browser. The direct backend is the same rule for a Linux device with no window system: the kernel and Vulkan. The core, the font engine, the scene, and the CPU renderer are the same code in all of them, and the CPU renderer works behind each backend.
+The GPU rule has one more part: each platform draws with its own native API and no translation layer between ztk and the driver. That is Vulkan on Linux, Metal on macOS, and Direct3D 12 on Windows. The Metal and Direct3D 12 renderers wait for Stage 3. The rule for each backend is the same on each platform: use the lowest interface that the platform gives to a program, and no library between ztk and it. That is the window system and Vulkan on a Linux desktop, AppKit and Metal on macOS, Win32 and Direct3D 12 on Windows, and the canvas and WebGL 2 in a browser. The direct backend is the same rule for a Linux device with no window system: the kernel and Vulkan. The core, the font engine, the scene, and the CPU renderer are the same code in all of them, and the CPU renderer works behind each backend.
 
 ## 5. Decisions
 
@@ -269,6 +270,7 @@ Each decision has the options, the recommendation, and the reason. The user deci
 - Recommendation: (a).
 - Why: the renderer draws one quad form with one shader pair, so each renderer is small. (b) adds a large binary and a second toolchain. (c) is deprecated on macOS.
 - Cost: four renderers to keep equal. The CPU reference and the golden images check each one.
+- Decision of the user (2026-11-23): each platform uses its own GPU API with no translation layer. Linux uses Vulkan, macOS uses Metal, and Windows uses Direct3D 12. ztk does not use MoltenVK, ANGLE, DXVK, or a Vulkan layer on Direct3D. The Stage 3 renderers for Metal and Direct3D 12 are not built before Stage 3. Stage 1 has the Vulkan renderer and the CPU renderer only.
 
 ### D4. One quad form for all drawing
 
@@ -404,6 +406,18 @@ The request of the user: use the GPU when possible, as directly as possible, wit
 - Limit: `VK_KHR_display` is in the loader of the development machine. It was not checked on a Raspberry Pi. The kernel documents the framebuffer device as the old interface.
 - **User:** confirm that the direct backend belongs in Stage 1. It adds one task. Its check on a real device needs a person.
 
+### D23. The thread for drawing
+
+The request of the user: drawing is not on the same thread as the calculations.
+
+- Options: (a) one thread for all. (b) a UI thread and a render thread, with the scene as the hand-over. (c) more threads: layout, style, and one render thread for each window.
+- Recommendation: (b), in Stage 1 (task 17b).
+- Why: a present waits for the display, and a CPU draw or a write to a framebuffer is slow. On one thread, each of these stops the script, and a busy script stops a frame that is ready. The scene is already plain data, so the hand-over is a swap of pointers.
+- How: three frames (fill, wait, draw). The UI thread never waits for the render thread, except in `update`, which returns after the frame shows. The render thread owns the renderer and all GPU calls. Glyph images go to it as patches in the frame.
+- Limit: a script that is busy for a long time still makes no new scene, so the window shows the last one. In Stage 2 the render thread also computes transitions and the caret, so they move while the script is busy.
+- The web build has one thread, and the tests can draw on the calling thread. Both modes give the same pixels.
+- Tcl stays on one thread. ztcl has no threads, and Tk has the same rule.
+
 ### D22. A remote display
 
 - Fact: Printdeck sends the drawing commands of each frame to a browser, which draws them. So a device with no screen, or with a small one, also has its UI in a browser.
@@ -538,7 +552,7 @@ An estimate is in weeks of full-time work of one engineer who knows the field. I
 | Stage | Content | Exit criteria | Estimate |
 |---|---|---|---|
 | 0 | This plan | The user accepts the plan and the decisions | done |
-| 1 | The demo on Linux: `frame`, `label`, `button`, `entry`, `.`, `grid`, `bind`, the CSS subset, the modern theme, the font engine, the CPU and Vulkan renderers, and the headless, Wayland, and direct backends | `examples/demo.tcl` runs in ztk and in `wish`. All tests of the Stage 1 tasks pass. The frame statistics show no late frame in the demo at 60 Hz. The demo draws to a framebuffer in memory in the tests. The static build has no dependency. The stage report has the measured numbers. | 6 to 8 weeks, about 19 000 lines |
+| 1 | The demo on Linux: `frame`, `label`, `button`, `entry`, `.`, `grid`, `bind`, the CSS subset, the modern theme, the font engine, the CPU and Vulkan renderers, the render thread, and the headless, Wayland, and direct backends | `examples/demo.tcl` runs in ztk and in `wish`. All tests of the Stage 1 tasks pass. The frame statistics show no late frame in the demo at 60 Hz. The demo draws to a framebuffer in memory in the tests. The static build has no dependency. The stage report has the measured numbers. | 6 to 8 weeks, about 19 000 lines |
 | 2 | The core of Tk on Linux: `pack`, `place`, the complete `bind` and `event`, `focus` and `grab`, `wm`, `winfo`, `option`, `font`, `image` (photo with PNG, GIF, and PPM; bitmap), the other simple classic widgets (`checkbutton`, `radiobutton`, `message`, `labelframe`, `scale`, `scrollbar`, `listbox`, `spinbox`, `panedwindow`, `menubutton`, `toplevel`), the classic theme, the X11 backend, own window decorations, the fonts of the system, touch scroll and fling, image caches, KMS for the direct backend if a device needs it, the Tk suite runner | The compatibility table exists for all 109 files. Each in-scope file of the Stage 2 commands has a pass rate of at least 70 %. The oracle test passes for 1 000 random layouts of each manager. | 18 to 26 weeks |
 | 3 | The macOS, Windows, and web backends at the level of Stage 2, and the remote display if the user wants it (D22) | The demo and the Stage 2 golden images pass on each platform, with the GPU test against the CPU reference. A person does the manual checklist on each platform. | 12 to 22 weeks |
 | 4 | Complete text: CFF outlines, variable fonts, color glyphs, ligatures and marks, the optional HarfBuzz shaper, bidi, line breaks, font fallback, input methods, and the `text` widget | The Unicode conformance files pass. The eight `text*.test` files have a pass rate of at least 70 %. The fonts of a default install of each platform draw. | 24 to 36 weeks |
@@ -547,6 +561,8 @@ An estimate is in weeks of full-time work of one engineer who knows the field. I
 | 7 | Menus, dialogs, and platform services: `menu`, `tk_popup`, the native menu bar on macOS, the message box, the file dialogs, the color and font dialogs, all clipboard formats, drag and drop | `menu.test`, `msgbox.test`, `filebox.test`, `clipboard.test`, and `select.test` have a pass rate of at least 70 %. A person does the manual checklist. | 10 to 16 weeks |
 | 8 | Accessibility and input methods on all platforms | A screen reader reads and operates the demo on each platform. | 8 to 14 weeks |
 | 9 | Compatibility: the pass targets for all in-scope files, the commands of Tk 9, the private commands that real programs use, performance, and the docs | At least 90 % of the in-scope tests pass. Three real Tk programs that the user selects run with no change. | 16 to 30 weeks |
+
+Stage 1 measured (2026-11-23, the [report](stage1-report.md)): 19 800 lines of Zig and 303 tests. An agent run made tasks 10 to 21 in about 2.5 hours of wall clock time on a shared machine, after tasks 01 to 09 in an earlier run. The run needed no review round yet, so the estimates of the later stages stay as they are until a reviewer has read Stage 1.
 
 The sum is 118 to 190 weeks, or two and a quarter to three and a half years for one engineer. Tk has 322 187 lines, and its first release was in 1991. A much smaller estimate is not credible.
 
@@ -563,6 +579,7 @@ Each stage after Stage 1 gets its own task list when it starts. The task list of
 | ztcl has no TclOO and has gaps in `info` and `namespace` | Real Tk programs fail in the interpreter before they reach ztk | The Stage 9 programs show the gaps. The requests go to ztcl. |
 | The geometry of Tk depends on font metrics | Many tests of Tk cannot pass with another font | Measure in Stage 2 with the test font. Report the count honestly. |
 | Four renderers differ | A platform shows a different image | One quad form, one shader source for each API, and the GPU test against the CPU reference |
+| Two threads share a frame | A race draws a wrong frame or crashes | One mutex and three frames, no other shared state, a stress test in a loop, and a review of each shared field |
 | The `text` widget and the canvas are large | Stages 4 and 5 are late | They come after the platform work, so the base is stable |
 | A person must check each platform | The review of an agent cannot find a wrong look | The manual checklists, with the date and the machine in each report |
 | Zig changes between releases | The build breaks | Pin Zig 0.16.0 in `build.zig.zon` and move in one commit |

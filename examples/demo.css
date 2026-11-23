@@ -1,0 +1,22 @@
+/* The look of the demo, on top of the modern theme. */
+#title {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+/* The script adds no style class, so a rule with the id gives the primary look. */
+#greet {
+  color: var(--accent-fg);
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+
+#greet:hover,
+#greet:active {
+  background-color: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+#msg {
+  color: var(--muted);
+}

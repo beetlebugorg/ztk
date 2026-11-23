@@ -1,0 +1,126 @@
+//! Text layout for one line of left-to-right text. `shape` decodes the
+//! UTF-8, maps each code point to a glyph, and places each glyph at the
+//! sum of the advances and the kerning before it. Positions are device
+//! pixels and are not rounded per advance. Stage 1 has no ligatures, no
+//! combining marks, and no right-to-left text. An invalid UTF-8 byte
+//! gives the glyph 0 and uses one byte. `measure` caches the widths.
+//! SPDX-License-Identifier: BSD-2-Clause
+
+const std = @import("std");
+const num = @import("../num.zig");
+const font_mod = @import("font.zig");
+const Font = font_mod.Font;
+const Fonts = font_mod.Fonts;
+
+/// Device pixels from the line origin.
+pub const Glyph = struct { id: u16, x: f32, y: f32, cluster: u32 };
+
+pub const Run = struct {
+    font: *Font,
+    glyphs: []Glyph,
+    /// Logical pixels, rounded up.
+    width: i32,
+    /// The end of the last advance, in device pixels.
+    end_x: f32,
+
+    pub fn deinit(r: *Run, gpa: std.mem.Allocator) void {
+        gpa.free(r.glyphs);
+        r.glyphs = &.{};
+    }
+
+    fn logical(r: *const Run, dev: f32) i32 {
+        return num.pxRound(dev / r.font.scale);
+    }
+
+    /// The x position of the caret before byte `index`, in logical pixels.
+    pub fn caretX(r: *const Run, text: []const u8, index: usize) i32 {
+        _ = text;
+        for (r.glyphs) |g| if (g.cluster >= index) return r.logical(g.x);
+        return r.logical(r.end_x);
+    }
+
+    /// The byte index of the caret stop nearest to x.
+    pub fn indexAt(r: *const Run, text: []const u8, x: i32) usize {
+        var best: usize = text.len;
+        var best_d: f32 = @abs(r.end_x / r.font.scale - @as(f32, @floatFromInt(x)));
+        for (r.glyphs) |g| {
+            const d = @abs(g.x / r.font.scale - @as(f32, @floatFromInt(x)));
+            if (d < best_d) {
+                best_d = d;
+                best = g.cluster;
+            }
+        }
+        return best;
+    }
+};
+
+const Decoded = struct { cp: u21, len: u3, valid: bool };
+
+fn decode(text: []const u8, i: usize) Decoded {
+    const len = std.unicode.utf8ByteSequenceLength(text[i]) catch return .{ .cp = 0, .len = 1, .valid = false };
+    if (i + len > text.len) return .{ .cp = 0, .len = 1, .valid = false };
+    const cp = std.unicode.utf8Decode(text[i..][0..len]) catch return .{ .cp = 0, .len = 1, .valid = false };
+    return .{ .cp = cp, .len = @intCast(len), .valid = true };
+}
+
+fn ceilWidth(dev: f32, scale: f32) i32 {
+    return num.pxCeil(dev / scale - 1e-3);
+}
+
+pub fn shape(gpa: std.mem.Allocator, font: *Font, text: []const u8) !Run {
+    var glyphs: std.ArrayListUnmanaged(Glyph) = .empty;
+    errdefer glyphs.deinit(gpa);
+    try glyphs.ensureTotalCapacityPrecise(gpa, text.len);
+    const us = font.unitScale();
+    const face = font.face;
+    var pen: f32 = 0;
+    var prev: ?u16 = null;
+    var i: usize = 0;
+    while (i < text.len) {
+        const d = decode(text, i);
+        const gid: u16 = if (d.valid) font.glyph(d.cp) else 0;
+        if (prev) |p| pen += @as(f32, @floatFromInt(font.kern(p, gid))) * us;
+        try glyphs.append(gpa, .{ .id = gid, .x = pen, .y = 0, .cluster = std.math.cast(u32, i) orelse std.math.maxInt(u32) });
+        pen += @as(f32, @floatFromInt(face.advance(gid))) * us;
+        prev = gid;
+        i += d.len;
+    }
+    const owned = try glyphs.toOwnedSlice(gpa);
+    return .{ .font = font, .glyphs = owned, .width = ceilWidth(pen, font.scale), .end_x = pen };
+}
+
+/// The width of a line in logical pixels. The result is cached.
+pub fn measure(fonts: *Fonts, font: *Font, text: []const u8) i32 {
+    if (text.len == 0) return 0;
+    var stack: [256]u8 = undefined;
+    const gpa = fonts.gpa;
+    const key_len = 8 + text.len;
+    const heap = if (key_len > stack.len) gpa.alloc(u8, key_len) catch return computeWidth(font, text) else null;
+    defer if (heap) |h| gpa.free(h);
+    const key = if (heap) |h| h else stack[0..key_len];
+    std.mem.writeInt(u64, key[0..8], @intFromPtr(font), .little);
+    @memcpy(key[8..], text);
+    if (fonts.widths.get(key)) |w| return w;
+    const w = computeWidth(font, text);
+    if (fonts.widths.count() >= 4096) fonts.clearWidths();
+    const owned = gpa.dupe(u8, key) catch return w;
+    fonts.widths.put(gpa, owned, w) catch gpa.free(owned);
+    return w;
+}
+
+fn computeWidth(font: *Font, text: []const u8) i32 {
+    const us = font.unitScale();
+    const face = font.face;
+    var pen: f32 = 0;
+    var prev: ?u16 = null;
+    var i: usize = 0;
+    while (i < text.len) {
+        const d = decode(text, i);
+        const gid: u16 = if (d.valid) font.glyph(d.cp) else 0;
+        if (prev) |p| pen += @as(f32, @floatFromInt(font.kern(p, gid))) * us;
+        pen += @as(f32, @floatFromInt(face.advance(gid))) * us;
+        prev = gid;
+        i += d.len;
+    }
+    return ceilWidth(pen, font.scale);
+}

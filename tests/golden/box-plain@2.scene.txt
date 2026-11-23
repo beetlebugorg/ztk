@@ -1,0 +1,2 @@
+scene 400x240 clear #ffffffff
+box rect (40.00,40.00,160.00,100.00) clip (0.00,0.00,400.00,240.00) radii (0.00,0.00,0.00,0.00) border (0.00,0.00,0.00,0.00) fill #3366ccff fill2 #3366ccff bcolor #000000ff params (0.00,1.00,0.00,1.00)

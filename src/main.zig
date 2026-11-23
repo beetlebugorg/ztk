@@ -1,0 +1,252 @@
+//! The `ztk` program. `ztk [flags] script.tcl [arguments]` runs a script
+//! in a ztcl interpreter with the Tk commands of ztk. The program turns
+//! on no capability of ztcl, so a script has the sandbox of ztcl. It
+//! connects to Wayland, or uses the headless backend with `--headless`.
+//! After the script it runs the event loop until `.` is deleted, or
+//! until the number of frames of `--exit-after-frames` is drawn.
+//! SPDX-License-Identifier: BSD-2-Clause
+
+const std = @import("std");
+const Io = std.Io;
+const ztcl = @import("ztcl");
+const ztk = @import("ztk");
+
+const usage =
+    \\usage: ztk [flags] script.tcl [arguments]
+    \\  --headless               use the headless backend and the CPU renderer
+    \\  --cpu                    use the CPU renderer on Wayland
+    \\  --exit-after-frames N    exit with status 0 after N frames
+    \\  --screenshot FILE.png    with --headless: write the last frame at the exit
+    \\  --scale N                with --headless: the scale of the window
+    \\  --direct                 needs --direct-unsafe-test-device (the VT is not fully owned yet)
+    \\  --direct-unsafe-test-device  with --direct: run on a device that is free to lose its console
+    \\  --fb DEVICE              with --direct: the framebuffer (default /dev/fb0)
+    \\  --rotate 0|90|180|270    with --direct: the rotation of the panel
+    \\  --touch-debounce MS      with --direct: the debounce time of a touch panel
+    \\  --tty DEVICE             with --direct: the VT, for example /dev/tty1 (default: the terminal of the input)
+    \\  --output NAME            with --direct: auto, vulkan, or framebuffer (Stage 1: framebuffer)
+    \\  --dark                   the dark color scheme
+    \\  --version
+    \\
+;
+
+fn write(ctx: ?*anyopaque, bytes: []const u8) void {
+    const w: *Io.Writer = @ptrCast(@alignCast(ctx.?));
+    w.writeAll(bytes) catch {};
+}
+
+fn fail(err: *Io.Writer, comptime fmt: []const u8, args: anytype) noreturn {
+    err.print(fmt, args) catch {};
+    err.flush() catch {};
+    ztk.console.restoreNow();
+    std.process.exit(1);
+}
+
+/// The panic handler gives the text console back, and then does what Zig does.
+pub const panic = std.debug.FullPanic(onPanic);
+
+fn onPanic(msg: []const u8, first_trace_addr: ?usize) noreturn {
+    ztk.console.restoreNow();
+    std.debug.defaultPanic(msg, first_trace_addr);
+}
+
+var exit_out: ?*Io.Writer = null;
+var exit_err: ?*Io.Writer = null;
+
+fn exitNow(code: u8) noreturn {
+    if (exit_out) |o| o.flush() catch {};
+    if (exit_err) |e| e.flush() catch {};
+    // `exit` skips the defers of main, so the console goes back here.
+    ztk.console.restoreNow();
+    std.process.exit(code);
+}
+
+pub fn main(init: std.process.Init) !void {
+    // The first thing: the start time, for the time to the first frame.
+    const start_us = ztk.loop.system_clock.now(null);
+    const arena = init.arena.allocator();
+    const io = init.io;
+    const args = try init.minimal.args.toSlice(arena);
+
+    var err_buf: [1024]u8 = undefined;
+    var err_w: Io.File.Writer = .init(.stderr(), io, &err_buf);
+    const err = &err_w.interface;
+    var out_buf: [1 << 16]u8 = undefined;
+    var out_w: Io.File.Writer = .init(.stdout(), io, &out_buf);
+    const out = &out_w.interface;
+    defer out.flush() catch {};
+    defer err.flush() catch {};
+    exit_out = out;
+    exit_err = err;
+
+    var headless = false;
+    var dark = false;
+    var direct_on = false;
+    var direct_opts: ztk.direct.Options = .{};
+    var max_frames: ?u64 = null;
+    var screenshot: ?[]const u8 = null;
+    var scale: f32 = 1;
+    var script: ?[]const u8 = null;
+    var rest: []const [:0]const u8 = &.{};
+    var i: usize = 1;
+    while (i < args.len) : (i += 1) {
+        const a: []const u8 = args[i];
+        if (std.mem.eql(u8, a, "--headless")) {
+            headless = true;
+        } else if (std.mem.eql(u8, a, "--cpu")) {
+            // Stage 1 draws with the CPU renderer on Wayland, so the flag has no other effect.
+        } else if (std.mem.eql(u8, a, "--dark")) {
+            dark = true;
+        } else if (std.mem.eql(u8, a, "--direct")) {
+            direct_on = true;
+        } else if (std.mem.eql(u8, a, "--direct-unsafe-test-device")) {
+            direct_opts.unsafe_test_device = true;
+        } else if (std.mem.eql(u8, a, "--version")) {
+            try out.writeAll("ztk 0.0.0\n");
+            return;
+        } else if (std.mem.eql(u8, a, "--fb") or std.mem.eql(u8, a, "--rotate") or std.mem.eql(u8, a, "--touch-debounce") or std.mem.eql(u8, a, "--output") or std.mem.eql(u8, a, "--tty")) {
+            i += 1;
+            if (i >= args.len) fail(err, "ztk: {s} needs a value\n", .{a});
+            const v: []const u8 = args[i];
+            if (std.mem.eql(u8, a, "--fb")) {
+                direct_opts.fb_device = v;
+            } else if (std.mem.eql(u8, a, "--tty")) {
+                direct_opts.tty = v;
+            } else if (std.mem.eql(u8, a, "--rotate")) {
+                const deg = std.fmt.parseInt(u16, v, 10) catch fail(err, "ztk: bad rotation \"{s}\"\n", .{v});
+                direct_opts.rotation = switch (deg) {
+                    0 => .r0,
+                    90 => .r90,
+                    180 => .r180,
+                    270 => .r270,
+                    else => fail(err, "ztk: the rotation is 0, 90, 180, or 270\n", .{}),
+                };
+            } else if (std.mem.eql(u8, a, "--touch-debounce")) {
+                direct_opts.touch_debounce_ms = std.fmt.parseInt(u32, v, 10) catch fail(err, "ztk: bad debounce time \"{s}\"\n", .{v});
+            } else {
+                direct_opts.output = std.meta.stringToEnum(ztk.direct.Output, v) orelse fail(err, "ztk: the output is auto, vulkan, or framebuffer\n", .{});
+            }
+        } else if (std.mem.eql(u8, a, "--exit-after-frames") or std.mem.eql(u8, a, "--screenshot") or std.mem.eql(u8, a, "--scale")) {
+            i += 1;
+            if (i >= args.len) fail(err, "ztk: {s} needs a value\n", .{a});
+            const v: []const u8 = args[i];
+            if (std.mem.eql(u8, a, "--screenshot")) {
+                screenshot = v;
+            } else if (std.mem.eql(u8, a, "--scale")) {
+                scale = std.fmt.parseFloat(f32, v) catch fail(err, "ztk: bad scale \"{s}\"\n", .{v});
+                if (!(scale >= 0.25 and scale <= 16)) fail(err, "ztk: the scale is from 0.25 to 16\n", .{});
+            } else {
+                max_frames = std.fmt.parseInt(u64, v, 10) catch fail(err, "ztk: bad frame count \"{s}\"\n", .{v});
+            }
+        } else if (a.len > 1 and a[0] == '-' and script == null) {
+            fail(err, "ztk: unknown flag {s}\n{s}", .{ a, usage });
+        } else {
+            script = a;
+            rest = args[i + 1 ..];
+            break;
+        }
+    }
+    const path = script orelse {
+        try err.writeAll(usage);
+        err.flush() catch {};
+        std.process.exit(2);
+    };
+    const text = Io.Dir.cwd().readFileAlloc(io, path, arena, .limited(64 << 20)) catch |e| {
+        fail(err, "ztk: {s}: {s}\n", .{ path, @errorName(e) });
+    };
+
+    var it: ztcl.Interp = undefined;
+    try it.init(init.gpa);
+    defer it.deinit();
+    it.output = .{ .ctx = out, .write = write };
+
+    var head: ?*ztk.headless.Headless = null;
+    var wl: if (ztk.wayland_enabled) ?*ztk.wayland.Wayland else void = if (ztk.wayland_enabled) null else {};
+    var platform: ztk.platform.Platform = undefined;
+    var direct_be: ?*ztk.direct.Direct = null;
+    if (direct_on) {
+        if (!direct_opts.unsafe_test_device) {
+            fail(err, "ztk: --direct does not own the VT yet: no keyboard mode, no termios, and no VT switch. Add --direct-unsafe-test-device only on a device that is free to lose its console.\n", .{});
+        }
+        direct_opts.scale = scale;
+        direct_opts.session = .{
+            .wayland_display = init.environ_map.get("WAYLAND_DISPLAY"),
+            .x_display = init.environ_map.get("DISPLAY"),
+            .session_type = init.environ_map.get("XDG_SESSION_TYPE"),
+        };
+        direct_be = ztk.direct.Direct.init(init.gpa, direct_opts) catch |e| {
+            fail(err, "ztk: cannot use the display or the input devices: {s}. Run on an active VT with no display server. The device files belong to a group such as video and input.\n", .{@errorName(e)});
+        };
+        platform = direct_be.?.platform();
+    } else if (headless) {
+        head = try ztk.headless.Headless.init(init.gpa);
+        platform = head.?.platform();
+    } else if (ztk.wayland_enabled) {
+        if (init.environ_map.get("WAYLAND_DISPLAY") == null) {
+            fail(err, "ztk: no Wayland display. Use --headless, or run in a Wayland session.\n", .{});
+        }
+        wl = ztk.wayland.Wayland.init(init.gpa) catch |e| fail(err, "ztk: cannot use the Wayland display: {s}\n", .{@errorName(e)});
+        platform = wl.?.platform();
+    } else {
+        fail(err, "ztk: this build has no Wayland backend. Use --headless.\n", .{});
+    }
+    defer if (head) |h| h.deinit();
+    defer if (direct_be) |dbe| dbe.deinit();
+    defer if (ztk.wayland_enabled) {
+        if (wl) |w| w.deinit();
+    };
+
+    // The folder of the script is the root of `ztk::style load`.
+    const style_root = std.fs.path.dirname(path) orelse ".";
+    const app = try ztk.App.init(init.gpa, &it, .{ .platform = platform, .dark = dark, .style_root = style_root, .io = io, .on_exit = exitNow, .render_mode = .threaded, .animations = init.environ_map.get("ZTK_NO_ANIMATION") == null, .start_us = start_us });
+    const want_stats = init.environ_map.get("ZTK_FRAME_STATS") != null;
+    app.stats.slow_out = err;
+    defer app.deinit();
+    app.max_frames = max_frames;
+    if (head) |h| {
+        if (app.window) |win| {
+            win.scale = scale;
+            _ = h;
+        }
+    }
+
+    // The arguments of the script.
+    const list = try arena.alloc(ztcl.Value, rest.len);
+    for (rest, list) |a, *slot| slot.* = .{ .str = a };
+    const argv_value = try ztcl.value.wrapList(arena, list);
+    try it.setVar("argv", argv_value);
+    try it.setVar("argc", .{ .int = @intCast(rest.len) });
+    try it.setVar("argv0", .{ .str = path });
+
+    var status: u8 = 0;
+    if (app.runScript(text)) |_| {
+        app.run() catch |e| {
+            const msg = if (e == error.TclError) it.str(it.result) catch "error" else @errorName(e);
+            err.print("{s}\n", .{msg}) catch {};
+            status = 1;
+        };
+    } else |e| {
+        out.flush() catch {};
+        const msg = if (e == error.TclError) it.str(it.result) catch "error" else @errorName(e);
+        err.print("{s}\n", .{msg}) catch {};
+        status = 1;
+    }
+    app.render.flush();
+    try err.print("frames: {d}\n", .{app.frames});
+    if (want_stats) {
+        app.stats.report(err) catch {};
+        if (direct_be) |dbe| err.print("output: {s}, rows for each frame: {d}\n", .{ dbe.outputName(), if (dbe.frames > 0) dbe.rows_sum / dbe.frames else 0 }) catch {};
+    }
+    if (screenshot) |file| {
+        if (head) |h| {
+            if (app.window) |win| if (h.image(win)) |img| {
+                const bytes = try ztk.png.encode(init.gpa, img);
+                defer init.gpa.free(bytes);
+                try Io.Dir.cwd().writeFile(io, .{ .sub_path = file, .data = bytes });
+            };
+        }
+    }
+    out.flush() catch {};
+    err.flush() catch {};
+    if (status != 0) exitNow(status);
+}

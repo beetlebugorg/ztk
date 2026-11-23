@@ -124,6 +124,6 @@ ZTK_FRAME_STATS=1 zig-out/bin/ztk --headless --exit-after-frames 3 tests/scripts
 ## Out of scope
 
 - `@keyframes`, more than one duration, and delays.
-- A render thread.
+- Animations on the render thread. Stage 2.
 - Paint of only the changed region.
 - Changes to ztcl.

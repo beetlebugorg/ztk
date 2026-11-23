@@ -21,3 +21,7 @@ Each specification is a W3C document. https://www.w3.org/Style/CSS/
 | WCAG 2 | The contrast ratio of the scene checks |
 
 The state names of `ttk` are from the manual page `ttk_widget.n` of Tk. The plan maps them to the pseudo-classes.
+
+## The table of named colors
+
+The 148 named colors of CSS Color Module Level 4 are data from that specification. `src/css/colors.zig` has the names and values, sorted by name. The data was read from a published copy of the table (the `CSS4_COLORS` table of a plotting library on the development machine) and checked for the count of 148 and for three values (`rebeccapurple`, `gray`, `green`). The file has no code of that library.

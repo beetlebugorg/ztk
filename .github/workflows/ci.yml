@@ -38,12 +38,9 @@ jobs:
       - run: python tools/build-docs.py site
 
   test:
-    name: Test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+    # The tests use Linux interfaces. The cross job builds the other systems.
+    name: Test (Linux)
+    runs-on: ubuntu-latest
     defaults:
       run:
         shell: bash
@@ -76,7 +73,30 @@ jobs:
         run: |
           if [ "$RUNNER_OS" = Linux ]; then ulimit -v 6000000; fi
           printf 'puts [expr {6 * 7}]\n' > "$RUNNER_TEMP/t.tcl"
-          test "$(zig build run -- "$RUNNER_TEMP/t.tcl" | tr -d '\r')" = 42
+          test "$(zig build run -- --headless "$RUNNER_TEMP/t.tcl" | tr -d '\r')" = 42
+
+  cross:
+    name: Build (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-linux-musl, backends: "direct,headless" }
+          - { target: aarch64-linux-musl, backends: "direct,headless" }
+          - { target: x86_64-macos, backends: headless }
+          - { target: aarch64-macos, backends: headless }
+          - { target: x86_64-windows, backends: headless }
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        if: hashFiles('build.zig') != ''
+        with:
+          version: ${{ env.ZIG_VERSION }}
+      # The flags of tools/release-build.sh. The job only compiles and links.
+      - name: Build the program
+        if: hashFiles('build.zig') != ''
+        run: zig build -Dtarget=${{ matrix.target }} -Doptimize=ReleaseFast -Dbackends=${{ matrix.backends }} -Dvulkan=false -Dstrip=true
 
   wasm:
     name: WebAssembly

@@ -1,0 +1,146 @@
+//! The build of ztk: the module, the `ztk` program, the tests, and the run step.
+//! SPDX-License-Identifier: BSD-2-Clause
+
+const std = @import("std");
+
+/// Compiles one shader with glslc and returns the SPIR-V file. A machine with no `glslc` needs the package `shaderc`.
+fn shader(b: *std.Build, stage: []const u8, src: []const u8, out: []const u8) std.Build.LazyPath {
+    const run = b.addSystemCommand(&.{ "glslc", b.fmt("-fshader-stage={s}", .{stage}), "-o" });
+    const spv = run.addOutputFileArg(out);
+    run.addFileArg(b.path(src));
+    return spv;
+}
+
+const Protocol = struct { xml: []const u8, name: []const u8 };
+
+const protocols = [_]Protocol{
+    .{ .xml = "stable/xdg-shell/xdg-shell.xml", .name = "xdg-shell" },
+    .{ .xml = "unstable/xdg-decoration/xdg-decoration-unstable-v1.xml", .name = "xdg-decoration-unstable-v1" },
+    .{ .xml = "stable/viewporter/viewporter.xml", .name = "viewporter" },
+    .{ .xml = "staging/fractional-scale/fractional-scale-v1.xml", .name = "fractional-scale-v1" },
+    .{ .xml = "stable/tablet/tablet-v2.xml", .name = "tablet-v2" },
+    .{ .xml = "staging/cursor-shape/cursor-shape-v1.xml", .name = "cursor-shape-v1" },
+};
+
+/// Links the Wayland client library and `xkbcommon`, and compiles the C code that
+/// `wayland-scanner` makes from the protocol files of the system.
+fn addWayland(b: *std.Build, m: *std.Build.Module) void {
+    m.link_libc = true;
+    m.linkSystemLibrary("wayland-client", .{});
+    m.linkSystemLibrary("xkbcommon", .{});
+    var code: u8 = 0;
+    const dir_raw = b.runAllowFail(&.{ "pkg-config", "--variable=pkgdatadir", "wayland-protocols" }, &code, .ignore) catch "/usr/share/wayland-protocols";
+    const dir = std.mem.trim(u8, dir_raw, " \n");
+    for (protocols) |p| {
+        const xml = b.fmt("{s}/{s}", .{ dir, p.xml });
+        const hdr = b.addSystemCommand(&.{ "wayland-scanner", "client-header", xml });
+        const hdr_out = hdr.addOutputFileArg(b.fmt("{s}-client-protocol.h", .{p.name}));
+        m.addIncludePath(hdr_out.dirname());
+        const src = b.addSystemCommand(&.{ "wayland-scanner", "private-code", xml });
+        const src_out = src.addOutputFileArg(b.fmt("{s}-protocol.c", .{p.name}));
+        m.addCSourceFile(.{ .file = src_out, .flags = &.{} });
+    }
+}
+
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+    const filter = b.option([]const u8, "test-filter", "Run only the tests whose name has this text");
+
+    const ztcl_dep = b.dependency("ztcl", .{ .target = target, .optimize = optimize });
+    const ztcl = ztcl_dep.module("ztcl");
+
+    // The Wayland, direct, and Vulkan code exists for Linux only in Stage 1.
+    const is_linux = target.result.os.tag == .linux;
+    const backends = b.option([]const u8, "backends", "The backends to build, separated by commas: wayland, direct, headless (default: all on Linux, headless elsewhere)") orelse if (is_linux) "wayland,direct,headless" else "headless";
+    const wayland_on = std.mem.indexOf(u8, backends, "wayland") != null;
+    const vulkan_on = b.option(bool, "vulkan", "Build the Vulkan renderer (default: true on Linux)") orelse is_linux;
+    const strip = b.option(bool, "strip", "Remove the debug sections from the program");
+    const opts = b.addOptions();
+    opts.addOption([]const u8, "repo_root", b.build_root.path orelse ".");
+    opts.addOption(bool, "vulkan", vulkan_on);
+    opts.addOption(bool, "wayland", wayland_on);
+
+    const ztk = b.addModule("ztk", .{
+        .root_source_file = b.path("src/ztk.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "ztcl", .module = ztcl }},
+    });
+
+    ztk.addOptions("build_options", opts);
+    if (vulkan_on) {
+        // The Vulkan loader opens at run time. The headers come from a pinned package, and the
+        // shaders compile with glslc (package shaderc).
+        ztk.link_libc = true;
+        ztk.addIncludePath(b.dependency("vulkan_headers", .{}).path("include"));
+        ztk.addAnonymousImport("quad_vert_spv", .{ .root_source_file = shader(b, "vertex", "src/render/shaders/quad.vert", "quad.vert.spv") });
+        ztk.addAnonymousImport("quad_frag_spv", .{ .root_source_file = shader(b, "fragment", "src/render/shaders/quad.frag", "quad.frag.spv") });
+    }
+    ztk.addAnonymousImport("inter_regular", .{ .root_source_file = b.path("assets/fonts/Inter-Regular.ttf") });
+    ztk.addAnonymousImport("inter_bold", .{ .root_source_file = b.path("assets/fonts/Inter-Bold.ttf") });
+
+    const libc_on = vulkan_on or wayland_on;
+    // The self-hosted backend covers x86-64 Linux. Each other target uses LLVM.
+    const use_llvm = libc_on or !is_linux or target.result.cpu.arch != .x86_64;
+    // Zig links Mach-O files with its own linker.
+    const use_lld = use_llvm and target.result.ofmt != .macho;
+    if (wayland_on) addWayland(b, ztk);
+
+    const exe = b.addExecutable(.{ .name = "ztk", .use_llvm = use_llvm, .use_lld = use_lld, .root_module = b.createModule(.{
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .strip = strip,
+        .link_libc = libc_on,
+        .imports = &.{
+            .{ .name = "ztcl", .module = ztcl },
+            .{ .name = "ztk", .module = ztk },
+        },
+    }) });
+    b.installArtifact(exe);
+
+    const run = b.addRunArtifact(exe);
+    if (b.args) |args| run.addArgs(args);
+    b.step("run", "Run a script: zig build run -- script.tcl").dependOn(&run.step);
+
+    // The benchmark builds in ReleaseFast, whatever the optimize option is.
+    const bench_ztcl = b.dependency("ztcl", .{ .target = target, .optimize = .ReleaseFast }).module("ztcl");
+    const bench_ztk = b.createModule(.{
+        .root_source_file = b.path("src/ztk.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+        .imports = &.{.{ .name = "ztcl", .module = bench_ztcl }},
+    });
+    bench_ztk.addOptions("build_options", opts);
+    bench_ztk.addAnonymousImport("inter_regular", .{ .root_source_file = b.path("assets/fonts/Inter-Regular.ttf") });
+    bench_ztk.addAnonymousImport("inter_bold", .{ .root_source_file = b.path("assets/fonts/Inter-Bold.ttf") });
+    if (vulkan_on) {
+        bench_ztk.link_libc = true;
+        bench_ztk.addIncludePath(b.dependency("vulkan_headers", .{}).path("include"));
+        bench_ztk.addAnonymousImport("quad_vert_spv", .{ .root_source_file = shader(b, "vertex", "src/render/shaders/quad.vert", "quad.vert.spv") });
+        bench_ztk.addAnonymousImport("quad_frag_spv", .{ .root_source_file = shader(b, "fragment", "src/render/shaders/quad.frag", "quad.frag.spv") });
+    }
+    if (wayland_on) addWayland(b, bench_ztk);
+    const bench = b.addExecutable(.{ .name = "ztk-bench", .use_llvm = use_llvm, .use_lld = use_lld, .root_module = b.createModule(.{
+        .root_source_file = b.path("bench/bench.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+        .link_libc = libc_on,
+        .imports = &.{
+            .{ .name = "ztcl", .module = bench_ztcl },
+            .{ .name = "ztk", .module = bench_ztk },
+        },
+    }) });
+    const bench_run = b.addRunArtifact(bench);
+    bench_run.setCwd(b.path("."));
+    b.step("bench", "Run the benchmark (ReleaseFast)").dependOn(&bench_run.step);
+
+    const tests = b.addTest(.{
+        .use_llvm = use_llvm,
+        .use_lld = use_lld,
+        .root_module = ztk,
+        .filters = if (filter) |f| &.{f} else &.{},
+    });
+    b.step("test", "Run the unit tests").dependOn(&b.addRunArtifact(tests).step);
+}

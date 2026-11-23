@@ -81,6 +81,7 @@ A test that compares an image with itself proves only that the image did not cha
 - [ ] No global mutable state, except what the task file names. Two `App` values in one process work (find or write a test).
 - [ ] An allocation failure returns an error. It does not crash, except in a test.
 - [ ] Integer conversions of sizes and positions from a script cannot overflow: `frame .f -width 99999999999` gives an error or a limit, and no crash.
+- [ ] The render thread reads only its own frame. Read each field that two threads use: it is under the one mutex or it is atomic. Run the tests of task 17b 200 times.
 - [ ] The direct backend sets the console back to text mode on each exit path, and it creates no display surface in a test on the development machine.
 - [ ] The Wayland backend and the Vulkan renderer free each object at the exit. The smoke test with validation prints no message.
 

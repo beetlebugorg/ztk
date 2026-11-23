@@ -1,0 +1,106 @@
+//! The root of the ztk module. It names the parts of the toolkit.
+//! SPDX-License-Identifier: BSD-2-Clause
+
+pub const geom = @import("geom.zig");
+pub const app = @import("app.zig");
+pub const options = @import("options.zig");
+pub const loop = @import("loop.zig");
+pub const event = @import("event.zig");
+pub const keysym = @import("keysym.zig");
+pub const platform = @import("platform/platform.zig");
+pub const headless = @import("platform/headless.zig");
+/// True on the one system that has the framebuffer and the event devices.
+pub const direct_enabled = @import("builtin").os.tag == .linux;
+pub const fbdev = if (direct_enabled) @import("platform/fbdev.zig") else struct {};
+pub const evdev = if (direct_enabled) @import("platform/evdev.zig") else struct {};
+pub const console = if (direct_enabled) @import("platform/console.zig") else @import("platform/console_off.zig");
+pub const touch = @import("platform/touch.zig");
+pub const keymap = @import("platform/keymap.zig");
+pub const direct = if (direct_enabled) @import("platform/direct.zig") else @import("platform/direct_off.zig");
+pub const vkdisplay = if (@import("build_options").vulkan) @import("platform/vkdisplay.zig") else struct {};
+pub const wayland_enabled = @import("build_options").wayland;
+pub const wayland = if (@import("build_options").wayland) @import("platform/wayland.zig") else struct {};
+pub const scene = @import("scene.zig");
+pub const png = @import("png.zig");
+pub const cpu = @import("render/cpu.zig");
+pub const renderer = @import("render/renderer.zig");
+pub const vulkan = if (@import("build_options").vulkan) @import("render/vulkan.zig") else @import("render/vulkan_off.zig");
+pub const ttf = @import("text/ttf.zig");
+pub const raster = @import("text/raster.zig");
+pub const font = @import("text/font.zig");
+pub const shape = @import("text/shape.zig");
+pub const atlas = @import("text/atlas.zig");
+pub const style = @import("style.zig");
+pub const select = @import("css/select.zig");
+pub const widget = @import("widget.zig");
+pub const anim = @import("anim.zig");
+pub const checks = @import("checks.zig");
+pub const stats = @import("stats.zig");
+pub const layout = @import("layout.zig");
+pub const grid = @import("grid.zig");
+pub const paint = @import("paint.zig");
+pub const wm = @import("wm.zig");
+pub const bind = @import("bind.zig");
+pub const num = @import("num.zig");
+pub const dispatch = @import("dispatch.zig");
+pub const focus = @import("focus.zig");
+pub const testing = @import("testing.zig");
+pub const App = app.App;
+pub const version = "0.0.0";
+
+test {
+    _ = num;
+    _ = geom;
+    _ = app;
+    _ = widget;
+    _ = @import("cmds.zig");
+    _ = @import("widgets/frame.zig");
+    _ = options;
+    _ = keysym;
+    _ = png;
+    _ = style;
+    _ = @import("tests/style.zig");
+    _ = @import("css/colors.zig");
+    _ = @import("tests/css.zig");
+    _ = @import("tests/text.zig");
+    _ = @import("tests/scene.zig");
+    _ = @import("tests/headless.zig");
+    _ = @import("tests/tree.zig");
+    _ = @import("tests/options.zig");
+    _ = @import("tests/loop.zig");
+    _ = grid;
+    _ = fbdev;
+    _ = evdev;
+    _ = console;
+    _ = touch;
+    _ = keymap;
+    _ = direct;
+    _ = vkdisplay;
+    _ = @import("sys/host.zig");
+    if (direct_enabled) {
+        _ = @import("sys/linux.zig");
+        _ = @import("tests/direct.zig");
+    }
+    _ = anim;
+    _ = checks;
+    _ = @import("tests/demo.zig");
+    _ = stats;
+    _ = @import("tests/anim.zig");
+    _ = wm;
+    _ = @import("tests/bind.zig");
+    _ = @import("tests/focus.zig");
+    _ = @import("tests/button.zig");
+    _ = @import("tests/renderthread.zig");
+    _ = @import("text/edit.zig");
+    _ = vulkan;
+    _ = @import("tests/vulkan.zig");
+    _ = @import("tests/entry.zig");
+    _ = @import("tests/frame.zig");
+    _ = @import("tests/grid.zig");
+    _ = @import("tests/review.zig");
+    _ = @import("tests/lifetime.zig");
+    _ = @import("tests/ttf.zig");
+    _ = @import("tests/stress.zig");
+    _ = @import("tests/review3.zig");
+    _ = @import("tests/review4.zig");
+}

@@ -115,4 +115,4 @@ ZTK_GPU=1 zig build test -Dtest-filter=vulkan
 - A window, a surface, and a swapchain. Task 17.
 - More than one atlas page, images, and blur passes.
 - A software Vulkan driver. The plan lists it as a decision for the user.
-- Metal, Direct3D 12, and WebGL. Stage 3.
+- Metal, Direct3D 12, and WebGL. Stage 3. Each platform gets its own native API: Vulkan on Linux, Metal on macOS, Direct3D 12 on Windows. No translation layer (MoltenVK, ANGLE, DXVK) is allowed. Do not build the Metal or Direct3D 12 renderer in Stage 1.

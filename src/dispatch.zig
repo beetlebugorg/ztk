@@ -1,0 +1,392 @@
+//! From a backend `Event` to widget events. The pointer goes to the
+//! widget under it. A press gives that widget the pointer until all
+//! buttons are up, so `Motion` and `ButtonRelease` go to it. The state
+//! bits `hover` and `pressed` follow the pointer. Several `motion` events
+//! in a row for one window collapse to the last one. Each other event is
+//! kept in order, so no key or button event is lost when a frame is slow.
+//! The holder of the pointer is valid only while the backend reports a
+//! button down. A motion or a press with no button down ends a hold whose
+//! release never came.
+//! `event generate` builds a widget event and delivers it at once.
+//! SPDX-License-Identifier: BSD-2-Clause
+
+const std = @import("std");
+const num = @import("num.zig");
+const ztcl = @import("ztcl");
+const bind = @import("bind.zig");
+const event = @import("event.zig");
+const keysym = @import("keysym.zig");
+const widget_mod = @import("widget.zig");
+const App = @import("app.zig").App;
+const Widget = widget_mod.Widget;
+const WidgetEvent = bind.WidgetEvent;
+const Value = ztcl.Value;
+
+/// The click that the count follows.
+const Click = struct { button: u8 = 0, x: i32 = 0, y: i32 = 0, time_ms: u32 = 0, count: u8 = 0 };
+
+pub const State = struct {
+    /// The widget that has the hover bit.
+    hover: ?*Widget = null,
+    /// The widget that holds the pointer during a press.
+    grab: ?*Widget = null,
+    click: Click = .{},
+    serial: u32 = 0,
+
+    /// A widget that is deleted must not stay in the state.
+    pub fn forget(s: *State, w: *const Widget) void {
+        if (s.hover == w) s.hover = null;
+        if (s.grab == w) s.grab = null;
+    }
+};
+
+/// The widget at a point of a toplevel: the top mapped widget that has it.
+pub fn widgetAt(top: *Widget, x: i32, y: i32) *Widget {
+    var cur = top;
+    var px = x;
+    var py = y;
+    while (true) {
+        // A deep tree can have a sum of offsets beyond `i32`.
+        if (cur != top) {
+            px -|= cur.geom.x;
+            py -|= cur.geom.y;
+        }
+        var found: ?*Widget = null;
+        var i = cur.children.items.len;
+        while (i > 0) {
+            i -= 1;
+            const c = cur.children.items[i];
+            if (!c.mapped) continue;
+            if (px >= c.geom.x and py >= c.geom.y and px < c.geom.x +| c.geom.w and py < c.geom.y +| c.geom.h) {
+                found = c;
+                break;
+            }
+        }
+        cur = found orelse return cur;
+    }
+}
+
+fn rootOrigin(w: *const Widget) struct { x: i32, y: i32 } {
+    var x: i32 = 0;
+    var y: i32 = 0;
+    var p: ?*const Widget = w;
+    while (p) |n| : (p = n.parent) {
+        if (n.parent == null) break;
+        x +|= n.geom.x;
+        y +|= n.geom.y;
+    }
+    return .{ .x = x, .y = y };
+}
+
+fn nextSerial(app: *App) u32 {
+    app.dispatch.serial += 1;
+    return app.dispatch.serial;
+}
+
+fn setHover(app: *App, w: *Widget, on: bool) void {
+    if (w.state.hover == on) return;
+    w.state.hover = on;
+    w.invalidate(.{ .style = true, .measure = false, .layout = false, .paint = true });
+    _ = app;
+}
+
+fn setPressed(w: *Widget, on: bool) void {
+    if (w.state.pressed == on) return;
+    w.state.pressed = on;
+    w.invalidate(.{ .style = true, .measure = false, .layout = false, .paint = true });
+}
+
+fn pointerEvent(app: *App, t: bind.EventType, w: *Widget, x: f32, y: f32, mods: event.Mods, time_ms: u32) WidgetEvent {
+    const o = rootOrigin(w);
+    const ix: i32 = num.pxFloor(x);
+    const iy: i32 = num.pxFloor(y);
+    return .{
+        .type = t,
+        .widget = w,
+        .x = num.px(@as(i64, ix) - o.x),
+        .y = num.px(@as(i64, iy) - o.y),
+        .root_x = ix,
+        .root_y = iy,
+        .mods = mods,
+        .time_ms = time_ms,
+        .serial = nextSerial(app),
+    };
+}
+
+/// Moves the hover to `under`: Leave for the old widget, Enter for the new one.
+fn updateHover(app: *App, under: ?*Widget, x: f32, y: f32, mods: event.Mods, time_ms: u32) void {
+    const d = &app.dispatch;
+    if (d.hover == under) return;
+    if (d.hover) |old| {
+        d.hover = null;
+        setHover(app, old, false);
+        var ev = pointerEvent(app, .leave, old, x, y, mods, time_ms);
+        bind.deliver(app, &ev);
+    }
+    if (under) |nw| {
+        if (!nw.alive()) return;
+        d.hover = nw;
+        setHover(app, nw, true);
+        var ev = pointerEvent(app, .enter, nw, x, y, mods, time_ms);
+        bind.deliver(app, &ev);
+    }
+}
+
+fn clickCount(app: *App, button: u8, x: i32, y: i32, time_ms: u32) u8 {
+    const c = &app.dispatch.click;
+    const dx = @abs(x - c.x);
+    const dy = @abs(y - c.y);
+    const near = c.button == button and dx <= 5 and dy <= 5 and time_ms >= c.time_ms and time_ms - c.time_ms <= 500;
+    const count: u8 = if (near and c.count < 4) c.count + 1 else if (near) 4 else 1;
+    c.* = .{ .button = button, .x = x, .y = y, .time_ms = time_ms, .count = count };
+    return count;
+}
+
+fn buttonsDown(m: event.Mods) bool {
+    return m.button1 or m.button2 or m.button3 or m.button4 or m.button5;
+}
+
+/// Ends a hold of the pointer whose button release never arrived.
+fn dropStaleGrab(app: *App, mods: event.Mods) void {
+    if (buttonsDown(mods)) return;
+    const g = app.dispatch.grab orelse return;
+    app.dispatch.grab = null;
+    if (g.alive()) setPressed(g, false);
+}
+
+/// Turns one backend event into widget events and delivers them.
+pub fn handle(app: *App, ev: event.Event) void {
+    const root = app.root orelse return;
+    const d = &app.dispatch;
+    switch (ev) {
+        .motion => |m| {
+            dropStaleGrab(app, m.mods);
+            if (d.grab) |g| {
+                if (!g.alive()) {
+                    d.grab = null;
+                } else {
+                    const under = widgetAt(root, num.pxFloor(m.x), num.pxFloor(m.y));
+                    // The grabbing widget gets Leave and Enter, and no other widget does.
+                    if ((under == g) != g.state.hover) {
+                        if (under == g) {
+                            d.hover = g;
+                            setHover(app, g, true);
+                            setPressed(g, m.mods.button1);
+                            var e1 = pointerEvent(app, .enter, g, m.x, m.y, m.mods, m.time_ms);
+                            bind.deliver(app, &e1);
+                        } else {
+                            if (d.hover == g) d.hover = null;
+                            setHover(app, g, false);
+                            setPressed(g, false);
+                            var e1 = pointerEvent(app, .leave, g, m.x, m.y, m.mods, m.time_ms);
+                            bind.deliver(app, &e1);
+                        }
+                    }
+                    if (!g.alive()) return;
+                    var e2 = pointerEvent(app, .motion, g, m.x, m.y, m.mods, m.time_ms);
+                    bind.deliver(app, &e2);
+                    return;
+                }
+            }
+            const under = widgetAt(root, num.pxFloor(m.x), num.pxFloor(m.y));
+            updateHover(app, under, m.x, m.y, m.mods, m.time_ms);
+            if (!under.alive()) return;
+            var e = pointerEvent(app, .motion, under, m.x, m.y, m.mods, m.time_ms);
+            bind.deliver(app, &e);
+        },
+        .button => |b| {
+            if (b.pressed) {
+                // The mods have the buttons that were down before this press.
+                dropStaleGrab(app, b.mods);
+                const under = widgetAt(root, num.pxFloor(b.x), num.pxFloor(b.y));
+                if (d.grab == null) updateHover(app, under, b.x, b.y, b.mods, b.time_ms);
+                const target = d.grab orelse under;
+                if (!target.alive()) return;
+                if (d.grab == null) d.grab = target;
+                if (b.button == 1 and !target.state.pressed) {
+                    target.state.pressed = true;
+                    target.invalidate(.{ .style = true, .measure = false, .layout = false, .paint = true });
+                }
+                var e = pointerEvent(app, .button_press, target, b.x, b.y, b.mods, b.time_ms);
+                e.button = b.button;
+                e.count = clickCount(app, b.button, e.root_x, e.root_y, b.time_ms);
+                bind.deliver(app, &e);
+            } else {
+                const target = d.grab orelse widgetAt(root, num.pxFloor(b.x), num.pxFloor(b.y));
+                if (target.alive()) {
+                    var e = pointerEvent(app, .button_release, target, b.x, b.y, b.mods, b.time_ms);
+                    e.button = b.button;
+                    e.count = d.click.count;
+                    if (b.button == 1 and target.state.pressed) {
+                        target.state.pressed = false;
+                        target.invalidate(.{ .style = true, .measure = false, .layout = false, .paint = true });
+                    }
+                    bind.deliver(app, &e);
+                }
+                // The event mods have the buttons that were down before the event.
+                var rest = b.mods;
+                switch (b.button) {
+                    1 => rest.button1 = false,
+                    2 => rest.button2 = false,
+                    3 => rest.button3 = false,
+                    4 => rest.button4 = false,
+                    5 => rest.button5 = false,
+                    else => {},
+                }
+                if (!buttonsDown(rest)) {
+                    d.grab = null;
+                    const under = widgetAt(root, num.pxFloor(b.x), num.pxFloor(b.y));
+                    updateHover(app, under, b.x, b.y, rest, b.time_ms);
+                }
+            }
+        },
+        .leave => {
+            if (d.grab != null) return;
+            updateHover(app, null, 0, 0, .{}, 0);
+        },
+        .key => |k| {
+            const target = app.keyTarget() orelse root;
+            var e: WidgetEvent = .{
+                .type = if (k.pressed) .key_press else .key_release,
+                .widget = target,
+                .keysym = k.keysym,
+                .keycode = k.keycode,
+                .text = k.text[0..k.text_len],
+                .mods = k.mods,
+                .time_ms = k.time_ms,
+                .serial = nextSerial(app),
+            };
+            bind.deliver(app, &e);
+        },
+        else => {},
+    }
+}
+
+/// Drops each `motion` event at or after `start` that another `motion`
+/// event of the same window follows with no other event between them.
+pub fn collapse(list: *std.ArrayListUnmanaged(event.Event), start: usize) void {
+    var out: usize = start;
+    var i: usize = start;
+    while (i < list.items.len) : (i += 1) {
+        const cur = list.items[i];
+        if (cur == .motion and i + 1 < list.items.len) {
+            const next = list.items[i + 1];
+            if (next == .motion and next.motion.window == cur.motion.window) continue;
+        }
+        list.items[out] = cur;
+        out += 1;
+    }
+    list.shrinkRetainingCapacity(out);
+}
+
+// ---- event generate ----
+
+const gen_options = [_][]const u8{ "-when", "-above", "-borderwidth", "-button", "-count", "-data", "-delta", "-detail", "-focus", "-height", "-keycode", "-keysym", "-mode", "-override", "-place", "-root", "-rootx", "-rooty", "-sendevent", "-serial", "-state", "-subwindow", "-time", "-warp", "-width", "-window", "-x", "-y" };
+const gen_list = "-when, -above, -borderwidth, -button, -count, -data, -delta, -detail, -focus, -height, -keycode, -keysym, -mode, -override, -place, -root, -rootx, -rooty, -sendevent, -serial, -state, -subwindow, -time, -warp, -width, -window, -x, or -y";
+
+fn genOption(name: []const u8) ?[]const u8 {
+    var found: ?[]const u8 = null;
+    for (gen_options) |o| {
+        if (std.mem.eql(u8, o, name)) return o;
+        if (std.mem.startsWith(u8, o, name)) {
+            if (found != null) return null;
+            found = o;
+        }
+    }
+    return found;
+}
+
+/// `event option ?arg ...?`. Only `generate` works in Stage 1.
+pub fn cmdEvent(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
+    const app = App.of(it);
+    app.enter();
+    defer app.leave();
+    if (argv.len < 2) return it.wrongArgs("event option ?arg1 arg2 ...?");
+    const sub = try it.str(argv[1]);
+    if (std.mem.eql(u8, sub, "add") or std.mem.eql(u8, sub, "delete") or std.mem.eql(u8, sub, "info")) {
+        return it.fail("event {s} is not supported in this stage", .{sub});
+    }
+    if (!std.mem.eql(u8, sub, "generate")) return it.fail("bad option \"{s}\": must be add, delete, generate, or info", .{sub});
+    if (argv.len < 4) return it.fail("wrong # args: should be \"event generate window event ?-option value ...?\"", .{});
+    const path = try it.str(argv[2]);
+    const w = app.lookup(path) orelse return it.fail("bad window path name \"{s}\"", .{path});
+    // `wish` delivers no event to a widget that is being deleted.
+    if (!w.alive()) return Value.empty;
+    const ptext = try it.str(argv[3]);
+    const pat = bind.parsePattern(it, ptext) catch |e| {
+        if (e == error.TclError) {
+            const msg = try it.str(it.result);
+            if (std.mem.startsWith(u8, msg, "event sequences are not supported")) return it.fail("only one event specification allowed", .{});
+        }
+        return e;
+    };
+    if (pat.count > 1) return it.fail("Double, Triple, or Quadruple modifier not allowed", .{});
+    var ev: WidgetEvent = .{ .type = pat.type, .widget = w, .mods = pat.mods, .virtual = pat.virtual, .serial = nextSerial(app) };
+    if (pat.type == .key_press or pat.type == .key_release) ev.keysym = pat.detail;
+    if (pat.type == .button_press or pat.type == .button_release) ev.button = std.math.cast(u8, pat.detail) orelse 0;
+    var state_bits: ?u16 = null;
+    var i: usize = 4;
+    while (i < argv.len) : (i += 1) {
+        const name = try it.str(argv[i]);
+        const opt = genOption(name) orelse return it.fail("bad option \"{s}\": must be " ++ gen_list, .{name});
+        if (i + 1 >= argv.len) return it.fail("value for \"{s}\" missing", .{name});
+        i += 1;
+        const val = try it.str(argv[i]);
+        if (std.mem.eql(u8, opt, "-x")) {
+            ev.x = num.px(try it.int(argv[i]));
+        } else if (std.mem.eql(u8, opt, "-y")) {
+            ev.y = num.px(try it.int(argv[i]));
+        } else if (std.mem.eql(u8, opt, "-rootx")) {
+            ev.root_x = num.px(try it.int(argv[i]));
+        } else if (std.mem.eql(u8, opt, "-rooty")) {
+            ev.root_y = num.px(try it.int(argv[i]));
+        } else if (std.mem.eql(u8, opt, "-button")) {
+            ev.button = @intCast(std.math.clamp(try it.int(argv[i]), 0, 255));
+        } else if (std.mem.eql(u8, opt, "-keycode")) {
+            ev.keycode = @intCast(std.math.clamp(try it.int(argv[i]), 0, 1 << 30));
+        } else if (std.mem.eql(u8, opt, "-keysym")) {
+            ev.keysym = keysym.fromName(val) orelse blk: {
+                if (val.len > 0) {
+                    const view = std.unicode.Utf8View.init(val) catch break :blk 0;
+                    var cps = view.iterator();
+                    if (cps.nextCodepoint()) |cp| break :blk keysym.fromCodepoint(cp);
+                }
+                break :blk 0;
+            };
+        } else if (std.mem.eql(u8, opt, "-state")) {
+            state_bits = @intCast(std.math.clamp(try it.int(argv[i]), 0, 0xffff));
+        } else if (std.mem.eql(u8, opt, "-time")) {
+            ev.time_ms = @intCast(std.math.clamp(try it.int(argv[i]), 0, std.math.maxInt(u32)));
+        } else if (std.mem.eql(u8, opt, "-data")) {
+            ev.data = try it.alloc().dupe(u8, val);
+        } else if (std.mem.eql(u8, opt, "-width")) {
+            ev.width = num.px(try it.int(argv[i]));
+        } else if (std.mem.eql(u8, opt, "-height")) {
+            ev.height = num.px(try it.int(argv[i]));
+        } else if (std.mem.eql(u8, opt, "-when")) {
+            if (!std.mem.eql(u8, val, "now")) {
+                if (std.mem.eql(u8, val, "head") or std.mem.eql(u8, val, "mark") or std.mem.eql(u8, val, "tail")) {
+                    return it.fail("event generate option \"-when {s}\" is not supported in this stage", .{val});
+                }
+                return it.fail("bad -when value \"{s}\": must be now, head, mark, or tail", .{val});
+            }
+        } else {
+            return it.fail("event generate option \"{s}\" is not supported in this stage", .{opt});
+        }
+    }
+    if (state_bits) |s| {
+        const given: event.Mods = @bitCast(s);
+        ev.mods = @bitCast(@as(u16, @bitCast(given)) | @as(u16, @bitCast(ev.mods)));
+    }
+    if ((ev.type == .key_press or ev.type == .key_release) and ev.keysym >= 0x20 and ev.keysym < 0x7f) {
+        const ch = try it.alloc().alloc(u8, 1);
+        ch[0] = @intCast(ev.keysym);
+        ev.text = ch;
+    }
+    if (ev.type == .button_press or ev.type == .button_release or ev.type == .key_press or ev.type == .key_release) {
+        ev.count = if (ev.type == .button_press) clickCount(app, ev.button, ev.x, ev.y, ev.time_ms) else app.dispatch.click.count;
+        if (ev.count == 0) ev.count = 1;
+    }
+    bind.deliver(app, &ev);
+    return Value.empty;
+}

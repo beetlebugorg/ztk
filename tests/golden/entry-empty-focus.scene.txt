@@ -1,0 +1,5 @@
+scene 260x60 clear #f5f5f7ff
+box rect (0.00,0.00,260.00,60.00) clip (0.00,0.00,260.00,60.00) radii (0.00,0.00,0.00,0.00) border (0.00,0.00,0.00,0.00) fill #f5f5f7ff fill2 #f5f5f7ff bcolor #000000ff params (0.00,1.00,0.00,1.00)
+box rect (10.00,12.00,198.00,29.00) clip (8.00,10.00,202.00,33.00) radii (6.00,6.00,6.00,6.00) border (1.00,1.00,1.00,1.00) fill #ffffffff fill2 #ffffffff bcolor #2563ebff params (0.00,1.00,0.00,1.00)
+box rect (8.00,10.00,202.00,33.00) clip (8.00,10.00,202.00,33.00) radii (8.00,8.00,8.00,8.00) border (2.00,2.00,2.00,2.00) fill #00000000 fill2 #00000000 bcolor #7aa2f7ff params (0.00,1.00,0.00,1.00)
+box rect (19.00,18.00,2.00,17.00) clip (19.00,18.00,180.00,17.00) radii (0.00,0.00,0.00,0.00) border (0.00,0.00,0.00,0.00) fill #1d1d1fff fill2 #1d1d1fff bcolor #000000ff params (0.00,1.00,0.00,1.00)

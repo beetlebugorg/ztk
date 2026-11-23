@@ -1,0 +1,193 @@
+//! The benchmark of ztk. It runs on the headless backend with the font of
+//! the repository, and prints the name of each case, the count of runs,
+//! and the median and the 99th percentile in microseconds. The frame
+//! cases skip the CPU draw, and `cpu-render-demo` measures it alone.
+//! Run it with `zig build bench`.
+//! SPDX-License-Identifier: BSD-2-Clause
+
+const std = @import("std");
+const ztcl = @import("ztcl");
+const ztk = @import("ztk");
+
+const gpa = std.heap.smp_allocator;
+
+fn now() i64 {
+    return ztk.loop.system_clock.now(null);
+}
+
+const World = struct {
+    it: ztcl.Interp,
+    head: *ztk.headless.Headless,
+    app: *ztk.App,
+
+    fn init(w: *World, io: std.Io) !void {
+        try w.it.init(gpa);
+        w.head = try ztk.headless.Headless.init(gpa);
+        w.app = try ztk.App.init(gpa, &w.it, .{ .platform = w.head.platform(), .io = io, .animations = false });
+    }
+
+    fn deinit(w: *World) void {
+        w.app.deinit();
+        w.head.deinit();
+        w.it.deinit();
+    }
+
+    fn eval(w: *World, text: []const u8) void {
+        _ = w.it.eval(text) catch {
+            std.debug.print("bench: script error: {s}\n", .{w.it.str(w.it.result) catch "?"});
+            std.process.exit(1);
+        };
+    }
+};
+
+const thousand =
+    "for {set i 0} {$i < 1000} {incr i} {" ++
+    " if {$i % 2} { label .w$i -text w$i -width 4 } else { button .w$i -text b$i -width 4 };" ++
+    " grid .w$i -row [expr {$i / 40}] -column [expr {$i % 40}] }; update";
+
+fn report(name: []const u8, samples: []i64) void {
+    std.mem.sort(i64, samples, {}, std.sort.asc(i64));
+    const n = samples.len;
+    const med = samples[n / 2];
+    const p99 = samples[@min((n * 99) / 100, n - 1)];
+    std.debug.print("{s:<18} runs {d:<6} median {d:>10.3} us  p99 {d:>10.3} us\n", .{ name, n, @as(f64, @floatFromInt(med)) / 1000.0, @as(f64, @floatFromInt(p99)) / 1000.0 });
+}
+
+/// Times in nanoseconds are kept in the samples so that the idle case has a fraction of a microsecond.
+fn nowNs() i64 {
+    return now() * 1000;
+}
+
+pub fn main(init: std.process.Init) !void {
+    const io = init.io;
+    var buf: [400]i64 = undefined;
+
+    // build-1000: the script makes 1 000 widgets and the first frame draws.
+    {
+        var s: [20]i64 = undefined;
+        for (&s) |*slot| {
+            var w: World = undefined;
+            try w.init(io);
+            w.head.skip_draw = true;
+            const t0 = nowNs();
+            w.eval(thousand);
+            slot.* = nowNs() - t0;
+            w.deinit();
+        }
+        report("build-1000", &s);
+    }
+
+    var w: World = undefined;
+    try w.init(io);
+    defer w.deinit();
+    w.head.skip_draw = true;
+    w.eval(thousand);
+
+    // frame-full-1000: a new sheet restyles all widgets, so the layout and the paint run too.
+    {
+        const runs = 40;
+        for (buf[0..runs], 0..) |*slot, i| {
+            var cmd: [160]u8 = undefined;
+            const text = try std.fmt.bufPrint(&cmd, "ztk::style add {{:root {{ --bg: #{x:0>2}{x:0>2}{x:0>2}; --field-bg: #{x:0>2}8080; --fg: #101010 }}}}; update", .{ 0x40 + i, 0x50 + i, 0x60 + i, 0x70 + i });
+            const t0 = nowNs();
+            w.eval(text);
+            slot.* = nowNs() - t0;
+        }
+        report("frame-full-1000", buf[0..runs]);
+    }
+
+    // frame-hover-1000: the pointer moves from one button to the next.
+    {
+        const runs = 200;
+        const a = w.app.find(".w0").?;
+        const b = w.app.find(".w2").?;
+        w.eval("update");
+        for (buf[0..runs], 0..) |*slot, i| {
+            const target = if (i % 2 == 0) b else a;
+            const t0 = nowNs();
+            w.head.pointerMove(w.app.window.?, @floatFromInt(target.geom.x + 2), @floatFromInt(target.geom.y + 2));
+            w.eval("update");
+            slot.* = nowNs() - t0;
+        }
+        report("frame-hover-1000", buf[0..runs]);
+    }
+
+    // frame-text-1000: the text of one label changes with the same size.
+    {
+        const runs = 200;
+        for (buf[0..runs], 0..) |*slot, i| {
+            const t0 = nowNs();
+            w.eval(if (i % 2 == 0) ".w1 configure -text aaaa; update" else ".w1 configure -text bbbb; update");
+            slot.* = nowNs() - t0;
+        }
+        report("frame-text-1000", buf[0..runs]);
+    }
+
+    // idle-1000: App.frame with no dirty flag.
+    {
+        const runs = 400;
+        const root = w.app.root.?;
+        for (buf[0..runs]) |*slot| {
+            const t0 = nowNs();
+            var k: u32 = 0;
+            while (k < 10000) : (k += 1) std.mem.doNotOptimizeAway(try w.app.frame(root));
+            slot.* = @divTrunc(nowNs() - t0, 10000);
+        }
+        report("idle-1000", buf[0..runs]);
+    }
+
+    // type-entry: one key in an entry.
+    {
+        var e: World = undefined;
+        try e.init(io);
+        defer e.deinit();
+        e.head.skip_draw = true;
+        e.eval("entry .e; grid .e; focus .e; update");
+        const runs = 200;
+        for (buf[0..runs]) |*slot| {
+            const t0 = nowNs();
+            try e.head.typeText(e.app.window.?, "a");
+            e.eval("update");
+            slot.* = nowNs() - t0;
+        }
+        report("type-entry", buf[0..runs]);
+    }
+
+    // demo-start: from App.init to the end of the first frame of the smoke script.
+    {
+        const script = try std.Io.Dir.cwd().readFileAlloc(io, "tests/scripts/smoke.tcl", gpa, .limited(1 << 20));
+        defer gpa.free(script);
+        var s: [20]i64 = undefined;
+        for (&s) |*slot| {
+            const t0 = nowNs();
+            var d: World = undefined;
+            try d.init(io);
+            d.eval(script);
+            d.eval("update");
+            slot.* = nowNs() - t0;
+            d.deinit();
+        }
+        report("demo-start", &s);
+    }
+
+    // cpu-render-demo: the CPU renderer alone on the scene of the first 1000 widgets.
+    {
+        w.head.skip_draw = false;
+        w.eval(".w1 configure -text cccc; update");
+        const frame = w.app.render.lastFrame();
+        const sc = &frame.scene;
+        const img = try gpa.alloc(u8, @as(usize, sc.width) * sc.height * 4);
+        defer gpa.free(img);
+        var out: ztk.renderer.Image = .{ .width = sc.width, .height = sc.height, .pixels = img };
+        var atlas = ztk.atlas.Atlas.init(gpa);
+        defer atlas.deinit();
+        for (frame.patches.items) |p| try atlas.applyPatch(p);
+        const runs = 50;
+        for (buf[0..runs]) |*slot| {
+            const t0 = nowNs();
+            ztk.cpu.render(sc, &atlas, &out);
+            slot.* = nowNs() - t0;
+        }
+        report("cpu-render-demo", buf[0..runs]);
+    }
+}

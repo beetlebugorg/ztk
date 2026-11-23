@@ -1,0 +1,3 @@
+scene 200x120 clear #ffffffff
+shadow rect (50.00,34.00,100.00,60.00) clip (0.00,0.00,200.00,120.00) radii (8.00,8.00,8.00,8.00) border (0.00,0.00,0.00,0.00) fill #00000080 fill2 #00000080 bcolor #00000000 params (0.00,0.00,12.00,1.00)
+box rect (50.00,30.00,100.00,60.00) clip (0.00,0.00,200.00,120.00) radii (8.00,8.00,8.00,8.00) border (1.00,1.00,1.00,1.00) fill #ffffffff fill2 #ffffffff bcolor #ccccccff params (0.00,1.00,0.00,1.00)

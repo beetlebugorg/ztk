@@ -1,0 +1,24 @@
+.{
+    .name = .ztk,
+    .fingerprint = 0x371430b6d8c5f4a4,
+    .version = "0.0.0",
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        .ztcl = .{
+            .url = "git+https://github.com/beetlebugorg/ztcl#125392f12e1cae7885fab031abbc70a5291ba2fe",
+            .hash = "ztcl-0.1.0-alpha-WhPN_tWDCwAu5aCDWA4LcpeGycY41Joteft8s6PLQOQa",
+        },
+        .vulkan_headers = .{
+            .url = "git+https://github.com/KhronosGroup/Vulkan-Headers?ref=v1.4.369#d277a0a3cda9c682708c93279f0c72cd6b0ae3f3",
+            .hash = "N-V-__8AAB5MiwIHZ-xzOzH98dswZMouQWfEZ1cimKD-hmEt",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "assets",
+        "LICENSE",
+        "README.md",
+    },
+}

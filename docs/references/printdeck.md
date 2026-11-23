@@ -36,3 +36,7 @@ The planner read these parts on 2026-11-23: the framebuffer package, the drawing
 - Printdeck draws the complete UI again in each frame and collects the touch areas while it draws. ztk keeps a widget tree, because Tk scripts create widgets that stay.
 - Printdeck draws its text with the font package of the Go project. ztk has its own font engine in Zig.
 - Printdeck draws on the CPU only. ztk also has GPU renderers, and the direct backend can use the GPU. The CPU renderer of ztk is a product path for the framebuffer output, and the reference for the tests.
+
+## Task 20: the direct backend
+
+The lessons that the direct backend uses, from the notes of the Printdeck project and not from its source: a framebuffer has no frame signal, so a timer of 16.7 ms paces the frames; only the changed rows go to the panel; the text console must go to graphics mode and come back on each exit path; a resistive touch panel needs a debounce time of about 80 ms; a move of more than 12 pixels is a scroll and not a tap; a fling starts at 250 pixels in each second and slows with a time constant of 0.35 seconds; and no key or touch event is dropped when the program is busy.

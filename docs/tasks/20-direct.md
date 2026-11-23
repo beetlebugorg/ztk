@@ -105,7 +105,7 @@ pub const Touch = struct {
 3. `Fbdev.open`:
    - Read the size, the stride, and the bits for each pixel from `/sys/class/graphics/<name>/virtual_size`, `stride`, and `bits_per_pixel`. Accept 16 bits (RGB565) and 32 bits (XRGB8888). Give a clear error for another depth.
    - Map the device memory with `mmap`.
-4. The console: open `/dev/tty1` and set it to graphics mode (`KDSETMODE` with `KD_GRAPHICS`), so that the text console does not draw over the window. Set it back to text mode in `deinit` and when the process gets `SIGINT` or `SIGTERM`. When the console cannot be opened, continue and print one line. Both outputs do this.
+4. The console (`src/platform/console.zig`): the backend fails closed. Before it opens any device, it refuses to run when `WAYLAND_DISPLAY`, `DISPLAY`, or an `XDG_SESSION_TYPE` of x11 or wayland is set, when the standard input is not a VT (or `--tty` does not name one), when that VT is not the active one, and when the console is already in graphics mode. It never opens a fixed device name such as `/dev/tty1`. Then it sets the VT to graphics mode (`KDSETMODE` with `KD_GRAPHICS`), so that the text console does not draw over the window. It sets the mode that the console had before back in `deinit`, on `SIGINT`, `SIGTERM`, and `SIGHUP`, in the `exit` command, and in the panic handler. A `SIGKILL` cannot be caught. Both outputs do this. Tests use a fake host and never open a real terminal.
 5. `present`:
    - Keep the image of the last frame. Write only the rows of `changedRows` (task 06). The first frame writes all rows.
    - Convert each pixel: RGB565 is `r >> 3`, `g >> 2`, `b >> 3` in one little-endian 16-bit number with red in the high bits. XRGB8888 is the bytes B, G, R, and 0xff.
@@ -141,7 +141,7 @@ pub const Touch = struct {
 ### The program
 
 16. One window exists. Its logical size is the display size after the rotation, divided by the scale. A second `createWindow` gives an error.
-17. `ztk --direct` selects this backend. More flags: `--output auto|vulkan|framebuffer`, `--fb DEVICE`, `--mode WxH`, `--rotate 0|90|180|270`, `--scale N`, and `--touch-debounce MS`. With no access to a device, print the system error and the group that the device file belongs to, and exit with status 1.
+17. `ztk --direct` selects this backend. More flags: `--output auto|vulkan|framebuffer`, `--fb DEVICE`, `--mode WxH`, `--rotate 0|90|180|270`, `--scale N`, `--tty DEVICE`, and `--touch-debounce MS`. With no access to a device, print the system error and the group that the device file belongs to, and exit with status 1.
 18. `ZTK_FRAME_STATS=1` also prints the output name and, for the framebuffer, the mean count of rows that a frame wrote.
 
 ## Tests

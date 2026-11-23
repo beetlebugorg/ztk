@@ -1,0 +1,7 @@
+/* The base sheet of ztk: the initial font and colors of the root. It has no widget rules. */
+:root {
+  color: #000000;
+  font-family: system-ui;
+  font-size: 13px;
+  font-weight: 400;
+}
