@@ -1,0 +1,39 @@
+# The ztk formula. packaging/homebrew/tap.sh in the ztk repository
+# writes this file for each release.
+class Ztk < Formula
+  desc "Experimental Tk replacement written in Zig"
+  homepage "https://beetlebug.org/ztk/"
+  version "@VERSION@"
+  license "BSD-2-Clause"
+
+  on_macos do
+    on_arm do
+      url "@RELEASES@/ztk-@VERSION@-aarch64-macos.tar.gz"
+      sha256 "@SHA_AARCH64_MACOS@"
+    end
+    on_intel do
+      url "@RELEASES@/ztk-@VERSION@-x86_64-macos.tar.gz"
+      sha256 "@SHA_X86_64_MACOS@"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      url "@RELEASES@/ztk-@VERSION@-aarch64-linux-musl.tar.gz"
+      sha256 "@SHA_AARCH64_LINUX@"
+    end
+    on_intel do
+      url "@RELEASES@/ztk-@VERSION@-x86_64-linux-musl.tar.gz"
+      sha256 "@SHA_X86_64_LINUX@"
+    end
+  end
+
+  def install
+    bin.install "ztk"
+  end
+
+  test do
+    (testpath/"t.tcl").write "puts [expr {6 * 7}]\n"
+    assert_equal "42", shell_output("#{bin}/ztk #{testpath}/t.tcl").strip
+  end
+end
