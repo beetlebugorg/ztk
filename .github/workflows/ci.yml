@@ -1,0 +1,100 @@
+name: CI
+
+# Checks the repository on each push to main and each pull request.
+# The build jobs skip their steps until the repository has a build.zig.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ZIG_VERSION: "0.16.0"
+
+jobs:
+  check:
+    name: Repository check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - run: sh tools/check-repo.sh
+
+  docs:
+    name: Docs build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r tools/docs-requirements.txt
+      - run: python tools/build-docs.py site
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Report a skip
+        if: hashFiles('build.zig') == ''
+        run: echo "::notice::The repository has no build.zig. The build and the tests are skipped."
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        if: hashFiles('build.zig') != ''
+        with:
+          version: ${{ env.ZIG_VERSION }}
+      # Tasks 16 and 17 add these build tools and libraries on Linux.
+      - name: Install the Linux build dependencies
+        if: hashFiles('build.zig') != '' && runner.os == 'Linux'
+        run: |
+          if grep -qE 'glslc|wayland' build.zig; then
+            sudo apt-get update
+            sudo apt-get install -y glslc libwayland-dev libxkbcommon-dev wayland-protocols
+          fi
+      # ulimit -v is enforced on Linux only.
+      - name: Build and test
+        if: hashFiles('build.zig') != ''
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then ulimit -v 6000000; fi
+          zig build
+          zig build test
+      - name: Run a script
+        if: hashFiles('build.zig') != ''
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then ulimit -v 6000000; fi
+          printf 'puts [expr {6 * 7}]\n' > "$RUNNER_TEMP/t.tcl"
+          test "$(zig build run -- "$RUNNER_TEMP/t.tcl" | tr -d '\r')" = 42
+
+  wasm:
+    name: WebAssembly
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Report a skip
+        if: hashFiles('build.zig') == ''
+        run: echo "::notice::The repository has no build.zig. The wasm build is skipped."
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        if: hashFiles('build.zig') != ''
+        with:
+          version: ${{ env.ZIG_VERSION }}
+      - name: Build the wasm step
+        if: hashFiles('build.zig') != ''
+        run: |
+          if zig build -l | grep -qE '^[[:space:]]+wasm([[:space:]]|$)'; then
+            zig build wasm
+          else
+            echo "::notice::The build has no wasm step. The wasm build is skipped."
+          fi
