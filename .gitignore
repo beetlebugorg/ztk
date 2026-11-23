@@ -1,0 +1,9 @@
+zig-out/
+.zig-cache/
+zig-cache/
+dist/
+# The Tk source that tools/fetch-tk.sh downloads.
+.tk-src/
+# Images that a failed golden test writes.
+tests/golden/*.actual.png
+tests/golden/*.diff.png
