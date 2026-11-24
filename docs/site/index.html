@@ -70,6 +70,62 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
   </div>
 </section>
 
+<section class="section" id="screenshots">
+  <div class="wrap">
+    <p class="eyebrow">What it draws</p>
+    <h2>Tk scripts, drawn by ztk.</h2>
+    <p class="lede">Each image is one frame of an example script, drawn by the CPU renderer on the headless backend at scale 2. The images follow the color scheme of your system. Each script also runs in <code>wish</code> 8.6.</p>
+    <div class="shots">
+      <figure class="shot wide">
+        <a class="frame" href="https://github.com/beetlebugorg/ztk/blob/main/examples/dashboard.tcl">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="assets/shots/dashboard-dark.png">
+            <img src="assets/shots/dashboard-light.png" width="406" height="340" alt="A window titled Print farm with three tiles in blue, green, and violet gradients and a list of five jobs with colored status badges." loading="lazy">
+          </picture>
+        </a>
+        <figcaption><a href="https://github.com/beetlebugorg/ztk/blob/main/examples/dashboard.tcl"><code>examples/dashboard.tcl</code></a><b>A status board</b>Frames with gradients, shadows, and round corners, and labels as badges. The colors come from the variables of its stylesheet.</figcaption>
+      </figure>
+      <figure class="shot">
+        <a class="frame" href="https://github.com/beetlebugorg/ztk/blob/main/examples/signin.tcl">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="assets/shots/signin-dark.png">
+            <img src="assets/shots/signin-light.png" width="376" height="341" alt="A sign-in card with a title, an email entry, a password entry that shows stars, and Cancel and Sign in buttons." loading="lazy">
+          </picture>
+        </a>
+        <figcaption><a href="https://github.com/beetlebugorg/ztk/blob/main/examples/signin.tcl"><code>examples/signin.tcl</code></a><b>A sign-in form</b>A card frame with a shadow on a gradient window. The password entry uses <code>-show</code>, and it has the focus ring.</figcaption>
+      </figure>
+      <figure class="shot">
+        <a class="frame" href="https://github.com/beetlebugorg/ztk/blob/main/examples/calculator.tcl">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="assets/shots/calculator-dark.png">
+            <img src="assets/shots/calculator-light.png" width="320" height="350" alt="A calculator with an expression, the result 144, and a keypad of buttons in five rows." loading="lazy">
+          </picture>
+        </a>
+        <figcaption><a href="https://github.com/beetlebugorg/ztk/blob/main/examples/calculator.tcl"><code>examples/calculator.tcl</code></a><b>A calculator</b>A keypad of buttons in a <code>grid</code>. The 0 key spans two columns.</figcaption>
+      </figure>
+      <figure class="shot">
+        <a class="frame" href="https://github.com/beetlebugorg/ztk/blob/main/examples/settings.tcl">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="assets/shots/settings-dark.png">
+            <img src="assets/shots/settings-light.png" width="384" height="459" alt="A settings page with Network and Hardware groups of labels and entries, and Reset and Save buttons." loading="lazy">
+          </picture>
+        </a>
+        <figcaption><a href="https://github.com/beetlebugorg/ztk/blob/main/examples/settings.tcl"><code>examples/settings.tcl</code></a><b>A settings page</b>Groups of labels and entries, a text selection, a disabled entry, and a disabled button.</figcaption>
+      </figure>
+      <figure class="shot">
+        <a class="frame" href="https://github.com/beetlebugorg/ztk/blob/main/examples/demo.tcl">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="assets/shots/demo-dark.png">
+            <img src="assets/shots/demo-light.png" width="342" height="154" alt="The Stage 1 demo: a title, a name entry, and Greet, Count, and Quit buttons." loading="lazy">
+          </picture>
+        </a>
+        <figcaption><a href="https://github.com/beetlebugorg/ztk/blob/main/examples/demo.tcl"><code>examples/demo.tcl</code></a><b>The Stage 1 demo</b>The script and the stylesheet at the top of this page.</figcaption>
+      </figure>
+    </div>
+    <p class="muted small" style="margin-top:20px">Make the images again with <code>zig build</code> and <a href="https://github.com/beetlebugorg/ztk/blob/main/tools/shots.sh"><code>tools/shots.sh</code></a>. One image: <code>ztk --headless --scale 2 --exit-after-frames 1 --screenshot out.png script.tcl</code>, with <code>--dark</code> for the dark scheme.</p>
+  </div>
+</section>
+
 <section class="section" id="performance">
   <div class="wrap">
     <p class="eyebrow">Performance</p>
