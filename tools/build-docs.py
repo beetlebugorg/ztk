@@ -5,9 +5,12 @@
 Usage: python3 tools/build-docs.py [output folder]
 
 The landing page is docs/site/index.html. The docs pages come from the
-Markdown files, and all pages use docs/site/site.css. The build needs
-markdown-it-py (tools/docs-requirements.txt). It stops with an error for a
-link to a missing page or a missing anchor, also on the landing page.
+Markdown files, and all pages use docs/site/site.css. The build copies the
+screenshots in docs/site/shots to assets/shots. An image on a page must be
+one of these files. The build needs markdown-it-py
+(tools/docs-requirements.txt). It stops with an error for a link to a
+missing page or a missing anchor, and for a missing image, also on the
+landing page.
 """
 
 import html
@@ -89,6 +92,8 @@ class Build:
                 for child in token.children or []:
                     if child.type == "link_open":
                         child.attrSet("href", self.link(src, page, child.attrGet("href")))
+                    if child.type == "image":
+                        child.attrSet("src", self.image(src, page, child.attrGet("src")))
         self.anchors[page] = ids
         body = self.md.renderer.render(tokens, self.md.options, {})
         body = body.replace("<table>", '<div class="table"><table>').replace("</table>", "</table></div>")
@@ -111,6 +116,17 @@ class Build:
             raise SystemExit(f"{src}: link to a missing file: {href}")
         kind = "tree" if (ROOT / target).is_dir() else "blob"
         return f"{REPO}/{kind}/main/{target}" + (f"#{frag}" if frag else "")
+
+    @staticmethod
+    def image(src, page, href):
+        """Gives the URL of an image of a Markdown page. The build copies
+        docs/site/shots to assets/shots, so the URL goes into assets/."""
+        if re.match(r"^[a-z][a-z0-9+.-]*:", href) or href.startswith("//"):
+            return href
+        target = posixpath.normpath(posixpath.join(posixpath.dirname(src), href))
+        if not target.startswith("docs/site/shots/") or not (ROOT / target).is_file():
+            raise SystemExit(f"{src}: the image is not a file in docs/site/shots: {href}")
+        return rel(page, "") + "assets/" + target[len("docs/site/"):]
 
     @staticmethod
     def alerts(body):
@@ -177,6 +193,9 @@ class Build:
 """
 
     def check_landing(self, text):
+        for src in re.findall(r'(?:src|srcset)="([^"]+)"', text):
+            if not src.startswith("assets/shots/") or not (SITE_DIR / src[len("assets/"):]).is_file():
+                raise SystemExit(f"docs/site/index.html: the image is not a file in docs/site/shots: {src}")
         for href in re.findall(r'href="([^"]+)"', text):
             if re.match(r"^[a-z][a-z0-9+.-]*:", href) or href.startswith("//"):
                 continue
@@ -210,6 +229,8 @@ class Build:
         (out / "assets").mkdir()
         for name in ("site.css", "favicon.svg"):
             shutil.copy(SITE_DIR / name, out / "assets" / name)
+        # The screenshots of the examples (tools/shots.sh).
+        shutil.copytree(SITE_DIR / "shots", out / "assets" / "shots")
         (out / ".nojekyll").write_text("", encoding="utf-8")
         print(f"wrote {len(rendered) + 1} pages to {out}")
 

@@ -10,6 +10,10 @@ A Tk replacement in Zig, on the [ztcl](https://github.com/beetlebugorg/ztcl) int
 
 **Docs:** https://beetlebug.org/ztk/
 
+![A window drawn by ztk: three tiles with gradients and a list of jobs with colored badges](docs/site/shots/dashboard-light.png)
+
+ztk drew this window from [`examples/dashboard.tcl`](examples/dashboard.tcl) and its stylesheet, with the CPU renderer on the headless backend. The [docs site](https://beetlebug.org/ztk/#screenshots) has more examples, in light and dark.
+
 ## Status
 
 Stage 1 is built. Four independent reviews said "do not merge" or "not yet". The fixes for the fourth review are in this code, and no review has checked them. Stage 1 has `frame`, `label`, `button`, `entry`, `grid`, `bind`, `event generate`, `focus`, `wm`, and `winfo` for `.`, a CSS subset with a modern theme, a font engine with no library, a CPU renderer, a Vulkan renderer (offscreen, checked against the CPU renderer on two GPUs), a render thread, and three backends: headless, Wayland (CPU renderer into shared memory), and direct (framebuffer and evdev). `examples/demo.tcl` runs in ztk and in `wish` 8.6.16. [The report](docs/stage1-report.md) has the test counts.
@@ -70,6 +74,10 @@ bind .name <Return> {.greet invoke}
 Button { border-radius: 6px; padding: 6px 12px; transition: all 120ms }
 Button:hover { background: var(--accent); color: var(--accent-fg) }
 ```
+
+[`examples/demo.tcl`](examples/demo.tcl) is the full demo, with a stylesheet. ztk draws it in the dark scheme with `--dark`:
+
+![The Stage 1 demo in the dark scheme: a title, a name entry, and Greet, Count, and Quit buttons](docs/site/shots/demo-dark.png)
 
 ## Documentation
 
