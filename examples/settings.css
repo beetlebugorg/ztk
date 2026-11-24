@@ -1,0 +1,25 @@
+/* The groups of the settings page, on top of the modern theme. */
+#title {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.heading {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.group {
+  background-color: var(--field-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.group Label {
+  background-color: var(--field-bg);
+}

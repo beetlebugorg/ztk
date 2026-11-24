@@ -1,0 +1,33 @@
+/* The keypad of the calculator, on top of the modern theme. */
+.display {
+  font-size: 34px;
+  font-weight: 700;
+}
+
+.expr {
+  color: var(--muted);
+  font-size: 15px;
+}
+
+Button {
+  font-size: 18px;
+  padding: 10px 14px;
+  border-radius: 10px;
+}
+
+.op {
+  color: var(--accent);
+  background-color: var(--bg);
+}
+
+.clear {
+  color: #dc2626;
+  background-color: var(--bg);
+}
+
+.equals {
+  color: #ffffff;
+  background: linear-gradient(180deg, #3b82f6, #1d4ed8);
+  border-color: #1d4ed8;
+  font-weight: 700;
+}
