@@ -37,6 +37,10 @@ PAGES = [
 for task in sorted((ROOT / "docs/tasks").glob("[0-9]*.md")):
     title = task.read_text(encoding="utf-8").splitlines()[0].lstrip("# ").replace("Task ", "", 1)
     PAGES.append((f"docs/tasks/{task.name}", f"tasks/{task.stem}/", "Stage 1 tasks", title))
+PAGES.append(("docs/stage2-tasks/README.md", "stage2-tasks/", "Widget stage tasks", "Task index"))
+for task in sorted((ROOT / "docs/stage2-tasks").glob("[0-9]*.md")):
+    title = task.read_text(encoding="utf-8").splitlines()[0].lstrip("# ").replace("Task ", "", 1)
+    PAGES.append((f"docs/stage2-tasks/{task.name}", f"stage2-tasks/{task.stem}/", "Widget stage tasks", title))
 PAGES.append(("docs/references/README.md", "references/", "References", "All references"))
 for ref in sorted((ROOT / "docs/references").glob("*.md")):
     if ref.name != "README.md":
@@ -49,7 +53,7 @@ PAGES += [
     ("SECURITY.md", "security/", "Project", "Security"),
 ]
 # The sidebar shows these groups closed, except on a page of the group.
-FOLDED = {"Stage 1 tasks", "References"}
+FOLDED = {"Stage 1 tasks", "Widget stage tasks", "References"}
 PAGE_OF = {src: page for src, page, _, _ in PAGES}
 
 SITE_DIR = ROOT / "docs" / "site"
