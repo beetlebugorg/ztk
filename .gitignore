@@ -9,4 +9,4 @@ tests/golden/*.actual.png
 tests/golden/*.diff.png
 # The Zig package folder and the built docs site.
 zig-pkg/
-site/
+/site/
