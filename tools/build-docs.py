@@ -4,8 +4,10 @@
 
 Usage: python3 tools/build-docs.py [output folder]
 
-The build needs markdown-it-py (tools/docs-requirements.txt). It stops with
-an error for a link to a missing page or a missing anchor.
+The landing page is docs/site/index.html. The docs pages come from the
+Markdown files, and all pages use docs/site/site.css. The build needs
+markdown-it-py (tools/docs-requirements.txt). It stops with an error for a
+link to a missing page or a missing anchor, also on the landing page.
 """
 
 import html
@@ -23,7 +25,7 @@ SITE = "https://beetlebug.org/ztk/"
 
 # Source file, page folder, sidebar group, sidebar title.
 PAGES = [
-    ("README.md", "", "Start", "Overview"),
+    ("README.md", "overview/", "Start", "Overview"),
     ("docs/plan.md", "plan/", "Plan", "The plan"),
     ("docs/tk-size.md", "tk-size/", "Plan", "The size of Tk"),
     ("docs/review.md", "review/", "Plan", "Review checklist"),
@@ -47,29 +49,7 @@ PAGES += [
 FOLDED = {"Stage 1 tasks", "References"}
 PAGE_OF = {src: page for src, page, _, _ in PAGES}
 
-CSS = """
-:root{color-scheme:light dark;--bg:#fbfbf9;--panel:#f1f1ec;--text:#20211e;--dim:#62645c;--line:#d9dad2;--link:#17616b;--code:#ecece6;--warn:#8a5a00;--note:#17616b}
-@media (prefers-color-scheme:dark){:root{--bg:#171815;--panel:#20211d;--text:#e7e7e0;--dim:#a1a398;--line:#373932;--link:#79c7d1;--code:#292b26;--warn:#e0ad4f;--note:#79c7d1}}
-*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--text);font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif}
-.layout{display:grid;grid-template-columns:260px minmax(0,1fr);min-height:100vh}
-nav{background:var(--panel);border-right:1px solid var(--line);padding:24px 20px;position:sticky;top:0;height:100vh;overflow:auto}
-nav .brand{display:block;font:700 22px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text);text-decoration:none}
-nav .tag{display:block;color:var(--dim);font-size:13px;margin-bottom:18px}
-nav h2{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);margin:20px 0 6px}
-nav a.item{display:block;padding:4px 8px;margin:0 -8px;border-radius:6px;color:var(--text);text-decoration:none;font-size:15px}
-nav summary{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);margin:20px 0 6px;cursor:pointer}
-nav a.item:hover{background:var(--code)}nav a.item[aria-current]{background:var(--code);font-weight:600}
-main{padding:40px 48px 72px;max-width:900px;width:100%}
-h1{font-size:34px;line-height:1.2;margin:0 0 20px}h2{font-size:24px;margin:38px 0 10px;line-height:1.3}h3{font-size:19px;margin:28px 0 8px}
-a{color:var(--link)}code{font:.9em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--code);padding:.12em .32em;border-radius:4px}
-pre{background:var(--code);padding:14px 16px;border-radius:8px;overflow:auto;line-height:1.45}pre code{background:none;padding:0}
-.table{overflow-x:auto;margin:16px 0}table{border-collapse:collapse;min-width:100%;font-size:15px}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}th{background:var(--panel)}
-blockquote{margin:16px 0;padding:8px 16px;border-left:4px solid var(--line);color:var(--dim)}
-.alert{margin:16px 0;padding:10px 16px;border-left:4px solid var(--note);background:var(--panel);border-radius:0 8px 8px 0}.alert.warning{border-color:var(--warn)}.alert p{margin:.3em 0}.alert .title{font-weight:700}
-footer{margin-top:48px;padding-top:14px;border-top:1px solid var(--line);color:var(--dim);font-size:14px}
-@media (max-width:760px){.layout{display:block}nav{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line);padding:16px}main{padding:24px 16px 48px}h1{font-size:28px}}
-"""
+SITE_DIR = ROOT / "docs" / "site"
 
 
 def slug(text):
@@ -162,32 +142,76 @@ class Build:
         out.append(f'<a class="item" href="{REPO}/releases">Releases</a>')
         return "\n".join(out)
 
+    @staticmethod
+    def pager(page):
+        pages = [(other, label) for _, other, _, label in PAGES]
+        i = next(n for n, (other, _) in enumerate(pages) if other == page)
+        out = []
+        if i > 0:
+            other, label = pages[i - 1]
+            out.append(f'<a class="prev" href="{rel(page, other)}"><span>Previous</span>{html.escape(label)}</a>')
+        if i + 1 < len(pages):
+            other, label = pages[i + 1]
+            out.append(f'<a class="next" href="{rel(page, other)}"><span>Next</span>{html.escape(label)}</a>')
+        return f'<nav class="pager" aria-label="Pages">{"".join(out)}</nav>'
+
     def document(self, page, title, body):
-        name = "ztk" if page == "" else f"{html.escape(title)} · ztk"
-        desc = "Experimental Tk replacement in Zig, on the ztcl interpreter."
+        root = rel(page, "")
+        name = f"{html.escape(title)} · ztk"
+        desc = "A Tk replacement in Zig, on the ztcl interpreter, with a GPU renderer and CSS styles."
         return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{name}</title><meta name="description" content="{desc}">
-<link rel="canonical" href="{SITE}{page}"><style>{CSS}</style></head>
-<body><div class="layout"><nav aria-label="Documentation"><a class="brand" href="{rel(page, '')}">ztk</a>
-<span class="tag">Experimental Tk in Zig</span>{self.nav(page)}</nav>
-<main>{body}<footer>BSD-2-Clause · <a href="{REPO}">Source on GitHub</a></footer></main></div></body></html>
+<link rel="canonical" href="{SITE}{page}">
+<link rel="icon" href="{root}assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="{root}assets/site.css"></head>
+<body><a class="skip" href="#content">Skip to the content</a>
+<header class="top"><div class="wrap"><a class="logo" href="{root}"><span class="glyph" aria-hidden="true">tk</span>ztk</a>
+<nav class="toplinks" aria-label="Site"><a href="{root}overview/" aria-current="page">Docs</a><a class="sib" href="https://beetlebug.org/ztcl/">ztcl</a><a href="{REPO}">GitHub</a></nav></div></header>
+<div class="docs"><input class="toc-toggle" type="checkbox" id="toc"><label class="toc-button" for="toc">Contents</label>
+<aside class="sidebar"><nav aria-label="Documentation">{self.nav(page)}</nav></aside>
+<main class="prose" id="content">{body}{self.pager(page)}</main></div>
+<footer class="foot docs-foot"><div class="wrap"><span>ztk · BSD-2-Clause</span><span class="right"><a href="{root}">Home</a><a href="https://beetlebug.org/ztcl/">ztcl</a><a href="{REPO}">Source on GitHub</a></span></div></footer>
+</body></html>
 """
+
+    def check_landing(self, text):
+        for href in re.findall(r'href="([^"]+)"', text):
+            if re.match(r"^[a-z][a-z0-9+.-]*:", href) or href.startswith("//"):
+                continue
+            path, _, frag = href.partition("#")
+            if path.startswith("assets/"):
+                if not (SITE_DIR / path[len("assets/"):]).exists():
+                    raise SystemExit(f"docs/site/index.html: link to a missing file: {href}")
+                continue
+            page = posixpath.normpath(path or ".").lstrip("./")
+            page = "" if page in ("", ".") else page.rstrip("/") + "/"
+            if page != "" and page not in self.anchors:
+                raise SystemExit(f"docs/site/index.html: link to a missing page: {href}")
+            ids = set(re.findall(r'id="([^"]+)"', text)) if page == "" else self.anchors[page]
+            if frag and frag not in ids:
+                raise SystemExit(f"docs/site/index.html: link to a missing anchor: {href}")
 
     def run(self, out):
         rendered = [(page, *self.render(src, page)) for src, page, _, _ in PAGES]
         for src, page, anchor in self.links:
             if anchor not in self.anchors.get(page, set()):
                 raise SystemExit(f"{src}: link to a missing anchor: {page}#{anchor}")
+        landing = (SITE_DIR / "index.html").read_text(encoding="utf-8")
+        self.check_landing(landing)
         if out.exists():
             shutil.rmtree(out)
         for page, title, body in rendered:
             folder = out / page
             folder.mkdir(parents=True, exist_ok=True)
             (folder / "index.html").write_text(self.document(page, title, body), encoding="utf-8")
+        (out / "index.html").write_text(landing, encoding="utf-8")
+        (out / "assets").mkdir()
+        for name in ("site.css", "favicon.svg"):
+            shutil.copy(SITE_DIR / name, out / "assets" / name)
         (out / ".nojekyll").write_text("", encoding="utf-8")
-        print(f"wrote {len(rendered)} pages to {out}")
+        print(f"wrote {len(rendered) + 1} pages to {out}")
 
 
 if __name__ == "__main__":
