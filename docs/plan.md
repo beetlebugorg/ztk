@@ -386,6 +386,7 @@ Why: the user of a platform knows its file dialog and its menu bar, and the plat
 - Options: the sandbox of ztcl by default (no files, no processes). All host access by default, as `wish`.
 - Recommendation: the sandbox by default in the library. The `ztk` program has an `--allow` flag as the `ztcl` runner does.
 - **User:** decide the default of the `ztk` program before Stage 2. A drop-in `wish` needs `source`, `open`, and `exec`.
+- Provisional (2026-11-24, the widget stage): the recommendation holds until the user decides. The library has the sandbox. The `ztk` program has the sandbox by default and turns on a capability only from its `--allow` flag. The file dialogs of the widget stage give an error when the file capability is off.
 
 ### D20. Image goldens in the repository
 
@@ -554,7 +555,7 @@ An estimate is in weeks of full-time work of one engineer who knows the field. I
 | 0 | This plan | The user accepts the plan and the decisions | done |
 | 1 | The demo on Linux: `frame`, `label`, `button`, `entry`, `.`, `grid`, `bind`, the CSS subset, the modern theme, the font engine, the CPU and Vulkan renderers, the render thread, and the headless, Wayland, and direct backends | `examples/demo.tcl` runs in ztk and in `wish`. All tests of the Stage 1 tasks pass. The frame statistics show no late frame in the demo at 60 Hz. The demo draws to a framebuffer in memory in the tests. The static build has no dependency. The stage report has the measured numbers. | 6 to 8 weeks, about 19 000 lines |
 | 2 | The core of Tk on Linux: `pack`, `place`, the complete `bind` and `event`, `focus` and `grab`, `wm`, `winfo`, `option`, `font`, `image` (photo with PNG, GIF, and PPM; bitmap), the other simple classic widgets (`checkbutton`, `radiobutton`, `message`, `labelframe`, `scale`, `scrollbar`, `listbox`, `spinbox`, `panedwindow`, `menubutton`, `toplevel`), the classic theme, the X11 backend, own window decorations, the fonts of the system, touch scroll and fling, image caches, KMS for the direct backend if a device needs it, the Tk suite runner | The compatibility table exists for all 109 files. Each in-scope file of the Stage 2 commands has a pass rate of at least 70 %. The oracle test passes for 1 000 random layouts of each manager. | 18 to 26 weeks |
-| 3 | The macOS, Windows, and web backends at the level of Stage 2, and the remote display if the user wants it (D22) | The demo and the Stage 2 golden images pass on each platform, with the GPU test against the CPU reference. A person does the manual checklist on each platform. | 12 to 22 weeks |
+| 3 | The macOS and Windows backends at the level of Stage 2 (the web backend moved to the widget stage), and the remote display if the user wants it (D22) | The demo and the Stage 2 golden images pass on each platform, with the GPU test against the CPU reference. A person does the manual checklist on each platform. | 12 to 22 weeks |
 | 4 | Complete text: CFF outlines, variable fonts, color glyphs, ligatures and marks, the optional HarfBuzz shaper, bidi, line breaks, font fallback, input methods, and the `text` widget | The Unicode conformance files pass. The eight `text*.test` files have a pass rate of at least 70 %. The fonts of a default install of each platform draw. | 24 to 36 weeks |
 | 5 | The `canvas` widget: 9 item types, tags, bindings, scrolling | The seven `canv*.test` files have a pass rate of at least 70 %, without `canvPs.test`. | 10 to 16 weeks |
 | 6 | `ttk`: 18 widgets, the complete `ttk::style`, and the four theme names | The 17 `ttk` test files have a pass rate of at least 80 %. | 14 to 22 weeks |
@@ -565,6 +566,15 @@ An estimate is in weeks of full-time work of one engineer who knows the field. I
 Stage 1 measured (2026-11-23, the [report](stage1-report.md)): 19 800 lines of Zig and 303 tests. An agent run made tasks 10 to 21 in about 2.5 hours of wall clock time on a shared machine, after tasks 01 to 09 in an earlier run. The run needed no review round yet, so the estimates of the later stages stay as they are until a reviewer has read Stage 1.
 
 The sum is 118 to 190 weeks, or two and a quarter to three and a half years for one engineer. Tk has 322 187 lines, and its first release was in 1991. A much smaller estimate is not credible.
+
+### The widget stage
+
+The user asked for all widgets of Tk 8.6 before the rest of Stage 2, so that the screenshots show each widget in use (2026-11-24). The [widget stage](stage2-tasks/README.md) takes the widget classes, `pack`, `place`, scrolling, `grab`, and focus traversal from Stage 2, the `text` widget from Stage 4, the canvas from Stage 5, the `ttk` widgets from Stage 6, the menus and the dialogs from Stage 7, and the web backend from Stage 3. The pass targets of the Tk test files stay in their stages. The user added four rules for this stage:
+
+- Animation is part of the API: CSS transitions and keyframes, `ztk::animate`, and animated scrolling, tabs, sashes, menus, and tree items, moved by the render thread.
+- Each widget is fluid: under 8 ms of ztk work for a frame at the 99th percentile, the answer to input in the next frame, drags and scrolls that follow the pointer from the render thread, and budgets for a large canvas and a large text.
+- The look is modern by default. The classic look of Tk is a theme that a script selects. Modern extras (switches, segmented buttons, placeholders, tooltips, toasts, popovers) are options and styles on the Tk widgets.
+- Each widget runs on the web. The web backend is task 06 of the widget stage.
 
 Each stage after Stage 1 gets its own task list when it starts. The task list of a stage is small tasks in order, in the form of [Stage 1](tasks/README.md).
 
