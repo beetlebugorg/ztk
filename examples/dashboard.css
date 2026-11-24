@@ -1,0 +1,103 @@
+/* The theme of the status board. It sets its own colors on top of the
+   modern theme: gradient tiles, a panel with a shadow, and badges. */
+:root {
+  --bg: #eef1f6;
+  --panel: #ffffff;
+  --ok: #15803d;
+  --ok-bg: #dcfce7;
+  --run: #1d4ed8;
+  --run-bg: #dbeafe;
+  --wait: #a16207;
+  --wait-bg: #fef9c3;
+  --bad: #b91c1c;
+  --bad-bg: #fee2e2;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115;
+    --panel: #1a1d23;
+    --ok: #86efac;
+    --ok-bg: #14532d;
+    --run: #93c5fd;
+    --run-bg: #1e3a8a;
+    --wait: #fde047;
+    --wait-bg: #713f12;
+    --bad: #fca5a5;
+    --bad-bg: #7f1d1d;
+  }
+}
+
+#title {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.tile {
+  border-radius: 12px;
+  box-shadow: 0px 6px 16px 0px rgba(15, 23, 42, 0.20);
+}
+
+.tile Label {
+  color: #ffffff;
+  background-color: transparent;
+}
+
+.tile #value {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.blue {
+  background: linear-gradient(135deg, #3b82f6, #1e40af);
+}
+
+.green {
+  background: linear-gradient(135deg, #22c55e, #15803d);
+}
+
+.violet {
+  background: linear-gradient(135deg, #a855f7, #6d28d9);
+}
+
+.panel {
+  background-color: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.panel Label {
+  background-color: var(--panel);
+}
+
+Label.badge {
+  border-radius: 50%;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+Label.printing {
+  color: var(--run);
+  background-color: var(--run-bg);
+}
+
+Label.queued {
+  color: var(--wait);
+  background-color: var(--wait-bg);
+}
+
+Label.failed {
+  color: var(--bad);
+  background-color: var(--bad-bg);
+}
+
+Label.done {
+  color: var(--ok);
+  background-color: var(--ok-bg);
+}
