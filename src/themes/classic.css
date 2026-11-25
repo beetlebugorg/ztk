@@ -1,0 +1,258 @@
+/* The classic theme: the look of Tk 8.6 on X11. Gray surfaces, 3D
+   borders (border-style: outset and inset), square corners, and no
+   transitions. `ztk::style theme classic` or `ttk::style theme use
+   classic` selects it. The colors are those of `wish` 8.6.16. */
+:root {
+  --bg: #d9d9d9;
+  --fg: #000000;
+  --muted: #a3a3a3;
+  --active: #ececec;
+  --trough: #c3c3c3;
+  --select: #c3c3c3;
+  --field-bg: #ffffff;
+  --mark: #b03060;
+}
+
+:root {
+  color: var(--fg);
+  background-color: var(--bg);
+  font-family: system-ui;
+  font-size: 12px;
+}
+
+Frame, Toplevel, Message {
+  background-color: var(--bg);
+}
+
+Label {
+  color: var(--fg);
+  background-color: var(--bg);
+}
+
+Label:disabled {
+  color: var(--muted);
+}
+
+Button {
+  color: var(--fg);
+  background-color: var(--bg);
+  border: 1px outset var(--bg);
+  padding: 4px 10px;
+}
+
+Button:hover {
+  background-color: var(--active);
+}
+
+Button:active {
+  border-style: inset;
+}
+
+Button:focus {
+  outline: 1px solid var(--fg);
+  outline-offset: 0px;
+}
+
+Button:disabled {
+  color: var(--muted);
+}
+
+Entry, Spinbox {
+  color: var(--fg);
+  background-color: var(--field-bg);
+  border: 1px inset var(--bg);
+  padding: 2px 2px;
+  caret-color: var(--fg);
+  cursor: text;
+}
+
+Entry:focus, Spinbox:focus {
+  outline: 1px solid var(--fg);
+  outline-offset: 0px;
+}
+
+Entry:disabled, Spinbox:disabled {
+  color: var(--muted);
+  background-color: var(--bg);
+}
+
+Entry:read-only, Spinbox:read-only {
+  background-color: var(--bg);
+}
+
+Entry::selection, Spinbox::selection {
+  background-color: var(--select);
+  color: var(--fg);
+}
+
+Entry::placeholder, Spinbox::placeholder {
+  color: var(--muted);
+  opacity: 0;
+}
+
+Entry:placeholder-shown::placeholder, Spinbox:placeholder-shown::placeholder {
+  opacity: 1;
+}
+
+Entry.search::icon, Entry.search::clear {
+  color: var(--muted);
+}
+
+Spinbox::buttonup, Spinbox::buttondown {
+  color: var(--fg);
+  background-color: var(--bg);
+  border: 1px outset var(--bg);
+}
+
+Spinbox:active::buttonup, Spinbox:active::buttondown {
+  border-style: inset;
+}
+
+Checkbutton, Radiobutton {
+  color: var(--fg);
+  background-color: var(--bg);
+  padding: 1px 2px;
+}
+
+Checkbutton:hover, Radiobutton:hover {
+  background-color: var(--active);
+}
+
+Checkbutton:focus, Radiobutton:focus {
+  outline: 1px solid var(--fg);
+  outline-offset: -1px;
+}
+
+Checkbutton:disabled, Radiobutton:disabled {
+  color: var(--muted);
+}
+
+Checkbutton::indicator, Radiobutton::indicator {
+  color: var(--fg);
+  background-color: var(--field-bg);
+  border: 1px inset var(--bg);
+}
+
+Radiobutton::indicator {
+  border-radius: 50%;
+  border-color: #828282;
+}
+
+Checkbutton:checked::indicator, Checkbutton:indeterminate::indicator, Radiobutton:checked::indicator {
+  color: var(--fg);
+  background-color: var(--field-bg);
+}
+
+Checkbutton.switch::indicator {
+  color: var(--bg);
+  background-color: var(--trough);
+  border: 1px inset var(--bg);
+}
+
+Checkbutton.switch:checked::indicator {
+  background-color: var(--mark);
+}
+
+Radiobutton.segmented {
+  border: 1px outset var(--bg);
+  padding: 4px 10px;
+}
+
+Radiobutton.segmented:checked {
+  border-style: inset;
+  background-color: var(--select);
+}
+
+Labelframe {
+  background-color: var(--bg);
+  border: 2px groove var(--bg);
+  padding: 4px 6px;
+}
+
+Labelframe::label {
+  color: var(--fg);
+  padding: 0px 2px 2px 2px;
+}
+
+:root::tooltip, Toplevel::tooltip {
+  color: var(--fg);
+  background-color: #ffffe0;
+  border: 1px solid var(--fg);
+  padding: 2px 4px;
+}
+
+Scale {
+  color: var(--fg);
+  background-color: var(--bg);
+  padding: 2px;
+}
+
+Scale:focus {
+  outline: 1px solid var(--fg);
+  outline-offset: 0px;
+}
+
+Scale::trough {
+  background-color: var(--trough);
+  border: 1px inset var(--bg);
+}
+
+Scale::fill {
+  background-color: var(--trough);
+}
+
+Scale::slider {
+  background-color: var(--bg);
+  border: 2px outset var(--bg);
+}
+
+Scale:hover::slider {
+  background-color: var(--active);
+}
+
+Scale::value {
+  color: var(--fg);
+}
+
+Scale:disabled {
+  color: var(--muted);
+}
+
+Canvas {
+  color: var(--fg);
+  background-color: var(--bg);
+}
+
+Canvas::selection {
+  background-color: var(--select);
+  color: var(--fg);
+}
+
+/* A classic scrollbar: a sunken trough and a raised thumb that always shows. */
+Scrollbar {
+  background-color: var(--trough);
+}
+
+Scrollbar::trough {
+  background-color: var(--trough);
+  border: 1px inset var(--bg);
+}
+
+Scrollbar::thumb {
+  background-color: var(--bg);
+  border: 1px outset var(--bg);
+  opacity: 1;
+}
+
+Scrollbar:hover::thumb {
+  background-color: var(--active);
+}
+
+TSeparator {
+  border: 1px inset var(--bg);
+}
+
+TSizegrip {
+  color: #828282;
+  background-color: var(--bg);
+}

@@ -117,6 +117,18 @@ ok = r.get("check") == "2"
 print(("ok" if ok else "FAIL") + ": a DOM click on the up button of the spinbox steps it (%r)" % r.get("check"))
 sys.exit(0 if ok else 1)
 PY
+# The ttk card of the gallery: a DOM click on the radiobutton "Small" sets its variable.
+{ cat "$root/examples/gallery.tcl"; printf '\nupdate\nset s .cols.right.ttk.body.s\nputs "[expr {[winfo rootx $s] + 8}],[expr {[winfo rooty $s] + [winfo height $s] / 2}]"\nexit\n'; } > "$work/twhere.tcl"
+twhere="$(cd "$work" && "$root/zig-out/bin/ztk" --headless twhere.tcl 2>/dev/null)"
+out="$(page "example=gallery&light&size=860x680&click=$twhere&test=set%20ttkopt(size)")"
+echo "$out" > "$work/ttk.json"
+python3 -I - "$work/ttk.json" <<'PY' || fail=1
+import json, sys
+r = json.load(open(sys.argv[1]))
+ok = r.get("check") == "S"
+print(("ok" if ok else "FAIL") + ": a DOM click on a ttk::radiobutton sets its variable (%r)" % r.get("check"))
+sys.exit(0 if ok else 1)
+PY
 # The canvas of the gallery: a DOM drag moves the rectangle by its item bindings.
 { cat "$root/examples/gallery.tcl"; printf '\nwm geometry . 860x680\nupdate\nset c .cols.left.canvas.body.c\nputs "[expr {[winfo rootx $c] + 40}],[expr {[winfo rooty $c] + 30}],[expr {[winfo rootx $c] + 80}],[expr {[winfo rooty $c] + 50}]"\nexit\n'; } > "$work/cwhere.tcl"
 cwhere="$(cd "$work" && "$root/zig-out/bin/ztk" --headless cwhere.tcl 2>/dev/null)"

@@ -130,6 +130,23 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - The modern theme draws the buttons of a spinbox as a column with two chevrons at the right edge (parts `::buttonup` and `::buttondown`). Each button has its own hover and pressed state and transition.
 - `zig build bench`, ReleaseFast, 2026-11-25, development machine with a load average of 2 to 6: `type-entry` (one key in an entry) median 0.028 ms and 99th percentile 0.036 ms, under the gate of 8 ms. In the same run `scroll-wheel` had a 99th percentile of 4.71 ms.
 
+## ttk::style and the simple ttk widgets (task 09)
+
+- `ttk::button`, `ttk::checkbutton`, `ttk::radiobutton`, `ttk::label`, `ttk::frame`, `ttk::labelframe`, `ttk::entry`, `ttk::separator`, and `ttk::sizegrip` have the options of `wish` 8.6.16 in its order, with its defaults and messages. Each class builds on the code of its classic class, and the options of the classic class that `ttk` does not have are hidden: `configure` does not list them, and a script that names one gets `unknown option`.
+- `ttk::style configure`, `map`, `lookup`, `layout`, `element create`, `element names`, `element options`, `theme create`, `theme names`, `theme settings`, and `theme use` have the messages of `wish`. Each theme starts with the settings and the layouts of the same theme of `wish`, so `lookup` and `configure` give the values of `wish`. Those settings give no CSS rules: the look comes from the theme sheet.
+- The settings of a script become rules with the origin `ttk`. A style `Accent.TButton` is the selector `TButton.Accent`, and `.` is a list of the `ttk` types. The options with a CSS form are `-foreground`, `-background` (`-fieldbackground` for an entry), `-bordercolor`, `-borderwidth`, `-relief`, `-padding`, `-font` (a family and a size), and `-indicatorcolor` (the part `::indicator`). The other options are stored, and `lookup` gives them, with no effect on the look. A layout that a script sets is stored and has no effect.
+- `ttk::style map` gives one rule for each pair, in reverse order, so that the first pair that matches wins as in Tk. A pair with more states has a higher specificity, so it wins over an earlier pair with fewer states, where Tk takes the earlier pair.
+- The themes `default`, `clam`, and `alt` have the modern look, and `classic` has the look of Tk on X11. `ztk::style theme modern` selects `default`, and `ztk::style theme classic` selects `classic`. A theme of `theme create` has the look of its parent.
+- `active` and `hover` share one state flag of the widget, so `state active` sets both. The pointer sets both, as in `wish`.
+- `identify` gives `border`, `padding`, or the element of the content (`label`, `textarea`, `border`, `separator`, or `sizegrip`) from the box of the widget. `wish` gives the element of its layout, for example `focus` at the edge of a button.
+- `-state` of a `ttk` widget accepts any word, as in `wish`: `disabled` and `readonly` set the state flag, and other words clear it. `-width` of a button or a label is a string: a positive number gives the width of the text in characters, and a negative number a minimum. `-underline` is stored and has no effect. `-image` with `-compound` works for `ttk::button` and `ttk::label`, and the image of a checkbutton or a radiobutton is stored with no effect.
+- `ttk::labelframe -labelanchor` gives the message of the classic `labelframe` for a bad value. `wish` gives `Bad label anchor specification`.
+- A `ttk::checkbutton` and a `ttk::radiobutton` leave a variable that does not exist as it is, and show the state `alternate`, as in `wish`.
+- The classic theme draws the reliefs of Tk with the shades of `TkpGetShadows` on square corners. A round shape (a radiobutton indicator) has a flat border. The classic scrollbar has no arrows.
+- The size grip resizes its toplevel with `wm geometry` from a drag. No test drives the grip in the web build.
+- The Tk test files of these widgets do not run in ztk: the interpreter has no `package` command, so `tcltest` does not load. `wish` 8.6.16 under `xvfb-run` passes `ttk/ttk.test` 97 of 97, `ttk/checkbutton.test` 8 of 8, `ttk/radiobutton.test` 8 of 8, `ttk/labelframe.test` 19 of 19, `ttk/entry.test` 37 of 37, `ttk/validate.test` 26 of 32 (6 skipped), `ttk/layout.test` 2 of 2, and `ttk/image.test` 5 of 5, with the wrapper of `tools/tk-run.sh`.
+- `zig build bench`, ReleaseFast, 2026-11-25, development machine with a load average of 1.6 to 3.6: `ttk-hover-1000` (1 000 `ttk::label` and `ttk::button` widgets, a hover color from `ttk::style map`, the pointer moves to another button each 10 frames) median 0.87 ms and 99th percentile 1.04 ms, under the gate of 8 ms.
+
 ## Additions
 
 - `ztk::animate`, `ztk::clock`, the timing function `spring()`, and the flag `--time` of the `ztk` program.
@@ -143,3 +160,5 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - The style class `search` of an entry, with the parts `::icon` and `::clear`. A click on the clear button deletes the text.
 - Undo and redo of the changes by the user in an entry and a spinbox: `<<Undo>>` and `<<Redo>>`, with Control-z, Control-Shift-z, and Control-y. A run of typed text is one step. A change by a script or by the variable clears the history.
 - The parts `::buttonup` and `::buttondown` of a spinbox.
+- `ztk::style theme ?modern|classic?`, the CSS property `border-style` with `outset`, `inset`, `groove`, and `ridge` (and the Tk names `raised` and `sunken`), and `:state(!name)` with the states `hover` and `user1` to `user6`.
+- `-placeholder` and `-placeholderforeground` for `ttk::entry`.

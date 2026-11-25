@@ -109,6 +109,12 @@ pub const App = struct {
     loop: loop.Loop,
     err_output: ?ztcl.Output,
     styles: style_mod.StyleSet,
+    /// The themes and the settings of `ttk::style`.
+    ttk: @import("ttk/style.zig").Data = .{},
+    /// The ids of the theme sheet and the platform sheet (0: none), and the look.
+    theme_sheet: u32 = 0,
+    platform_sheet: u32 = 0,
+    classic_look: bool = false,
     env: style_mod.Env = .{},
     style_root: ?[]const u8 = null,
     io: ?std.Io = null,
@@ -248,8 +254,24 @@ pub const App = struct {
             }
         }
         _ = try app.styles.add(.base, "base", @embedFile("themes/base.css"));
-        _ = try app.styles.add(.theme, "modern", @embedFile("themes/modern.css"));
-        _ = try app.styles.add(.platform, "modern-linux", @embedFile("themes/modern-linux.css"));
+        app.theme_sheet = try app.styles.add(.theme, "modern", @embedFile("themes/modern.css"));
+        app.platform_sheet = try app.styles.add(.platform, "modern-linux", @embedFile("themes/modern-linux.css"));
+    }
+
+    /// Changes the theme sheets to the classic look or the modern look.
+    pub fn setLook(app: *App, classic: bool) !void {
+        if (classic == app.classic_look) return;
+        if (app.theme_sheet != 0) app.styles.remove(app.theme_sheet);
+        if (app.platform_sheet != 0) app.styles.remove(app.platform_sheet);
+        app.theme_sheet = 0;
+        app.platform_sheet = 0;
+        app.classic_look = classic;
+        if (classic) {
+            app.theme_sheet = try app.styles.add(.theme, "classic", @embedFile("themes/classic.css"));
+        } else {
+            app.theme_sheet = try app.styles.add(.theme, "modern", @embedFile("themes/modern.css"));
+            app.platform_sheet = try app.styles.add(.platform, "modern-linux", @embedFile("themes/modern-linux.css"));
+        }
     }
 
     fn idleDraw(_: *anyopaque, _: *const scene_mod.Frame) anyerror!void {}
@@ -304,6 +326,7 @@ pub const App = struct {
         if (app.it.user == @as(?*anyopaque, app)) app.it.user = null;
         app.loop.deinit();
         app.styles.deinit();
+        app.ttk.deinit(app.gpa);
         app.bindings.deinit();
         app.anims.deinit(app.gpa);
         anim.deinit(app);

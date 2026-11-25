@@ -16,6 +16,8 @@ const options = @import("../options.zig");
 const paint = @import("../paint.zig");
 const scene = @import("../scene.zig");
 const App = @import("../app.zig").App;
+const image_mod = @import("../image.zig");
+const style_mod = @import("../style.zig");
 const Spec = options.Spec;
 const Widget = widget.Widget;
 
@@ -199,15 +201,54 @@ pub fn configured(w: *Widget, changed: []const usize) ztcl.Error!void {
     }
 }
 
+/// The photo of `-image`, for a class that has the option.
+fn photoOf(w: *const Widget) ?*const image_mod.Photo {
+    const slot = options.maybe(w, "-image") orelse return null;
+    if (!slot.set or slot.text.len == 0) return null;
+    const first = std.mem.trim(u8, slot.text, " ");
+    const end = std.mem.indexOfScalar(u8, first, ' ') orelse first.len;
+    return w.app.images.find(first[0..end]);
+}
+
+const Compound = enum { none, text, image, center, top, bottom, left, right };
+
+fn compoundOf(w: *const Widget) Compound {
+    const slot = options.maybe(w, "-compound") orelse return .none;
+    return std.meta.stringToEnum(Compound, slot.text) orelse .none;
+}
+
+/// The space between the image and the text of `-compound`.
+const image_gap = 4;
+
+/// The size of the image and the text together, and the size of each one.
+fn contentSize(w: *Widget, st: *const style_mod.Style) struct { all: geom.Size, img: geom.Size, txt: geom.Size, show_text: bool, show_image: bool } {
+    const app = w.app;
+    var txt = paint.textSize(app, text(w), st.font);
+    var wd = options.get(w, "-width").value;
+    const ht = options.get(w, "-height").value;
+    // The `-width` of a `ttk` widget is a string, as in Tk.
+    if (wd == .text) wd = if (std.fmt.parseInt(i64, std.mem.trim(u8, wd.text, " "), 10)) |n| .{ .int = n } else |_| .none;
+    if (wd == .int and wd.int > 0) txt.w = num.px(@min(wd.int, 10000) * paint.zeroWidth(app, st.font));
+    // A negative `-width` of a `ttk` widget is a minimum.
+    if (w.class.ttk and wd == .int and wd.int < 0) txt.w = @max(txt.w, num.px(@min(-wd.int, 10000) * paint.zeroWidth(app, st.font)));
+    if (ht == .int and ht.int > 0) txt.h = num.px(@min(ht.int, 10000) * paint.lineHeight(app, st.font));
+    const ph = photoOf(w) orelse return .{ .all = txt, .img = .{}, .txt = txt, .show_text = true, .show_image = false };
+    const img: geom.Size = .{ .w = @intCast(@min(ph.width, 10000)), .h = @intCast(@min(ph.height, 10000)) };
+    const c = compoundOf(w);
+    return switch (c) {
+        .none, .image => .{ .all = img, .img = img, .txt = txt, .show_text = false, .show_image = true },
+        .text => .{ .all = txt, .img = img, .txt = txt, .show_text = true, .show_image = false },
+        .center => .{ .all = .{ .w = @max(img.w, txt.w), .h = @max(img.h, txt.h) }, .img = img, .txt = txt, .show_text = true, .show_image = true },
+        .top, .bottom => .{ .all = .{ .w = @max(img.w, txt.w), .h = img.h + image_gap + txt.h }, .img = img, .txt = txt, .show_text = true, .show_image = true },
+        .left, .right => .{ .all = .{ .w = img.w + image_gap + txt.w, .h = @max(img.h, txt.h) }, .img = img, .txt = txt, .show_text = true, .show_image = true },
+    };
+}
+
 pub fn measure(w: *Widget) geom.Size {
     const app = w.app;
     app.ensureStyle(w);
     const st = &w.style;
-    var size = paint.textSize(app, text(w), st.font);
-    const wd = options.get(w, "-width").value;
-    const ht = options.get(w, "-height").value;
-    if (wd == .int and wd.int > 0) size.w = num.px(@min(wd.int, 10000) * paint.zeroWidth(app, st.font));
-    if (ht == .int and ht.int > 0) size.h = num.px(@min(ht.int, 10000) * paint.lineHeight(app, st.font));
+    const size = contentSize(w, st).all;
     const ins = paint.insets(st);
     return .{
         .w = @max(num.add(size.w, ins.horizontal()), st.min_width),
@@ -220,7 +261,70 @@ pub fn paintLabel(w: *Widget, b: *scene.Builder) anyerror!void {
     try paint.box(w, b, st);
     const an = options.get(w, "-anchor").value;
     const ju = options.get(w, "-justify").value;
-    try paint.label(w, b, paint.contentRect(w, st), text(w), st, if (an == .anchor) an.anchor else .center, if (ju == .justify) ju.justify else .center);
+    const anchor: options.Anchor = if (an == .anchor) an.anchor else .center;
+    const justify: options.Justify = if (ju == .justify) ju.justify else .center;
+    const rect = paint.contentRect(w, st);
+    const cs = contentSize(w, st);
+    if (!cs.show_image) return paint.label(w, b, rect, text(w), st, anchor, justify);
+    // The block of the image and the text goes to the anchor, and each part has its place in it.
+    const blk = anchored(rect, cs.all, anchor);
+    const c = compoundOf(w);
+    var img_at: geom.Rect = .{ .x = blk.x + @divTrunc(blk.w - cs.img.w, 2), .y = blk.y + @divTrunc(blk.h - cs.img.h, 2), .w = cs.img.w, .h = cs.img.h };
+    var txt_at: geom.Rect = .{ .x = blk.x, .y = blk.y, .w = blk.w, .h = blk.h };
+    switch (c) {
+        .top => {
+            img_at.y = blk.y;
+            txt_at = .{ .x = blk.x, .y = blk.y + cs.img.h + image_gap, .w = blk.w, .h = cs.txt.h };
+        },
+        .bottom => {
+            img_at.y = blk.y + blk.h - cs.img.h;
+            txt_at = .{ .x = blk.x, .y = blk.y, .w = blk.w, .h = cs.txt.h };
+        },
+        .left => {
+            img_at.x = blk.x;
+            txt_at = .{ .x = blk.x + cs.img.w + image_gap, .y = blk.y, .w = cs.txt.w, .h = blk.h };
+        },
+        .right => {
+            img_at.x = blk.x + blk.w - cs.img.w;
+            txt_at = .{ .x = blk.x, .y = blk.y, .w = cs.txt.w, .h = blk.h };
+        },
+        else => {},
+    }
+    if (photoOf(w)) |ph| try drawPhoto(b, ph, img_at.x, img_at.y, st.opacity);
+    if (cs.show_text) try paint.label(w, b, txt_at, text(w), st, .center, justify);
+}
+
+/// A rectangle of a size at an anchor in a rectangle.
+fn anchored(r: geom.Rect, size: geom.Size, anchor: options.Anchor) geom.Rect {
+    const dx = r.w - size.w;
+    const dy = r.h - size.h;
+    const x = switch (anchor) {
+        .w, .nw, .sw => r.x,
+        .e, .ne, .se => r.x + dx,
+        else => r.x + @divTrunc(dx, 2),
+    };
+    const y = switch (anchor) {
+        .n, .nw, .ne => r.y,
+        .s, .sw, .se => r.y + dy,
+        else => r.y + @divTrunc(dy, 2),
+    };
+    return .{ .x = x, .y = y, .w = size.w, .h = size.h };
+}
+
+/// Draws a photo as one box for each run of equal pixels in a row.
+pub fn drawPhoto(b: *scene.Builder, ph: *const image_mod.Photo, x: i32, y: i32, opacity: f32) !void {
+    var row: u32 = 0;
+    while (row < ph.height) : (row += 1) {
+        var col: u32 = 0;
+        while (col < ph.width) {
+            const o = (@as(usize, row) * ph.width + col) * 4;
+            const px = ph.pixels[o..][0..4];
+            var end = col + 1;
+            while (end < ph.width and std.mem.eql(u8, ph.pixels[(@as(usize, row) * ph.width + end) * 4 ..][0..4], px)) end += 1;
+            if (px[3] > 0) try b.box(.{ .x = x + @as(i32, @intCast(col)), .y = y + @as(i32, @intCast(row)), .w = @intCast(end - col), .h = 1 }, .{ .fill = .{ .r = px[0], .g = px[1], .b = px[2], .a = px[3] }, .opacity = opacity });
+            col = end;
+        }
+    }
 }
 
 /// `::ztk::priv::textvar path`: the variable of a label changed.

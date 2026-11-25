@@ -30,7 +30,12 @@ fn pseudoMatches(p: parse.Pseudo, w: *const Widget) bool {
 
 /// The state bit of a `ttk` state name. An unknown name matches nothing.
 fn stateMatches(name: []const u8, w: *const Widget) bool {
+    if (name.len > 0 and name[0] == '!') return !stateMatches(name[1..], w);
     const s = w.state;
+    if (std.mem.eql(u8, name, "hover")) return s.hover;
+    if (name.len == 5 and std.mem.startsWith(u8, name, "user") and name[4] >= '1' and name[4] <= '6') {
+        return w.ttk_user & (@as(u8, 1) << @intCast('6' - name[4])) != 0;
+    }
     if (std.mem.eql(u8, name, "active")) return s.hover;
     if (std.mem.eql(u8, name, "pressed")) return s.pressed;
     if (std.mem.eql(u8, name, "focus")) return s.focus;
@@ -44,16 +49,9 @@ fn stateMatches(name: []const u8, w: *const Widget) bool {
 }
 
 fn compoundMatches(c: *const parse.Compound, w: *const Widget) bool {
-    if (c.type_name) |t| if (!std.mem.eql(u8, t, w.tk_class)) return false;
+    if (c.type_name) |t| if (!std.mem.eql(u8, t, w.styleType()) and !std.mem.eql(u8, t, w.class.css_base)) return false;
     if (c.id) |id| if (!std.mem.eql(u8, id, w.name())) return false;
-    for (c.classes) |cl| {
-        var found = false;
-        for (w.classes.items) |have| if (std.mem.eql(u8, have, cl)) {
-            found = true;
-            break;
-        };
-        if (!found) return false;
-    }
+    for (c.classes) |cl| if (!w.hasClass(cl)) return false;
     for (c.pseudos) |p| if (!pseudoMatches(p, w)) return false;
     for (c.states) |s| if (!stateMatches(s, w)) return false;
     return true;

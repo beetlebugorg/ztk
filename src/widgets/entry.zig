@@ -183,7 +183,7 @@ pub fn dataOf(w: *const Widget) *Data {
 
 /// True for an entry and a spinbox.
 pub fn isEntry(w: *const Widget) bool {
-    return w.class == &class or w.class == &spinbox.class;
+    return w.class.deinit == class.deinit;
 }
 
 pub fn init(w: *Widget) anyerror!void {
@@ -249,18 +249,20 @@ fn setColor(w: *const Widget, name: []const u8) ?geom.Color {
 }
 
 fn isNormal(w: *const Widget) bool {
+    // A `ttk::entry` reads its state flags, which `state` changes too.
+    if (w.class.ttk) return !w.state.disabled and !w.state.readonly;
     const st = options.get(w, "-state").value;
     return st == .word and st.word == 1;
 }
 
 fn isReadonly(w: *const Widget) bool {
+    if (w.class.ttk) return w.state.readonly and !w.state.disabled;
     const st = options.get(w, "-state").value;
     return st == .word and st.word == 2;
 }
 
 pub fn hasClass(w: *const Widget, name: []const u8) bool {
-    for (w.classes.items) |c| if (std.mem.eql(u8, c, name)) return true;
-    return false;
+    return w.hasClass(name);
 }
 
 // ---- The variable ----
@@ -320,8 +322,13 @@ pub fn configured(w: *Widget, changed_list: []const usize) ztcl.Error!void {
         if (w.life == .dead) return;
         const name = w.class.specs[i].name;
         if (std.mem.eql(u8, name, "-state")) {
-            w.state.disabled = w.opts[i].value == .word and w.opts[i].value.word == 0;
-            w.state.readonly = isReadonly(w);
+            if (w.class.ttk) {
+                w.state.disabled = std.mem.eql(u8, w.opts[i].text, "disabled");
+                w.state.readonly = std.mem.eql(u8, w.opts[i].text, "readonly");
+            } else {
+                w.state.disabled = w.opts[i].value == .word and w.opts[i].value.word == 0;
+                w.state.readonly = isReadonly(w);
+            }
             if (!isNormal(w)) cancelTimer(w, d);
         } else if (std.mem.eql(u8, name, "-validate")) {
             d.mode = if (w.opts[i].value == .word) @enumFromInt(w.opts[i].value.word) else .none;

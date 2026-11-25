@@ -33,6 +33,8 @@ pub const Type = enum {
     word,
     /// A floating-point number.
     double,
+    /// The name of an image of `image create`, as the first word of a list.
+    image,
 };
 
 pub const Spec = struct {
@@ -60,7 +62,33 @@ pub const Spec = struct {
     create_only: bool = false,
     /// The style property that gives the value when the script did not set the option.
     style_prop: StyleProp = .none,
+    /// The option is not in `configure` and a script cannot name it. A
+    /// `ttk` class has the options of its classic class this way, so the
+    /// shared code reads them with their defaults.
+    hidden: bool = false,
 };
+
+/// The specs of a `ttk` class: the options of its manual page in their
+/// order, then each option of the classic class that is not in the list,
+/// hidden.
+pub fn withHidden(comptime visible: []const Spec, comptime base: []const Spec) []const Spec {
+    comptime {
+        @setEvalBranchQuota(100000);
+        var out: []const Spec = visible;
+        for (base) |b| {
+            var have = false;
+            for (visible) |v| {
+                if (std.mem.eql(u8, v.name, b.name)) have = true;
+            }
+            if (have) continue;
+            var h = b;
+            h.hidden = true;
+            out = out ++ [_]Spec{h};
+        }
+        const final = out[0..out.len].*;
+        return &final;
+    }
+}
 
 pub const StyleProp = enum { none, background, border_width };
 
@@ -230,6 +258,12 @@ pub fn parseValue(w: *const Widget, it: *ztcl.Interp, spec: Spec, text: []const 
             norm.* = try formatDouble(it.alloc(), v);
             return .{ .double = v };
         },
+        .image => {
+            const first = std.mem.trim(u8, text, " ");
+            const end = std.mem.indexOfScalar(u8, first, ' ') orelse first.len;
+            if (w.app.images.find(first[0..end]) == null) return it.fail("image \"{s}\" doesn't exist", .{first[0..end]});
+            return .{ .text = text };
+        },
         .state => {
             const i = matchWord(text, spec.words) orelse
                 return it.fail("bad state \"{s}\": must be {s}", .{ text, try joinWords(it, spec.words) });
@@ -250,6 +284,7 @@ pub fn find(it: *ztcl.Interp, specs: []const Spec, name: []const u8) ztcl.Error!
     var ambiguous = false;
     if (name.len > 0 and name[0] == '-') {
         for (specs, 0..) |s, i| {
+            if (s.hidden) continue;
             if (std.mem.eql(u8, s.name, name)) return i;
             if (std.mem.startsWith(u8, s.name, name)) {
                 if (found != null) ambiguous = true else found = i;
@@ -312,9 +347,9 @@ pub fn configure(w: *Widget, it: *ztcl.Interp, args: []const ztcl.Value) ztcl.Er
     const specs = w.class.specs;
     if (args.len == 0) {
         const a = it.alloc();
-        const items = try a.alloc(ztcl.Value, specs.len);
-        for (items, 0..) |*slot, i| slot.* = try item(it, w, i);
-        return ztcl.value.wrapList(a, items);
+        var items: std.ArrayListUnmanaged(ztcl.Value) = .empty;
+        for (specs, 0..) |sp, i| if (!sp.hidden) try items.append(a, try item(it, w, i));
+        return ztcl.value.wrapList(a, items.items);
     }
     if (args.len == 1) {
         const i = try find(it, specs, try it.str(args[0]));
@@ -348,6 +383,7 @@ pub fn applyEx(w: *Widget, it: *ztcl.Interp, pairs: []const ztcl.Value, creating
         const i = try resolve(it, specs, try find(it, specs, name));
         if (k + 1 >= pairs.len) return it.fail("value for \"{s}\" missing", .{name});
         if (specs[i].create_only and !creating) {
+            if (w.class.ttk) return it.fail("attempt to change read-only option", .{});
             return it.fail("can't modify {s} option after widget is created", .{specs[i].name});
         }
         const text = try it.str(pairs[k + 1]);
@@ -389,6 +425,11 @@ pub fn setOne(w: *Widget, it: *ztcl.Interp, i: usize, text: []const u8, d: widge
 }
 
 /// A typed reader for the class code. The name is a real option.
+pub fn maybe(w: *const Widget, name: []const u8) ?*const Slot {
+    for (w.class.specs, 0..) |s, i| if (std.mem.eql(u8, s.name, name)) return &w.opts[i];
+    return null;
+}
+
 pub fn get(w: *const Widget, comptime name: []const u8) *const Slot {
     for (w.class.specs, 0..) |s, i| if (std.mem.eql(u8, s.name, name)) return &w.opts[i];
     @panic("no option " ++ name);
