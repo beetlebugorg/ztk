@@ -327,6 +327,105 @@ pub fn main(init: std.process.Init) !void {
         report("canvas-drag", buf[0..runs]);
     }
 
+    // sheet-10000-scroll: examples/spreadsheet.tcl with 10 000 rows of numbers and a formula in
+    // each row scrolls by fine wheel steps, one step for each frame, with transitions on. The
+    // grid makes the items of a new block of rows every 16 rows.
+    {
+        var sh: World = undefined;
+        try sh.it.init(gpa);
+        sh.head = try ztk.headless.Headless.init(gpa);
+        sh.app = try ztk.App.init(gpa, &sh.it, .{ .platform = sh.head.platform(), .io = io, .animations = true, .style_root = "examples" });
+        defer sh.deinit();
+        sh.head.skip_draw = true;
+        const script = try std.Io.Dir.cwd().readFileAlloc(io, "examples/spreadsheet.tcl", gpa, .limited(1 << 20));
+        defer gpa.free(script);
+        sh.eval(script);
+        sh.eval(
+            \\for {set r 13} {$r < 10000} {incr r} {
+            \\  set n [expr {$r + 1}]
+            \\  foreach c {0 1 2 3 4} { ss::put [ss::name $r $c] [expr {($r * 7 + $c * 13) % 500}] 0 }
+            \\  ss::put F$n "=sum(B$n:E$n)" 0
+            \\}
+            \\ss::recalc [array names ss::raw]
+            \\ss::render 1
+            \\update
+        );
+        const win = sh.app.window.?;
+        sh.head.pointerMove(win, 300, 250);
+        sh.eval("update");
+        const runs = 200;
+        for (buf[0..runs], 0..) |*slot, i| {
+            sh.head.advance(16);
+            sh.head.pointerScroll(win, 0, if ((i / 100) % 2 == 0) 0.6 else -0.6);
+            const t0 = nowNs();
+            sh.eval("update");
+            slot.* = nowNs() - t0;
+        }
+        report("sheet-10000-scroll", buf[0..runs]);
+    }
+
+    // vector-10000-pan: examples/vector.tcl with 10 000 more shapes, rectangles and circles; a
+    // drag with Space held pans all of them, one motion for each frame. vector-10000-drag: the pointer drags one
+    // selected shape of the same drawing, one motion for each frame.
+    {
+        var vt: World = undefined;
+        try vt.it.init(gpa);
+        vt.head = try ztk.headless.Headless.init(gpa);
+        vt.app = try ztk.App.init(gpa, &vt.it, .{ .platform = vt.head.platform(), .io = io, .animations = true, .style_root = "examples" });
+        defer vt.deinit();
+        vt.head.skip_draw = true;
+        const script = try std.Io.Dir.cwd().readFileAlloc(io, "examples/vector.tcl", gpa, .limited(1 << 20));
+        defer gpa.free(script);
+        vt.eval(script);
+        vt.eval(
+            \\for {set i 0} {$i < 10000} {incr i} {
+            \\  set x [expr {($i % 100) * 6}]; set y [expr {($i / 100) * 4}]
+            \\  if {$i % 2} { vec::add rect [list $x $y [expr {$x + 5}] [expr {$y + 3}]] } else { vec::add ellipse [list $x $y [expr {$x + 4}] [expr {$y + 4}]] }
+            \\}
+            \\set id [vec::add rect {300 200 360 250} -fill #ef4444]
+            \\vec::select [list $id]
+            \\update
+        );
+        const win = vt.app.window.?;
+        vt.eval("focus .c; set vec::space 1; update");
+        const c = vt.app.find(".c").?;
+        const cx: f32 = @floatFromInt(c.geom.x);
+        const cy: f32 = @floatFromInt(c.geom.y);
+        vt.head.pointerMove(win, cx + 100, cy + 100);
+        vt.head.pointerButton(win, 1, true);
+        vt.eval("update");
+        const runs = 200;
+        for (buf[0..runs], 0..) |*slot, i| {
+            vt.head.advance(16);
+            const d: f32 = @floatFromInt(i % 50);
+            vt.head.pointerMove(win, cx + 100 + d, cy + 100 + d / 2);
+            const t0 = nowNs();
+            vt.eval("update");
+            slot.* = nowNs() - t0;
+        }
+        vt.head.pointerButton(win, 1, false);
+        report("vector-10000-pan", buf[0..runs]);
+        vt.eval("set vec::space 0; .c scan mark 0 0; .c scan dragto [expr {round([.c canvasx 0])}] [expr {round([.c canvasy 0])}] 1; update");
+        vt.eval("if {[.c canvasx 0] != 0 || [.c canvasy 0] != 0} { error {the view did not go back} }");
+        // The center of the red rectangle: page (330, 225) at zoom 0.8 and pan (36, 30).
+        const px = cx + 36 + 330 * 0.8;
+        const py = cy + 30 + 225 * 0.8;
+        vt.head.pointerMove(win, px, py);
+        vt.head.pointerButton(win, 1, true);
+        vt.eval("update");
+        for (buf[0..runs], 0..) |*slot, i| {
+            vt.head.advance(16);
+            const d: f32 = @floatFromInt(i % 80);
+            vt.head.pointerMove(win, px + d, py + d / 2);
+            const t0 = nowNs();
+            vt.eval("update");
+            slot.* = nowNs() - t0;
+        }
+        vt.head.pointerButton(win, 1, false);
+        report("vector-10000-drag", buf[0..runs]);
+        vt.eval("if {[lindex [dict get $vec::S($id) pts] 0] == 300} { error {the drag did not move the shape} }");
+    }
+
     // idle-1000: App.frame with no dirty flag.
     {
         const runs = 400;

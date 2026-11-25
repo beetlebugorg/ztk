@@ -1175,7 +1175,7 @@ fn stringResult(it: *ztcl.Interp, text: []const u8) ztcl.Error!ztcl.Value {
     return .{ .str = try it.alloc().dupe(u8, text) };
 }
 
-/// `ztk::style add|load|remove|diagnostics|theme`
+/// `ztk::style add|load|remove|diagnostics|scheme|theme`
 pub fn cmdStyle(it: *ztcl.Interp, argv: []const ztcl.Value, _: ?*ztcl.interp.Cmd) ztcl.Error!ztcl.Value {
     const app = @import("app.zig").App.of(it);
     app.enter();
@@ -1220,7 +1220,9 @@ pub fn cmdStyle(it: *ztcl.Interp, argv: []const ztcl.Value, _: ?*ztcl.interp.Cmd
         return ztcl.value.wrapList(a, items);
     }
     if (std.mem.eql(u8, sub, "theme")) return stringResult(it, "modern");
-    return it.fail("bad option \"{s}\": must be add, diagnostics, load, remove, or theme", .{sub});
+    // The color scheme, for the colors of canvas items.
+    if (std.mem.eql(u8, sub, "scheme")) return stringResult(it, if (app.env.dark) "dark" else "light");
+    return it.fail("bad option \"{s}\": must be add, diagnostics, load, remove, scheme, or theme", .{sub});
 }
 
 /// `ztk::class path ?add|remove|set? ?name ...?`

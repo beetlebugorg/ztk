@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Adds the example apps `examples/spreadsheet.tcl` (10 000 rows on a canvas, with formulas) and `examples/vector.tcl` (a drawing tool with SVG export and a script console), their tests in `tests/apps.sh`, their bench cases, and their live cards on the site.
+- Adds `ztk::limit`, the `interp` command, and `ztk::style scheme`.
 - Adds the WebGPU renderer of the web build (`webgpu.js`). `"auto"` selects WebGPU, then WebGL 2, then the CPU renderer. The web canvas has the size of its window at each pixel ratio.
 
 ## v0.2.0-beta (2026-11-25)

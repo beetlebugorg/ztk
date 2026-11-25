@@ -76,6 +76,24 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
     <h2>Tk scripts, drawn by ztk.</h2>
     <p class="lede">Each image is one frame of an example script, drawn by the CPU renderer on the headless backend at scale 2. When a card scrolls into view, the same script runs live in its place: ztk in WebAssembly, drawn with WebGPU where the browser has it and WebGL 2 elsewhere. Click, type, and toggle in it. The images follow the color scheme of your system. Each script also runs in <code>wish</code> 8.6.</p>
     <div class="shots">
+      <figure class="shot full" data-example="spreadsheet">
+        <a class="frame" href="https://github.com/beetlebugorg/ztk/blob/main/examples/spreadsheet.tcl">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="assets/shots/spreadsheet-dark.png">
+            <img src="assets/shots/spreadsheet-light.png" width="720" height="470" alt="A spreadsheet with a formula bar, Undo, Copy, and Paste buttons, number formats, and a grid of costs by quarter with totals, averages, percent shares, and the errors #DIV/0 and #REF in red." loading="lazy">
+          </picture>
+        </a>
+        <figcaption><a href="https://github.com/beetlebugorg/ztk/blob/main/examples/spreadsheet.tcl"><code>examples/spreadsheet.tcl</code></a><b>A spreadsheet</b>10 000 rows on a <code>canvas</code>, with items only for the cells in view and a header row and column that stay in place. Formulas such as <code>=sum(B2:B7)</code> are Tcl expressions, with recalculation and cycle errors. Arrows, Tab, Enter, and Shift select; typing edits in an <code>entry</code> over the cell. Columns resize by a drag, and ranges copy and paste as text with tabs.</figcaption>
+      </figure>
+      <figure class="shot full" data-example="vector">
+        <a class="frame" href="https://github.com/beetlebugorg/ztk/blob/main/examples/vector.tcl">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="assets/shots/vector-dark.png">
+            <img src="assets/shots/vector-light.png" width="860" height="560" alt="A drawing tool with a column of tools, a page with a sky, a sun with selection handles, two mountains, and a tilted red square, a properties panel with color swatches and sliders, and a console." loading="lazy">
+          </picture>
+        </a>
+        <figcaption><a href="https://github.com/beetlebugorg/ztk/blob/main/examples/vector.tcl"><code>examples/vector.tcl</code></a><b>A vector drawing tool</b>Rectangles, ellipses, lines, polygons, freehand paths, and text, with handles that move, resize, and rotate. The wheel zooms, and a drag with Space held pans. It has undo, groups, the z-order, and SVG export. The console runs Tcl in a child interpreter with a step limit: press Up in it for the sample scripts.</figcaption>
+      </figure>
       <figure class="shot wide" data-example="dashboard">
         <a class="frame" href="https://github.com/beetlebugorg/ztk/blob/main/examples/dashboard.tcl">
           <picture>
