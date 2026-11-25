@@ -14,6 +14,7 @@ These files are the plan, the task lists, the reviews, and the reports of ztk. T
 | [tk-size.md](tk-size.md) | The measured size of Tk. |
 | [release.md](release.md), [npm.md](npm.md) | The release process and the npm package. |
 | [windows.md](windows.md) | The plan of the Windows backend and the platform interface that it shares with macOS. |
+| [menus.md](menus.md) | The design of the menus: the native menus of macOS and Windows, and the drawn menus of Linux and the web. |
 
 The user page [Differences from Tk](../differences.md) has the short form of the limits.
 

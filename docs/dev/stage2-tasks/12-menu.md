@@ -13,7 +13,7 @@ Menus work: a menu bar from `-menu`, pull-down menus with cascades, separators, 
 1. Read `doc/menu.n`, `doc/menubutton.n`, `doc/ttk_menubutton.n`, and `doc/popup.n`.
 2. `menu` with the five entry types (`command`, `cascade`, `checkbutton`, `radiobutton`, `separator`), `tearoff` (stored, no tear-off window), and the subcommands `activate`, `add`, `clone`, `delete`, `entrycget`, `entryconfigure`, `index`, `insert`, `invoke`, `post`, `postcascade`, `type`, `unpost`, `xposition`, and `yposition`.
 3. A menu shows in a popover window with a round corner and a shadow. An entry has an icon (`-image`), a label, and the key hint of `-accelerator` at the right.
-4. The menu bar of a toplevel (`-menu`) is drawn by ztk on Linux and the web.
+4. The menu bar of a toplevel (`-menu`) is drawn by ztk on Linux and the web. The popups go in popup surfaces. macOS and Windows show native menus through the menu interface of the platform. [The menu design](../menus.md) has the split and the PRs.
 5. `menubutton`, `ttk::menubutton`, and `tk_popup`. The keys: arrows, `Return`, `Escape`, `F10`, and the `-underline` letter with `Alt`.
 
 ## Tests
@@ -36,4 +36,4 @@ Change the spreadsheet and the vector tool of [task 14](14-canvas.md#the-two-exa
 
 ## Out of scope
 
-- The native menu bar of macOS.
+- The native menus of the macOS and Windows backends. The sessions of those backends fill the interface of [the menu design](../menus.md).

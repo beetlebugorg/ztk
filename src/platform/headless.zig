@@ -5,6 +5,12 @@
 //! The mods of an event have the buttons that were down before the event.
 //! `poll` gives the queued events, and then one `frame` event for each
 //! window that asked for a frame.
+//!
+//! The backend has popup surfaces and native menus for the tests. A popup
+//! is a window with its `Popup` options in its record. The native menus
+//! are off until a test sets `native_menus`. Then each menu call adds one
+//! line of text to `menu_log`. `menuAction` calls the menu handler of the
+//! core or queues a `menu` event, and `appCommand` queues an `app_command`.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -29,7 +35,7 @@ const Surface = struct {
     image: ?Image = null,
 };
 
-const WinRec = struct { win: *Window, frame_wanted: bool = false, surface: *Surface };
+const WinRec = struct { win: *Window, frame_wanted: bool = false, surface: *Surface, popup: ?plat.Popup = null };
 
 pub const Headless = struct {
     gpa: std.mem.Allocator,
@@ -68,6 +74,12 @@ pub const Headless = struct {
     /// The texts of the input method events in the queue, freed at the next `poll`.
     ime_texts: std.ArrayListUnmanaged([]u8) = .empty,
     ime_texts_old: std.ArrayListUnmanaged([]u8) = .empty,
+    /// True: the platform of the backend has native menus. A test sets it before `platform`.
+    native_menus: bool = false,
+    /// One line for each menu call, for example "set 3 [command Open Ctrl+O]".
+    menu_log: std.ArrayListUnmanaged(u8) = .empty,
+    /// The handler of the core for `opening` and `select`, from `setMenuHandler`.
+    menu_handler: ?plat.MenuHandler = null,
 
     pub fn init(gpa: std.mem.Allocator) !*Headless {
         const h = try gpa.create(Headless);
@@ -76,7 +88,7 @@ pub const Headless = struct {
     }
 
     pub fn platform(h: *Headless) Platform {
-        return .{ .ptr = h, .vtable = &vtable, .thread_safe_draw = true };
+        return .{ .ptr = h, .vtable = &vtable, .thread_safe_draw = true, .native_menus = h.native_menus, .popups = true };
     }
 
     pub fn deinit(h: *Headless) void {
@@ -91,6 +103,7 @@ pub const Headless = struct {
         h.freeTexts(&h.ime_texts_old);
         h.ime_texts.deinit(h.gpa);
         h.ime_texts_old.deinit(h.gpa);
+        h.menu_log.deinit(h.gpa);
         h.gpa.destroy(h);
     }
 
@@ -112,7 +125,98 @@ pub const Headless = struct {
         .clipboardGet = vClipboardGet,
         .textInput = vTextInput,
         .appearance = vAppearance,
+        .menuSet = vMenuSet,
+        .menuEntrySet = vMenuEntrySet,
+        .menuDrop = vMenuDrop,
+        .setMenuBar = vSetMenuBar,
+        .postMenu = vPostMenu,
+        .unpostMenu = vUnpostMenu,
+        .setMenuHandler = vSetMenuHandler,
     };
+
+    fn vSetMenuHandler(ptr: *anyopaque, mh: plat.MenuHandler) void {
+        self(ptr).menu_handler = mh;
+    }
+
+    fn logf(h: *Headless, comptime fmt: []const u8, args: anytype) void {
+        h.menu_log.print(h.gpa, fmt, args) catch {};
+    }
+
+    fn logEntry(h: *Headless, e: *const plat.MenuEntry) void {
+        h.logf(" [{s}", .{@tagName(e.kind)});
+        if (e.label.len > 0) h.logf(" {s}", .{e.label});
+        if (e.accelerator.len > 0) h.logf(" {s}", .{e.accelerator});
+        if (e.underline >= 0) h.logf(" u{d}", .{e.underline});
+        if (!e.enabled) h.logf(" disabled", .{});
+        if (e.selected) h.logf(" on", .{});
+        if (e.submenu != 0) h.logf(" ->{d}", .{e.submenu});
+        if (e.column_break) h.logf(" break", .{});
+        h.logf("]", .{});
+    }
+
+    fn vMenuSet(ptr: *anyopaque, m: *const plat.Menu) void {
+        const h = self(ptr);
+        h.logf("set {d}", .{m.id});
+        if (m.title.len > 0) h.logf(" \"{s}\"", .{m.title});
+        if (m.role != .none) h.logf(" role={s}", .{@tagName(m.role)});
+        for (m.entries) |*e| h.logEntry(e);
+        h.logf("\n", .{});
+    }
+
+    fn vMenuEntrySet(ptr: *anyopaque, id: plat.MenuId, index: u32, e: *const plat.MenuEntry) void {
+        const h = self(ptr);
+        h.logf("entry {d} {d}", .{ id, index });
+        h.logEntry(e);
+        h.logf("\n", .{});
+    }
+
+    fn vMenuDrop(ptr: *anyopaque, id: plat.MenuId) void {
+        self(ptr).logf("drop {d}\n", .{id});
+    }
+
+    fn vSetMenuBar(ptr: *anyopaque, w: *Window, id: plat.MenuId) void {
+        const h = self(ptr);
+        h.logf("bar {d} {d}\n", .{ h.indexOf(w), id });
+    }
+
+    fn vPostMenu(ptr: *anyopaque, w: *Window, id: plat.MenuId, at: geom.Point, entry: i32) void {
+        const h = self(ptr);
+        h.logf("post {d} {d} {d} {d} {d}\n", .{ h.indexOf(w), id, at.x, at.y, entry });
+    }
+
+    fn vUnpostMenu(ptr: *anyopaque, id: plat.MenuId) void {
+        self(ptr).logf("unpost {d}\n", .{id});
+    }
+
+    /// The index of a window in the list of windows, or -1.
+    fn indexOf(h: *Headless, w: *Window) i64 {
+        for (h.windows.items, 0..) |r, k| if (r.win == w) return @intCast(k);
+        return -1;
+    }
+
+    /// Queues a command of the application menu with no window.
+    pub fn appCommand(h: *Headless, cmd: event.AppCommand) void {
+        h.queue.append(h.gpa, .{ .app_command = .{ .command = cmd } }) catch {};
+    }
+
+    /// The `Popup` options of a window, or null for a toplevel window.
+    pub fn popupOf(h: *Headless, w: *Window) ?plat.Popup {
+        for (h.windows.items) |r| if (r.win == w) return r.popup;
+        return null;
+    }
+
+    /// Gives a user action in a native menu to the core, as a native
+    /// backend does: `opening` and `select` go to the menu handler at once
+    /// when the core set one, and the other actions are queued.
+    pub fn menuAction(h: *Headless, w: *Window, id: plat.MenuId, entry: i32, action: event.MenuAction) void {
+        if (action == .opening or action == .select) if (h.menu_handler) |mh| return mh.call(mh.ctx, id, entry, action);
+        h.menuEvent(w, id, entry, action);
+    }
+
+    /// Queues a `menu` event, as a user action in a native menu gives it.
+    pub fn menuEvent(h: *Headless, w: *Window, id: plat.MenuId, entry: i32, action: event.MenuAction) void {
+        h.queue.append(h.gpa, .{ .menu = .{ .window = w, .menu = id, .entry = entry, .action = action } }) catch {};
+    }
 
     fn vAppearance(ptr: *anyopaque) plat.Appearance {
         return self(ptr).system orelse .{ .dark = false };
@@ -188,7 +292,7 @@ pub const Headless = struct {
         const surf = try h.gpa.create(Surface);
         errdefer h.gpa.destroy(surf);
         surf.* = .{ .host = h, .atlas = Atlas.init(h.gpa) };
-        try h.windows.append(h.gpa, .{ .win = w, .surface = surf });
+        try h.windows.append(h.gpa, .{ .win = w, .surface = surf, .popup = opts.popup });
         return w;
     }
 

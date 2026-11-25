@@ -911,8 +911,9 @@ pub const App = struct {
     }
 
     fn handleEvent(app: *App, ev: event.Event) void {
+        if (ev == .app_command) return app.appCommand(ev.app_command.command);
         // A window that is gone has no events. Compare the pointer only.
-        const top = app.topOfWindow(ev.window()) orelse return;
+        const top = app.topOfWindow(ev.window() orelse return) orelse return;
         switch (ev) {
             .resize => |r| {
                 // A backend can report any size.
@@ -920,15 +921,7 @@ pub const App = struct {
                 top.geom.h = std.math.clamp(r.size.h, 1, max_window);
                 top.invalidate(.{ .style = false, .measure = false, .layout = true, .paint = true });
             },
-            .close => {
-                if (app.wmOf(top).delete_script) |script| {
-                    const copy = app.gpa.dupe(u8, script) catch return;
-                    defer app.gpa.free(copy);
-                    app.callback(copy);
-                } else {
-                    widget.destroy(top);
-                }
-            },
+            .close => app.closeTop(top),
             .frame => {
                 if (app.topOf(top)) |d| d.frame_requested = false else app.frame_requested = false;
                 _ = app.frame(top) catch |e| app.frameError(e);
@@ -937,7 +930,33 @@ pub const App = struct {
             .scale => top.invalidate(.{ .style = false, .measure = false, .layout = false, .paint = true }),
             .motion, .button, .leave, .key, .scroll, .preedit, .commit => dispatch.handleIn(app, ev, top),
             .appearance => app.followSystem(),
+            // The menu model of task 12 handles the native menu events.
+            .menu => {},
+            .app_command => {},
         }
+    }
+
+    /// Runs the `WM_DELETE_WINDOW` script of a toplevel, or destroys it.
+    fn closeTop(app: *App, top: *Widget) void {
+        if (app.wmOf(top).delete_script) |script| {
+            const copy = app.gpa.dupe(u8, script) catch return;
+            defer app.gpa.free(copy);
+            app.callback(copy);
+        } else {
+            widget.destroy(top);
+        }
+    }
+
+    /// A command of the application menu, as Tk on macOS maps it to the script.
+    fn appCommand(app: *App, cmd: event.AppCommand) void {
+        const name = switch (cmd) {
+            .about => "tkAboutDialog",
+            .settings => "::tk::mac::ShowPreferences",
+            .quit => "::tk::mac::Quit",
+        };
+        if (app.it.findCommand(name) != null) return app.callback(name);
+        if (cmd != .quit) return;
+        if (app.root) |r| if (r.alive()) app.closeTop(r);
     }
 
     fn pass(app: *App) ztcl.Error!bool {
