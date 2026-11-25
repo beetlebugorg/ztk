@@ -94,6 +94,8 @@ pub const D3D12 = struct {
     name_buf: [128]u8 = undefined,
     name_len: usize = 0,
     warp: bool = false,
+    /// True for an adapter that draws on the CPU.
+    software: bool = false,
 
     pub fn init(gpa: std.mem.Allocator, opts: Options) !*D3D12 {
         const lib = try api.load();
@@ -189,6 +191,8 @@ pub const D3D12 = struct {
             }
             v.name_len = n;
             v.warp = desc.Flags & api.DXGI_ADAPTER_FLAG_SOFTWARE != 0;
+            // WARP and the Basic Render Driver of a machine with no GPU have the vendor ID of Microsoft.
+            v.software = v.warp or desc.VendorId == 0x1414;
         }
         return @ptrCast(dev.?);
     }
