@@ -1,7 +1,7 @@
 .{
     .name = .ztk,
     .fingerprint = 0x371430b6d8c5f4a4,
-    .version = "0.0.0",
+    .version = "0.2.0-beta",
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .ztcl = .{
