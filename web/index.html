@@ -12,8 +12,9 @@
   main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; padding: 16px; }
   @media (max-width: 800px) { main { grid-template-columns: 1fr; } }
   textarea.code { width: 100%; height: 70vh; box-sizing: border-box; font: 12px ui-monospace, monospace; background: transparent; color: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
-  .stage { position: relative; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; height: 70vh; }
-  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  .stage { position: relative; border: 1px solid var(--line); border-radius: 8px; overflow: auto; height: 70vh; }
+  /* ztk.js gives the canvas the CSS size of the window of the script. */
+  canvas { display: block; touch-action: none; }
   #log { font: 12px ui-monospace, monospace; white-space: pre-wrap; padding: 0 16px 16px; }
 </style>
 </head>
@@ -97,6 +98,11 @@ if (params.has("test")) {
     ztk.frame(performance.now());
   }
   ztk.frame(performance.now() + 1000);
+  // ?probe: the CSS size and the backing store of the canvas, and its first image.
+  const probe = params.has("probe") ? (() => {
+    const r = canvas.getBoundingClientRect();
+    return { css: [r.width, r.height], store: [canvas.width, canvas.height], dpr: devicePixelRatio, png: canvas.toDataURL("image/png") };
+  })() : undefined;
   const roles = [...ztk.tree.children].map((e) => e.getAttribute("role")).join(" ");
   const check = ztk.eval(params.get("test") === "1" ? "winfo children ." : params.get("test"));
   ztk.frame(performance.now() + 2000);
@@ -114,7 +120,7 @@ if (params.has("test")) {
   }
   times.sort((a, b) => a - b);
   const perf = { median: times[60], p99: times[Math.floor(times.length * 0.99)] };
-  out.textContent = JSON.stringify({ perf, ok: window.ztkResult.ok, frames: Number(ex.ztk_frames()), roles, check: check.result, png: canvas.toDataURL("image/png") });
+  out.textContent = JSON.stringify({ perf, ok: window.ztkResult.ok, frames: Number(ex.ztk_frames()), roles, check: check.result, probe, png: canvas.toDataURL("image/png") });
   document.body.appendChild(out);
 }
 </script>

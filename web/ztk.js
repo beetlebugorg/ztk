@@ -138,19 +138,28 @@ export async function start(canvas, options = {}) {
   const dark = matchMedia("(prefers-color-scheme: dark)");
   const reduce = matchMedia("(prefers-reduced-motion: reduce)");
   const forceDark = options.dark;
-  // The window of the script has the size of the canvas, or a fixed logical size
-  // (options.width and options.height) that the canvas shows at its own size.
+  // The window of the script starts with the size of the element that
+  // holds the canvas, or with a fixed logical size (options.width and
+  // options.height) that the page shows at the size it gave the canvas.
+  // The toplevel then takes its own size, as in Tk (geometry propagation),
+  // so the canvas gets its CSS size from the scene after each frame:
+  // the scene width times k / scale, where k is the count of CSS pixels in
+  // one logical pixel. The backing store is the scene in device pixels.
+  // So the window keeps its aspect ratio and is sharp at each
+  // devicePixelRatio.
+  const fixed = Boolean(options.width && options.height);
+  const host = canvas.parentElement;
   const size = () => {
-    if (options.width && options.height) return [options.width, options.height];
-    const r = canvas.getBoundingClientRect();
+    if (fixed) return [options.width, options.height];
+    const r = host.getBoundingClientRect();
     return [Math.max(1, Math.round(r.width)), Math.max(1, Math.round(r.height))];
   };
-  const scaleNow = () => {
-    if (options.scale) return options.scale;
-    if (!options.width) return devicePixelRatio;
+  let k = 1;
+  if (fixed) {
     const r = canvas.getBoundingClientRect();
-    return devicePixelRatio * (r.width > 0 ? r.width / options.width : 1);
-  };
+    if (r.width > 0) k = r.width / options.width;
+  }
+  const scaleNow = () => options.scale || devicePixelRatio * k;
   const [w0, h0] = size();
   if (!ex.ztk_init(w0, h0, scaleNow(), forceDark ?? dark.matches, reduce.matches)) throw new Error("ztk_init failed");
   dark.addEventListener("change", () => forceDark === undefined && ex.ztk_dark(dark.matches));
@@ -209,6 +218,9 @@ export async function start(canvas, options = {}) {
   const draw = (n) => {
     const w = ex.ztk_scene_width(), h = ex.ztk_scene_height();
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+    const sc = scaleNow();
+    const cw = `${(w * k) / sc}px`, ch = `${(h * k) / sc}px`;
+    if (canvas.style.width !== cw || canvas.style.height !== ch) { canvas.style.width = cw; canvas.style.height = ch; }
     const v = ex.ztk_atlas_version();
     if (v !== atlasVersion) {
       atlasVersion = v;
@@ -241,8 +253,7 @@ export async function start(canvas, options = {}) {
   canvas.parentElement.appendChild(input);
   const pos = (e) => {
     const r = canvas.getBoundingClientRect();
-    const k = options.width && r.width > 0 ? options.width / r.width : 1;
-    return [(e.clientX - r.left) * k, (e.clientY - r.top) * k];
+    return [(e.clientX - r.left) / k, (e.clientY - r.top) / k];
   };
   const mods = (e) => ex.ztk_mods(e.shiftKey, e.ctrlKey || e.metaKey, e.altKey);
   canvas.addEventListener("pointermove", (e) => { mods(e); ex.ztk_pointer(...pos(e)); });
@@ -271,7 +282,15 @@ export async function start(canvas, options = {}) {
   };
   input.addEventListener("keydown", (e) => key(e, true));
   input.addEventListener("keyup", (e) => key(e, false));
-  new ResizeObserver(() => { const [w, h] = size(); ex.ztk_resize(w, h, scaleNow()); }).observe(canvas);
+  // A change of devicePixelRatio sends the new scale, so the next frame is
+  // drawn sharp at the new scale. A change of the size of the page does
+  // not resize the window: in Tk a toplevel keeps its own size, and a
+  // resize from the platform would stop its geometry propagation.
+  const watchScale = () => {
+    const m = matchMedia(`(resolution: ${devicePixelRatio}dppx)`);
+    m.addEventListener("change", () => { ex.ztk_scale(scaleNow()); watchScale(); }, { once: true });
+  };
+  watchScale();
 
   // Accessibility: hidden elements with ARIA roles over the canvas.
   const tree = document.createElement("div");

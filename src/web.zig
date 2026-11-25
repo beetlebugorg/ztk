@@ -116,6 +116,12 @@ export fn ztk_resize(w: i32, h: i32, scale: f32) void {
     head.setScale(win, scale);
 }
 
+/// A new scale (devicePixelRatio) for the window, with its size kept.
+export fn ztk_scale(scale: f32) void {
+    const win = app.window orelse return;
+    head.setScale(win, scale);
+}
+
 export fn ztk_pointer(x: f32, y: f32) void {
     head.pointerMove(app.window.?, x, y);
 }

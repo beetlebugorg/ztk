@@ -7,6 +7,13 @@
 # levels in each channel, in all but 0.5 % of the pixels. The demo card
 # gets a click on Count and typed text, and the gallery card gets a click
 # on a checkbutton.
+# The size check then opens the playground with each example and the
+# landing page at the window sizes 1440x900, 1280x800, and 390x844 and
+# at devicePixelRatio 1, 2, and 3, in light and dark. Each canvas must
+# show its window at the size of its poster (in CSS pixels, half the
+# poster in pixels) or, for a card, with the aspect ratio of the poster,
+# and its backing store must be the CSS size times devicePixelRatio. At
+# ratio 2 the image of the playground must equal the poster.
 # Use: tests/site.sh      (after: zig build wasm)
 # Exit status: 0 pass, 1 fail, 77 when a tool or the build is missing.
 set -u
@@ -70,3 +77,74 @@ for key, want in (("count", "1"), ("name", None), ("notify", "1")):
 sys.exit(fail)
 PY
 done
+# The size check, with real time (tests/browser.mjs), so it needs node.
+command -v node >/dev/null 2>&1 || { echo "SKIP: node is not on the path, so the size check did not run"; exit 0; }
+cp "$root/tests/aspect.html" "$work/site/aspect.html"
+fail=0
+for scheme in light dark; do
+    flag=""
+    [ "$scheme" = dark ] && flag="--force-dark-mode --blink-settings=preferredColorScheme=0"
+    for win in 1440,900 1280,800 390,844; do
+        for dpr in 1 2 3; do
+            # The flags stay unquoted on purpose: $flag has two flags or none.
+            # shellcheck disable=SC2086
+            ZTK_BROWSER_VIEWPORT="$(echo "$win" | tr , x)x$dpr" timeout 300 node "$root/tests/browser.mjs" "$browser" "$work/profile-$scheme-$win-$dpr" "http://127.0.0.1:$port/aspect.html" \
+                --use-angle=swiftshader --enable-unsafe-swiftshader --window-size="$win" $flag \
+                > "$work/size.json"
+            "$py" - "$work/size.json" "$root/docs/site/shots" "$scheme" "$win" "$dpr" <<'PY' || fail=1
+import json, sys, base64, io
+from PIL import Image
+r = json.load(open(sys.argv[1]))
+shots, scheme, win, dpr = sys.argv[2], sys.argv[3], sys.argv[4], float(sys.argv[5])
+tag = f"({scheme}, {win.replace(',', 'x')}, ratio {dpr:g})"
+bad = []
+def near(a, b, tol):
+    return abs(a - b) <= tol
+def compare(png, poster):
+    web = Image.open(io.BytesIO(base64.b64decode(png.split(",", 1)[1]))).convert("RGB")
+    ref = Image.open(poster).convert("RGB")
+    if web.size != ref.size:
+        return 1.0
+    a, b = web.load(), ref.load()
+    n = sum(max(abs(p - q) for p, q in zip(a[x, y], b[x, y])) > 2 for y in range(web.size[1]) for x in range(web.size[0]))
+    return n / (web.size[0] * web.size[1])
+play = r.get("play") or {}
+if not play:
+    bad.append("the page gave no result")
+for name, p in play.items():
+    if not p:
+        bad.append(f"play {name}: no result"); continue
+    pw, ph = Image.open(f"{shots}/{name}-{scheme}.png").size
+    cw, ch = p["css"]
+    sw, sh = p["store"]
+    if not (near(cw, pw / 2, 1) and near(ch, ph / 2, 1)):
+        bad.append(f"play {name}: CSS size {cw:g}x{ch:g}, poster {pw // 2}x{ph // 2}")
+    if not (near(sw, cw * dpr, 1.5) and near(sh, ch * dpr, 1.5)):
+        bad.append(f"play {name}: backing store {sw}x{sh} for CSS {cw:g}x{ch:g} at ratio {dpr:g}")
+    if dpr == 2 and not bad:
+        share = compare(p["png"], f"{shots}/{name}-{scheme}.png")
+        if share > 0.005:
+            bad.append(f"play {name}: {share * 100:.2f} % of the pixels differ from the poster")
+cards = (r.get("cards") or {}).get("geom") or {}
+if not cards:
+    bad.append("the landing page gave no card")
+for name, g in cards.items():
+    pw, ph = g["poster"]
+    cw, ch = g["css"]
+    sw, sh = g["store"]
+    if cw <= 0 or ch <= 0 or not near(cw / ch, pw / ph, 0.01 * pw / ph):
+        bad.append(f"card {name}: CSS size {cw:g}x{ch:g} has another aspect ratio than the poster {pw}x{ph}")
+    if cw > int(win.split(",")[0]):
+        bad.append(f"card {name}: CSS width {cw:g} is wider than the page")
+    if not (near(sw, cw * dpr, 1.5) and near(sh, ch * dpr, 1.5)):
+        bad.append(f"card {name}: backing store {sw}x{sh} for CSS {cw:g}x{ch:g} at ratio {dpr:g}")
+for b in bad:
+    print(f"FAIL {tag}: {b}")
+if not bad:
+    print(f"ok {tag}: {len(play)} playground windows and {len(cards)} cards have the size and the aspect ratio of their posters")
+sys.exit(1 if bad else 0)
+PY
+        done
+    done
+done
+exit "$fail"
