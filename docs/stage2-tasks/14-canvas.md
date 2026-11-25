@@ -15,7 +15,10 @@ The `canvas` works with all item types, tags, bindings, `find`, and the transfor
 2. The item types: `arc`, `bitmap`, `image`, `line`, `oval`, `polygon`, `rectangle`, `text`, and `window`, with their options (dash, arrows, smooth lines, `-state`, the active and disabled forms).
 3. The subcommands: `addtag`, `bbox`, `bind`, `canvasx`, `canvasy`, `cget`, `configure`, `coords`, `create`, `dchars`, `delete`, `dtag`, `find`, `focus`, `gettags`, `icursor`, `imove`, `index`, `insert`, `itemcget`, `itemconfigure`, `lower`, `move`, `moveto`, `raise`, `rchars`, `scale`, `scan`, `select`, `type`, `xview`, and `yview`. `postscript` gives an error in the limits.
 4. Tag expressions with `&&`, `||`, `^`, `!`, and parentheses.
-5. A target of `ztk::animate` can be a canvas item: `ztk::animate {.c 12} -coords {...} -fill red`.
+5. Scrolling: `xview`, `yview`, `-xscrollcommand`, `-yscrollcommand`, `-scrollregion`, `-confine`, and the increments use `src/scroll.zig` of task 07, with its smooth scroll and momentum.
+6. The `text` item uses the text engine of Stage 1 (`src/text/`): the shaping, the line breaks, and the glyph atlas.
+7. The `image` and `bitmap` items need images. This task adds the stand-in `image create photo` (PNG through `src/png.zig`), `image delete`, `image names`, and `image width|height`. Task 09 uses the same stand-in for `-image`.
+8. A target of `ztk::animate` can be a canvas item: `ztk::animate {.c 12} -coords {...} -fill red`.
 
 ## Tests
 

@@ -14,7 +14,7 @@
 1. Read `doc/ttk_*.n`.
 2. `ttk::style configure`, `map`, `lookup`, `layout`, `element names`, `element options`, `theme names`, `theme use`, and `theme settings`, as rules of origin 5. A style name `Accent.TButton` is the type `TButton` with the class `Accent`.
 3. The standard `ttk` options (`-class`, `-cursor`, `-style`, `-takefocus`) and the `state` and `instate` subcommands with the state names of `ttk`.
-4. Each widget with its options and subcommands from its manual page. `-image` is stored and an image is drawn when `image create photo` exists (a stand-in that reads PNG through `src/png.zig`).
+4. Each widget with its options and subcommands from its manual page. `-image` draws an image of `image create photo`, the stand-in of task 14 that reads PNG through `src/png.zig`.
 5. `Switch.TCheckbutton` is the switch style.
 6. The `classic` theme: the reliefs and the sizes of Tk on X11. `ztk::style theme name` selects it.
 

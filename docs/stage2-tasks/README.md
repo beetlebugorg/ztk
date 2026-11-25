@@ -19,25 +19,25 @@ Do the tasks in order. One task is one branch, one PR, and one review. A task st
 | 06b | Live demos on the site: each card of "What it draws" runs its example in WebAssembly (see task 18) | 06 |
 | 06c | [The WebGPU renderer](06c-webgpu.md) | 06b |
 | 07 | [Scrolling and `scrollbar`](07-scrollbar.md) | 06c |
-| 08 | [`entry` additions and `spinbox`](08-entry-spinbox.md) | 07 |
+| 14 | [`canvas`](14-canvas.md) | 07 |
+| 08 | [`entry` additions and `spinbox`](08-entry-spinbox.md) | 14 |
 | 09 | [`ttk::style` and the simple `ttk` widgets](09-ttk-simple.md) | 08 |
 | 10 | [`ttk::combobox`, `ttk::spinbox`, `ttk::scale`, `ttk::scrollbar`, and `ttk::progressbar`](10-ttk-range.md) | 09 |
 | 11 | [`listbox`](11-listbox.md) | 10 |
 | 12 | [`menu`, `menubutton`, `ttk::menubutton`, and `tk_popup`](12-menu.md) | 11 |
 | 13 | [`panedwindow`, `ttk::panedwindow`, and `ttk::notebook`](13-panes-notebook.md) | 12 |
-| 14 | [`canvas`](14-canvas.md) | 13 |
-| 15 | [`text`](15-text.md) | 14 |
+| 15 | [`text`](15-text.md) | 13 |
 | 16 | [`ttk::treeview`](16-treeview.md) | 15 |
 | 17 | [The dialogs](17-dialogs.md) | 16 |
 | 18 | [The gallery and the site](18-gallery.md) | 17 |
 
-The order puts the simple widgets first, so that they show in the screenshots early. Then come scrolling, the list, the menus, the canvas, the text widget, and the tree. Each task adds its widgets to `examples/gallery.tcl` (task 03 makes it) and draws the shots again, so the site shows each widget when its task is merged. Task 18 adds the other example programs, the site text, and a link from each shot to the same example in the browser.
+The order puts the simple widgets first, so that they show in the screenshots early. Then come scrolling and the canvas, the entry additions, the `ttk` widgets, the list, the menus, the panes, the text widget, and the tree. The user moved the canvas to the place after scrolling on 2026-11-24, so the task numbers are not in order: do the tasks in the order of the table. Each task adds its widgets to `examples/gallery.tcl` (task 03 makes it) and draws the shots again, so the site shows each widget when its task is merged. Task 18 adds the other example programs, the site text, and a link from each shot to the same example in the browser.
 
 ## Scope
 
 - In scope: the script commands, options, widget subcommands, class bindings, and virtual events of each widget class in its manual page, with the error messages of `wish` 8.6.16.
 - The web backend moves from Stage 3 into this stage (task 06), so each widget runs in a browser from that task on.
-- Out of scope: the X11, Metal, and Direct3D 12 backends and renderers, the Tk test suite runner (`tools/tksuite.sh`), `image` beyond the stand-in of task 09, the system fonts, and the native dialogs of D9. The dialogs of this stage are drawn by ztk on each platform.
+- Out of scope: the X11, Metal, and Direct3D 12 backends and renderers, the Tk test suite runner (`tools/tksuite.sh`), `image` beyond the stand-in of task 14, the system fonts, and the native dialogs of D9. The dialogs of this stage are drawn by ztk on each platform.
 - The pass rates of the Tk test files stay targets of their stages (section 11 of the plan). A task here runs the Tk test file of its widget when the task file names one, and writes the counts in its PR. A count that is low is a fact for the report, and it does not block the merge.
 
 ## The look: modern by default
@@ -91,7 +91,7 @@ Each widget is fluid. These rules are measured, and each task has a gate for its
 3. Input to the screen: the visible answer to a key or a pointer event is in the next frame. A drag (a scale slider, a sash, a scrollbar thumb, a canvas item) and a scroll follow the pointer from the render thread, with no wait for a Tcl script. The script gets the new value after the frame.
 4. A change during an animation starts from the shown value and never jumps.
 5. A layout change animates where Tk allows it (a notebook tab, a tree item that opens, a pane that changes size). An animation never blocks input.
-6. Budgets: a canvas with 10 000 items and a text widget with 1 MB of text scroll at the full rate. Tasks 13 and 14 test them.
+6. Budgets: a canvas with 10 000 items and a text widget with 1 MB of text scroll at the full rate. Tasks 14 and 15 test them.
 
 ## Acceptance for each task
 
