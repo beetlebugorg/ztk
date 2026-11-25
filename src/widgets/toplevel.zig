@@ -111,7 +111,13 @@ fn freeTop(w: *widget.Widget) void {
 fn deinitRoot(w: *widget.Widget) void {
     const app = w.app;
     const win: *Window = @ptrCast(@alignCast(w.data orelse return));
-    if (app.render_ready) app.render.flush();
+    // `flush` does not wait for a draw of the held frame, which a running
+    // animation repeats. `retarget` waits for that draw and drops the held
+    // frame, so the render thread draws no more into the surface.
+    if (app.render_ready) {
+        win.render.store(null, .release);
+        app.render.retarget(app_mod.App.idle_target);
+    }
     if (app.window == win) app.window = null;
     app.platform.destroyWindow(win);
     w.data = null;

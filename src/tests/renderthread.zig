@@ -255,3 +255,29 @@ test "renderthread: threaded and inline modes give the same pixels" {
     try t.expect(std.mem.eql(u8, pa, pb));
     try t.expect(pa.len > 0);
 }
+
+test "renderthread: destroy of the root during a keyframe animation ends the draws first" {
+    // The render thread draws the held frame again while an animation runs.
+    // `destroy .` must stop those draws before the window and its surface go away.
+    var h: Harness = undefined;
+    h.render_mode = .threaded;
+    h.animations = true;
+    h.dark = false;
+    try h.initWith(null);
+    defer h.deinit();
+    _ = try h.eval(
+        \\ztk::style add {
+        \\    @keyframes pulse { from { background-color: #dbeafe; } to { background-color: #2563eb; } }
+        \\    #badge { animation: pulse 800ms ease-in-out infinite alternate; }
+        \\}
+        \\label .badge -text New
+        \\pack .badge
+    );
+    var i: usize = 0;
+    while (i < 40) : (i += 1) {
+        h.head.advance(16);
+        try h.update();
+    }
+    @import("../sys/host.zig").sleepUs(30_000);
+    _ = try h.eval("destroy .");
+}
