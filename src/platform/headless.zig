@@ -43,6 +43,8 @@ pub const Headless = struct {
     /// Counts of calls, for the tests.
     frames_requested: u32 = 0,
     frames_drawn: u32 = 0,
+    /// Counts the atlas patches that the draws applied, so a page knows when to upload the atlas again.
+    patches_applied: u32 = 0,
     /// True: `draw` counts the frame and skips the CPU draw, for the benchmark.
     skip_draw: bool = false,
     /// Milliseconds that a draw waits before it reads the surface. A test uses it
@@ -188,6 +190,7 @@ pub const Headless = struct {
             @import("../sys/host.zig").sleepUs(@as(i64, h.draw_delay_ms) * 1000);
         }
         for (frame.patches.items) |p| try surf.atlas.applyPatch(p);
+        h.patches_applied +%= @intCast(frame.patches.items.len);
         if (h.skip_draw) {
             h.frames_drawn += 1;
             return;
@@ -204,6 +207,12 @@ pub const Headless = struct {
     }
 
     /// The last image drawn to the window.
+    /// The atlas page of the surface of a window, as the render target has it.
+    pub fn atlasPage(h: *Headless, w: *Window) ?[]const u8 {
+        for (h.windows.items) |r| if (r.win == w) return r.surface.atlas.page();
+        return null;
+    }
+
     pub fn image(h: *Headless, w: *Window) ?Image {
         for (h.windows.items) |r| if (r.win == w) return r.surface.image;
         return null;

@@ -100,6 +100,33 @@ pub fn build(b: *std.Build) void {
     }) });
     b.installArtifact(exe);
 
+    // The WebAssembly build for the browser: the core, the headless backend, and src/web.zig.
+    {
+        const wasm_target = b.resolveTargetQuery(.{ .cpu_arch = .wasm32, .os_tag = .freestanding });
+        const wasm_opts = b.addOptions();
+        wasm_opts.addOption([]const u8, "repo_root", ".");
+        wasm_opts.addOption(bool, "vulkan", false);
+        wasm_opts.addOption(bool, "wayland", false);
+        const wasm_ztcl = b.dependency("ztcl", .{ .target = wasm_target, .optimize = .ReleaseFast }).module("ztcl");
+        const wasm_mod = b.createModule(.{
+            .root_source_file = b.path("src/web.zig"),
+            .target = wasm_target,
+            .optimize = .ReleaseFast,
+            .strip = true,
+            .imports = &.{.{ .name = "ztcl", .module = wasm_ztcl }},
+        });
+        wasm_mod.addOptions("build_options", wasm_opts);
+        wasm_mod.addAnonymousImport("inter_regular", .{ .root_source_file = b.path("assets/fonts/Inter-Regular.ttf") });
+        wasm_mod.addAnonymousImport("inter_bold", .{ .root_source_file = b.path("assets/fonts/Inter-Bold.ttf") });
+        const wasm = b.addExecutable(.{ .name = "ztk", .root_module = wasm_mod });
+        wasm.entry = .disabled;
+        wasm.rdynamic = true;
+        const wasm_step = b.step("wasm", "Build ztk for the browser into zig-out/web");
+        wasm_step.dependOn(&b.addInstallArtifact(wasm, .{ .dest_dir = .{ .override = .{ .custom = "web" } } }).step);
+        wasm_step.dependOn(&b.addInstallDirectory(.{ .source_dir = b.path("web"), .install_dir = .{ .custom = "web" }, .install_subdir = "" }).step);
+        wasm_step.dependOn(&b.addInstallDirectory(.{ .source_dir = b.path("examples"), .install_dir = .{ .custom = "web" }, .install_subdir = "examples", .include_extensions = &.{ ".tcl", ".css" } }).step);
+    }
+
     const run = b.addRunArtifact(exe);
     if (b.args) |args| run.addArgs(args);
     b.step("run", "Run a script: zig build run -- script.tcl").dependOn(&run.step);

@@ -46,6 +46,17 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - `set` does not run `-command`, as in `wish`. A change by the user runs it at once, where `wish` runs it as an idle callback.
 - The drag of the slider runs on the UI thread. `zig build bench`, ReleaseFast, 2026-11-24, load average 9: `scale-drag` (one motion for each frame beside 1 000 widgets) median 1.11 ms and 99th percentile 1.26 ms, under the gate of 8 ms.
 
+## The web backend (task 06)
+
+- The browser build is the core with the headless backend inside (`src/web.zig`). The page (`web/ztk.js`) gives the clock, the size, the scale (`devicePixelRatio`), the color scheme, the reduced motion setting, and the input, and draws each scene with WebGL 2. WebGPU is not written.
+- The build has one thread, so it draws inline. The frame clock is `requestAnimationFrame`. An `OffscreenCanvas` in a worker is not used.
+- The canvas draws the window of "." only. A second toplevel has no canvas.
+- Keys: the names of `KeyboardEvent.key` map to key symbols for the keys that are not text. Text and the end of an input method composition come from a hidden text area. The preedit text of a composition is not drawn. The clipboard is not connected.
+- The program reads no files. The page gives the style sheets of the examples by name for `ztk::style load`.
+- The accessible tree is a list of hidden elements with ARIA roles, names, and bounds over the canvas. It has no keyboard focus of its own and no actions.
+- `tests/web.sh`, 2026-11-24, development machine, headless Chromium with SwiftShader: the WebGL 2 image of the gallery equals the CPU image within 1 level in each pixel. The frame time of the module in V8 (node, ReleaseFast, the gallery at scale 2, 200 frames of pointer motion) was median 4.88 ms and 99th percentile 7.25 ms in one run, median 5.52 ms and 99th percentile 14.14 ms in a second run, and median 3.88 ms and 99th percentile 6.10 ms in a third run, under a load of 8 to 9. The gate of 8 ms at the 99th percentile is met in two of the three runs. The paint makes the whole scene again for each frame, with the text shaped again.
+- The module is 3.0 MB (1.0 MB with gzip), with 0.8 MB of fonts.
+
 ## Additions
 
 - `ztk::animate`, `ztk::clock`, the timing function `spring()`, and the flag `--time` of the `ztk` program.

@@ -16,7 +16,8 @@ Do the tasks in order. One task is one branch, one PR, and one review. A task st
 | 04 | [`labelframe`, `message`, `toplevel`, `grab`, focus traversal, and `ztk::tooltip`](04-toplevel-grab.md) | 03 |
 | 05 | [`scale`](05-scale.md) | 04 |
 | 06 | [The web backend](06-web.md) | 05 |
-| 07 | [Scrolling and `scrollbar`](07-scrollbar.md) | 06 |
+| 06b | Live demos on the site: each card of "What it draws" runs its example in WebAssembly (see task 18) | 06 |
+| 07 | [Scrolling and `scrollbar`](07-scrollbar.md) | 06b |
 | 08 | [`entry` additions and `spinbox`](08-entry-spinbox.md) | 07 |
 | 09 | [`ttk::style` and the simple `ttk` widgets](09-ttk-simple.md) | 08 |
 | 10 | [`ttk::combobox`, `ttk::spinbox`, `ttk::scale`, `ttk::scrollbar`, and `ttk::progressbar`](10-ttk-range.md) | 09 |
