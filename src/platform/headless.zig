@@ -52,6 +52,9 @@ pub const Headless = struct {
     draw_delay_ms: u32 = 0,
     /// Counts the draws that started, for a test of a frame in flight.
     draws_started: std.atomic.Value(u32) = .init(0),
+    /// The last pointer shape that the core set, and the count of the calls.
+    cursor: ?plat.Cursor = null,
+    cursor_calls: u32 = 0,
 
     pub fn init(gpa: std.mem.Allocator) !*Headless {
         const h = try gpa.create(Headless);
@@ -86,7 +89,14 @@ pub const Headless = struct {
         .nowUs = vNowUs,
         .target = vTarget,
         .setTimeUs = vSetTime,
+        .setCursor = vSetCursor,
     };
+
+    fn vSetCursor(ptr: *anyopaque, _: *Window, shape: plat.Cursor) void {
+        const h = self(ptr);
+        h.cursor = shape;
+        h.cursor_calls += 1;
+    }
 
     fn vSetTime(ptr: *anyopaque, us: i64) void {
         self(ptr).now_us = us;
