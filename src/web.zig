@@ -159,6 +159,19 @@ export fn ztk_reduce_motion(on: bool) void {
     app.reduce_motion = on;
 }
 
+/// Turns the CPU renderer on or off. With it on, each frame also draws
+/// the scene to an RGBA image, for a page that has no GPU renderer.
+export fn ztk_cpu(on: bool) void {
+    head.skip_draw = !on;
+}
+
+/// The RGBA image of the last frame of the CPU renderer, with the size of
+/// the scene, or null when the CPU renderer is off.
+export fn ztk_image() ?[*]const u8 {
+    const img = head.image(app.window orelse return null) orelse return null;
+    return img.pixels.ptr;
+}
+
 /// The count of frames that the App drew.
 export fn ztk_frames() u64 {
     return app.frames;

@@ -6,5 +6,6 @@
 - Adds the tools that measure the size of Tk.
 - Adds the docs site, the CI and release workflows, and the Homebrew formula template.
 - Licensed under BSD-2-Clause.
+- Adds the npm package `@beetlebug/ztk`, with types, and a workflow that publishes it on a version tag. `ztk.js` has `mount`, a CPU renderer for a browser with no WebGL 2, and `destroy`. See `docs/web.md` and `docs/npm.md`.
 
 ztk has no release yet.

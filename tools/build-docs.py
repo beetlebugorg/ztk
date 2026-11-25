@@ -29,6 +29,8 @@ SITE = "https://beetlebug.org/ztk/"
 # Source file, page folder, sidebar group, sidebar title.
 PAGES = [
     ("README.md", "overview/", "Start", "Overview"),
+    ("docs/web.md", "web/", "Use", "On the web"),
+    ("docs/npm.md", "npm/", "Use", "npm package"),
     ("docs/plan.md", "plan/", "Plan", "The plan"),
     ("docs/tk-size.md", "tk-size/", "Plan", "The size of Tk"),
     ("docs/review.md", "review/", "Plan", "Review checklist"),

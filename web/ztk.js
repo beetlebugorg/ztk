@@ -2,7 +2,9 @@
 // The page side of ztk in a browser. It loads ztk.wasm, gives it the
 // clock, the size, the scale (devicePixelRatio), the color scheme, the
 // reduced motion setting, and the input of the canvas, and draws each
-// scene with WebGL 2. The shaders have the formulas of the CPU renderer
+// scene with WebGL 2, or with the CPU renderer of ztk.wasm and a 2D
+// context. mount() is the API for a page, and start() is the API under
+// it. The shaders have the formulas of the CPU renderer
 // (src/render/renderer.zig) and of src/render/shaders/quad.frag. A
 // hidden text area gets the keyboard, so that text input and input
 // methods work. A list of hidden elements with ARIA roles follows the
@@ -111,77 +113,53 @@ const KEYS = {
   F1: "F1", F2: "F2", F3: "F3", F4: "F4", F5: "F5", F6: "F6", F7: "F7", F8: "F8", F9: "F9", F10: "F10", F11: "F11", F12: "F12",
 };
 
-/// Compiles ztk.wasm one time for each URL.
+
+// The built-in modules of Node.js, through process.getBuiltinModule
+// (Node.js 22.3 and later). The file has no `node:` import, so a
+// bundler for the browser needs no shim.
+function nodeModule(name) {
+  return globalThis.process?.getBuiltinModule?.(name);
+}
+
+/// The URL of the ztk.wasm file next to this file. Bundlers (Vite,
+/// webpack 5) find it through the `new URL("./ztk.wasm", import.meta.url)`
+/// form, and a CDN serves it from the folder of this file.
+export function wasmURL() {
+  return new URL("./ztk.wasm", import.meta.url);
+}
+
+async function compileFrom(u) {
+  const url = new URL(u, globalThis.location?.href);
+  const fs = nodeModule("node:fs/promises");
+  if (url.protocol === "file:" && fs) return WebAssembly.compile(await fs.readFile(url));
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`ztk.wasm: HTTP ${res.status}`);
+  if (WebAssembly.compileStreaming && res.headers.get("content-type") === "application/wasm") {
+    return WebAssembly.compileStreaming(res);
+  }
+  return WebAssembly.compile(await res.arrayBuffer());
+}
+
+/// Compiles ztk.wasm one time for each URL. With no URL, it is the
+/// ztk.wasm file next to this file.
 const compiled = new Map();
 export function compileModule(url) {
-  const u = String(url || new URL("ztk.wasm", import.meta.url));
-  if (!compiled.has(u)) compiled.set(u, WebAssembly.compileStreaming(fetch(u)));
+  const u = String(url || wasmURL());
+  if (!compiled.has(u)) {
+    const p = compileFrom(u);
+    p.catch(() => compiled.delete(u));
+    compiled.set(u, p);
+  }
   return compiled.get(u);
 }
 
-export async function start(canvas, options = {}) {
-  const enc = new TextEncoder();
-  const dec = new TextDecoder();
-  let ex = null;
-  const log = options.log || ((t) => console.log(t));
-  const imports = {
-    env: {
-      ztk_now_ms: () => performance.now(),
-      ztk_print: (p, n) => log(dec.decode(new Uint8Array(ex.memory.buffer, p, n))),
-    },
-  };
-  // A page with several demos compiles the module one time and gives it as options.module.
-  const module = options.module || await compileModule(options.wasm);
-  const instance = await WebAssembly.instantiate(module, imports);
-  ex = instance.exports;
+/// The renderers that this file has, in the order of "auto".
+export const renderers = ["webgl2", "cpu"];
 
-  const dark = matchMedia("(prefers-color-scheme: dark)");
-  const reduce = matchMedia("(prefers-reduced-motion: reduce)");
-  const forceDark = options.dark;
-  // The window of the script starts with the size of the element that
-  // holds the canvas, or with a fixed logical size (options.width and
-  // options.height) that the page shows at the size it gave the canvas.
-  // The toplevel then takes its own size, as in Tk (geometry propagation),
-  // so the canvas gets its CSS size from the scene after each frame:
-  // the scene width times k / scale, where k is the count of CSS pixels in
-  // one logical pixel. The backing store is the scene in device pixels.
-  // So the window keeps its aspect ratio and is sharp at each
-  // devicePixelRatio.
-  const fixed = Boolean(options.width && options.height);
-  const host = canvas.parentElement;
-  const size = () => {
-    if (fixed) return [options.width, options.height];
-    const r = host.getBoundingClientRect();
-    return [Math.max(1, Math.round(r.width)), Math.max(1, Math.round(r.height))];
-  };
-  let k = 1;
-  if (fixed) {
-    const r = canvas.getBoundingClientRect();
-    if (r.width > 0) k = r.width / options.width;
-  }
-  const scaleNow = () => options.scale || devicePixelRatio * k;
-  const [w0, h0] = size();
-  if (!ex.ztk_init(w0, h0, scaleNow(), forceDark ?? dark.matches, reduce.matches)) throw new Error("ztk_init failed");
-  dark.addEventListener("change", () => forceDark === undefined && ex.ztk_dark(dark.matches));
-  reduce.addEventListener("change", () => ex.ztk_reduce_motion(reduce.matches));
-
-  const withBytes = (text, f) => {
-    const b = enc.encode(text);
-    const p = ex.ztk_alloc(Math.max(b.length, 1));
-    new Uint8Array(ex.memory.buffer, p, b.length).set(b);
-    try { return f(p, b.length); } finally { ex.ztk_free(p, Math.max(b.length, 1)); }
-  };
-  const result = () => dec.decode(new Uint8Array(ex.memory.buffer, ex.ztk_result_ptr(), ex.ztk_result_len()));
-  const evalScript = (text) => {
-    const code = withBytes(text, (p, n) => ex.ztk_eval(p, n));
-    const r = result();
-    if (code !== 0) log("error: " + r);
-    return { ok: code === 0, result: r };
-  };
-
-  // WebGL 2.
+// The WebGL 2 renderer: the quads of the scene in one instanced draw.
+function webgl2(canvas, ex) {
   const gl = canvas.getContext("webgl2", { premultipliedAlpha: true, antialias: false, alpha: false, preserveDrawingBuffer: true });
-  if (!gl) throw new Error("WebGL 2 is not available");
+  if (!gl) return null;
   const compile = (type, src) => {
     const s = gl.createShader(type);
     gl.shaderSource(s, src);
@@ -214,6 +192,138 @@ export async function start(canvas, options = {}) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
   const uTarget = gl.getUniformLocation(prog, "u_target");
   let atlasVersion = -1;
+  return {
+    name: "webgl2",
+    draw(n, w, h) {
+      const v = ex.ztk_atlas_version();
+      if (v !== atlasVersion) {
+        atlasVersion = v;
+        const p = ex.ztk_atlas();
+        if (p) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, ATLAS, ATLAS, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array(ex.memory.buffer, p, ATLAS * ATLAS));
+      }
+      const c = new Float32Array(ex.memory.buffer, ex.ztk_clear_color(), 4);
+      gl.viewport(0, 0, w, h);
+      gl.disable(gl.SCISSOR_TEST);
+      gl.clearColor(c[0], c[1], c[2], c[3]);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      if (n > 0) {
+        gl.useProgram(prog);
+        gl.bindVertexArray(vao);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Uint8Array(ex.memory.buffer, ex.ztk_quads(), n * QUAD_BYTES), gl.STREAM_DRAW);
+        gl.uniform2f(uTarget, w, h);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, n);
+      }
+    },
+    destroy() {
+      gl.deleteBuffer(buf);
+      gl.deleteTexture(tex);
+      gl.deleteVertexArray(vao);
+      gl.deleteProgram(prog);
+    },
+  };
+}
+
+// The CPU renderer: ztk.wasm draws each frame to an RGBA image (the
+// renderer of src/render/cpu.zig), and a 2D context shows it.
+function cpu(canvas, ex) {
+  const ctx = canvas.getContext("2d", { alpha: false });
+  if (!ctx) return null;
+  ex.ztk_cpu(true);
+  return {
+    name: "cpu",
+    draw(_n, w, h) {
+      const p = ex.ztk_image();
+      if (!p || w === 0 || h === 0) return;
+      const px = new Uint8ClampedArray(ex.memory.buffer, p, w * h * 4).slice();
+      ctx.putImageData(new ImageData(px, w, h), 0, 0);
+    },
+    destroy() {},
+  };
+}
+
+/// Starts ztk.wasm on a canvas. `mount` is the API for a page. Options:
+/// module or wasm (the module, or the URL of ztk.wasm), renderer ("auto",
+/// "webgl2", "cpu", or "webgpu"), dark (true, false, or undefined for the
+/// color scheme of the page), width and height (a fixed logical size),
+/// scale (in place of devicePixelRatio), and log (gets the text of puts
+/// and the errors).
+export async function start(canvas, options = {}) {
+  const enc = new TextEncoder();
+  const dec = new TextDecoder();
+  let ex = null;
+  const log = options.log || ((t) => console.log(t));
+  const imports = {
+    env: {
+      ztk_now_ms: () => performance.now(),
+      ztk_print: (p, n) => log(dec.decode(new Uint8Array(ex.memory.buffer, p, n))),
+    },
+  };
+  // A page with several demos compiles the module one time and gives it as options.module.
+  const module = options.module || await compileModule(options.wasm);
+  const instance = await WebAssembly.instantiate(module, imports);
+  ex = instance.exports;
+
+  // Each listener of the page and of the canvas goes away with destroy().
+  const life = new AbortController();
+  const signal = life.signal;
+  const dark = matchMedia("(prefers-color-scheme: dark)");
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+  let forceDark = options.dark;
+  // The window of the script starts with the size of the element that
+  // holds the canvas, or with a fixed logical size (options.width and
+  // options.height) that the page shows at the size it gave the canvas.
+  // The toplevel then takes its own size, as in Tk (geometry propagation),
+  // so the canvas gets its CSS size from the scene after each frame:
+  // the scene width times k / scale, where k is the count of CSS pixels in
+  // one logical pixel. The backing store is the scene in device pixels.
+  // So the window keeps its aspect ratio and is sharp at each
+  // devicePixelRatio.
+  const fixed = Boolean(options.width && options.height);
+  const host = canvas.parentElement;
+  const size = () => {
+    if (fixed) return [options.width, options.height];
+    const r = host.getBoundingClientRect();
+    return [Math.max(1, Math.round(r.width)), Math.max(1, Math.round(r.height))];
+  };
+  let k = 1;
+  if (fixed) {
+    const r = canvas.getBoundingClientRect();
+    if (r.width > 0) k = r.width / options.width;
+  }
+  const scaleNow = () => options.scale || devicePixelRatio * k;
+  const [w0, h0] = size();
+  if (!ex.ztk_init(w0, h0, scaleNow(), forceDark ?? dark.matches, reduce.matches)) throw new Error("ztk_init failed");
+  dark.addEventListener("change", () => forceDark == null && ex.ztk_dark(dark.matches), { signal });
+  reduce.addEventListener("change", () => ex.ztk_reduce_motion(reduce.matches), { signal });
+
+  const withBytes = (text, f) => {
+    const b = enc.encode(text);
+    const p = ex.ztk_alloc(Math.max(b.length, 1));
+    new Uint8Array(ex.memory.buffer, p, b.length).set(b);
+    try { return f(p, b.length); } finally { ex.ztk_free(p, Math.max(b.length, 1)); }
+  };
+  const result = () => dec.decode(new Uint8Array(ex.memory.buffer, ex.ztk_result_ptr(), ex.ztk_result_len()));
+  const evalScript = (text) => {
+    const code = withBytes(text, (p, n) => ex.ztk_eval(p, n));
+    const r = result();
+    if (code !== 0) log("error: " + r);
+    return { ok: code === 0, result: r };
+  };
+
+  // The renderer. "auto" selects the first one that the browser has.
+  const want = options.renderer || "auto";
+  if (want === "webgpu") throw new Error("ztk: this version has no WebGPU renderer. Use \"auto\", \"webgl2\", or \"cpu\".");
+  const makers = { webgl2, cpu };
+  if (want !== "auto" && !makers[want]) throw new Error(`ztk: no renderer "${want}"`);
+  let renderer = null;
+  for (const name of want === "auto" ? renderers : [want]) {
+    renderer = makers[name](canvas, ex);
+    if (renderer || want !== "auto") break;
+  }
+  if (!renderer) throw new Error(want === "webgl2" ? "WebGL 2 is not available" : `ztk: the renderer "${want}" is not available`);
 
   const draw = (n) => {
     const w = ex.ztk_scene_width(), h = ex.ztk_scene_height();
@@ -221,31 +331,12 @@ export async function start(canvas, options = {}) {
     const sc = scaleNow();
     const cw = `${(w * k) / sc}px`, ch = `${(h * k) / sc}px`;
     if (canvas.style.width !== cw || canvas.style.height !== ch) { canvas.style.width = cw; canvas.style.height = ch; }
-    const v = ex.ztk_atlas_version();
-    if (v !== atlasVersion) {
-      atlasVersion = v;
-      const p = ex.ztk_atlas();
-      if (p) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, ATLAS, ATLAS, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array(ex.memory.buffer, p, ATLAS * ATLAS));
-    }
-    const c = new Float32Array(ex.memory.buffer, ex.ztk_clear_color(), 4);
-    gl.viewport(0, 0, w, h);
-    gl.disable(gl.SCISSOR_TEST);
-    gl.clearColor(c[0], c[1], c[2], c[3]);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    if (n > 0) {
-      gl.useProgram(prog);
-      gl.bindVertexArray(vao);
-      gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-      gl.bufferData(gl.ARRAY_BUFFER, new Uint8Array(ex.memory.buffer, ex.ztk_quads(), n * QUAD_BYTES), gl.STREAM_DRAW);
-      gl.uniform2f(uTarget, w, h);
-      gl.enable(gl.BLEND);
-      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, n);
-    }
+    renderer.draw(n, w, h);
     updateA11y();
   };
 
   // Input. A hidden text area holds the keyboard focus.
+  const on = (target, type, f) => target.addEventListener(type, f, { signal });
   const input = document.createElement("textarea");
   input.setAttribute("aria-hidden", "true");
   input.style.cssText = "position:absolute;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;";
@@ -256,19 +347,19 @@ export async function start(canvas, options = {}) {
     return [(e.clientX - r.left) / k, (e.clientY - r.top) / k];
   };
   const mods = (e) => ex.ztk_mods(e.shiftKey, e.ctrlKey || e.metaKey, e.altKey);
-  canvas.addEventListener("pointermove", (e) => { mods(e); ex.ztk_pointer(...pos(e)); });
-  canvas.addEventListener("pointerdown", (e) => {
+  on(canvas, "pointermove", (e) => { mods(e); ex.ztk_pointer(...pos(e)); });
+  on(canvas, "pointerdown", (e) => {
     mods(e); ex.ztk_pointer(...pos(e)); ex.ztk_button([1, 2, 3][e.button] || 1, true);
     try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* a synthetic event has no capture */ }
     input.focus({ preventScroll: true }); e.preventDefault();
   });
-  canvas.addEventListener("pointerup", (e) => { mods(e); ex.ztk_pointer(...pos(e)); ex.ztk_button([1, 2, 3][e.button] || 1, false); });
-  canvas.addEventListener("pointerleave", () => ex.ztk_leave());
-  canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+  on(canvas, "pointerup", (e) => { mods(e); ex.ztk_pointer(...pos(e)); ex.ztk_button([1, 2, 3][e.button] || 1, false); });
+  on(canvas, "pointerleave", () => ex.ztk_leave());
+  on(canvas, "contextmenu", (e) => e.preventDefault());
   let composing = false;
-  input.addEventListener("compositionstart", () => { composing = true; });
-  input.addEventListener("compositionend", (e) => { composing = false; withBytes(e.data || "", (p, n) => ex.ztk_text(p, n)); input.value = ""; });
-  input.addEventListener("input", (e) => {
+  on(input, "compositionstart", () => { composing = true; });
+  on(input, "compositionend", (e) => { composing = false; withBytes(e.data || "", (p, n) => ex.ztk_text(p, n)); input.value = ""; });
+  on(input, "input", (e) => {
     if (composing || e.isComposing) return;
     if (input.value) withBytes(input.value, (p, n) => ex.ztk_text(p, n));
     input.value = "";
@@ -280,15 +371,16 @@ export async function start(canvas, options = {}) {
     withBytes(name, (p, n) => ex.ztk_key(p, n, down));
     if (e.key === "Tab" || e.key.startsWith("Arrow") || e.key === "Backspace") e.preventDefault();
   };
-  input.addEventListener("keydown", (e) => key(e, true));
-  input.addEventListener("keyup", (e) => key(e, false));
+  on(input, "keydown", (e) => key(e, true));
+  on(input, "keyup", (e) => key(e, false));
   // A change of devicePixelRatio sends the new scale, so the next frame is
   // drawn sharp at the new scale. A change of the size of the page does
   // not resize the window: in Tk a toplevel keeps its own size, and a
   // resize from the platform would stop its geometry propagation.
+  // resize() and mount({ size: "fill" }) resize the window.
   const watchScale = () => {
     const m = matchMedia(`(resolution: ${devicePixelRatio}dppx)`);
-    m.addEventListener("change", () => { ex.ztk_scale(scaleNow()); watchScale(); }, { once: true });
+    m.addEventListener("change", () => { ex.ztk_scale(scaleNow()); watchScale(); }, { once: true, signal });
   };
   watchScale();
 
@@ -315,12 +407,97 @@ export async function start(canvas, options = {}) {
     }));
   };
 
+  let raf = 0;
   const loop = (t) => {
     const n = ex.ztk_frame(t);
     if (n >= 0) draw(n);
-    requestAnimationFrame(loop);
+    raf = requestAnimationFrame(loop);
   };
-  requestAnimationFrame(loop);
+  raf = requestAnimationFrame(loop);
   const addFile = (name, text) => withBytes(name, (pn, nn) => withBytes(text, (pt, nt) => ex.ztk_add_file(pn, nn, pt, nt)));
-  return { eval: evalScript, exports: ex, frame: (t) => { const n = ex.ztk_frame(t); if (n >= 0) draw(n); return n; }, tree, addFile, canvas };
+  const frame = (t) => {
+    if (signal.aborted) return -1;
+    const n = ex.ztk_frame(t);
+    if (n >= 0) draw(n);
+    return n;
+  };
+  // The window of the script gets a new logical size.
+  const resize = (w, h) => ex.ztk_resize(Math.max(1, Math.round(w)), Math.max(1, Math.round(h)), scaleNow());
+  // "dark", "light", or "auto" (the color scheme of the page).
+  const setTheme = (theme) => {
+    forceDark = theme === "dark" ? true : theme === "light" ? false : undefined;
+    ex.ztk_dark(forceDark ?? dark.matches);
+  };
+  const destroy = () => {
+    if (signal.aborted) return;
+    life.abort();
+    cancelAnimationFrame(raf);
+    renderer.destroy();
+    input.remove();
+    tree.remove();
+  };
+  return { eval: evalScript, exports: ex, frame, tree, addFile, canvas, resize, setTheme, destroy, renderer: renderer.name, signal };
+}
+
+/// Mounts a ztk app on an element. `el` is a canvas, or an element that
+/// gets a new canvas. Options:
+///   script    Tcl text to run, after the files.
+///   files     { name: text } for `ztk::style load`, for example a style sheet.
+///   theme     "auto" (the default: the color scheme of the page), "light", or "dark".
+///   size      "auto" (the default: the size of the element at the start,
+///             and then the size the window computes), "fill" (the window
+///             follows the size of the element), or [width, height] in
+///             logical pixels (the canvas shows the window at its CSS size).
+///   renderer  "auto" (the default), "webgl2", "cpu", or "webgpu".
+///   scale     The device pixels in one logical pixel. The default is devicePixelRatio.
+///   module, wasm, log  As for start().
+/// A script error destroys the app and rejects with the error text.
+export async function mount(el, options = {}) {
+  if (!el || typeof el.appendChild !== "function") throw new Error("ztk.mount: el must be an element");
+  const own = !(el instanceof HTMLCanvasElement);
+  const canvas = own ? document.createElement("canvas") : el;
+  const { size = "auto", theme = "auto" } = options;
+  if (own) {
+    // With "fill", the canvas has no part in the layout of the element,
+    // so the size of the element comes from the page only.
+    canvas.style.cssText = size === "fill" ? "display:block;touch-action:none;position:absolute;left:0;top:0;" : "display:block;touch-action:none;";
+    el.appendChild(canvas);
+  }
+  const opts = { module: options.module, wasm: options.wasm, log: options.log, scale: options.scale, renderer: options.renderer };
+  if (theme !== "auto") opts.dark = theme === "dark";
+  if (Array.isArray(size)) [opts.width, opts.height] = size;
+  else if (size && typeof size === "object") ({ width: opts.width, height: opts.height } = size);
+  let app;
+  try {
+    app = await start(canvas, opts);
+  } catch (e) {
+    if (own) canvas.remove();
+    throw e;
+  }
+  const destroy = app.destroy;
+  let observer = null;
+  if (size === "fill" && typeof ResizeObserver !== "undefined") {
+    observer = new ResizeObserver(([entry]) => {
+      const r = entry.contentRect;
+      if (r.width > 0 && r.height > 0) app.resize(r.width, r.height);
+    });
+    observer.observe(canvas.parentElement);
+  }
+  app.destroy = () => {
+    observer?.disconnect();
+    destroy();
+    if (own) canvas.remove();
+  };
+  for (const [name, text] of Object.entries(options.files || {})) app.addFile(name, text);
+  if (options.script != null) {
+    const r = app.eval(options.script);
+    if (!r.ok) {
+      app.destroy();
+      const err = new Error(r.result);
+      err.result = r;
+      throw err;
+    }
+  }
+  app.frame(performance.now());
+  return app;
 }

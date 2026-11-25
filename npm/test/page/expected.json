@@ -1,0 +1,16 @@
+{
+  "renderer": "webgl2",
+  "children": ".b .l",
+  "canvas": true,
+  "dpr": 2,
+  "hidpi": true,
+  "roles": "button note",
+  "clicked": "1",
+  "destroyed": 0,
+  "fill": "360x200",
+  "cpu": "cpu",
+  "cpuColors": true,
+  "webgpu": "error",
+  "scriptError": "invalid command name \"nosuchcommand\"",
+  "left": 0
+}
