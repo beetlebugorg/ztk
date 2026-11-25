@@ -12,8 +12,13 @@
 //! thread. `wait` gets the next `NSEvent` with a time limit and sends it
 //! to the application, so the window frame and the menus of AppKit work.
 //! A callback that adds an event while `wait` blocks posts an empty
-//! application event, which ends the wait. Keys, the pointer, and the
-//! scroll wheel come in a later PR of docs/dev/macos.md.
+//! application event, which ends the wait.
+//!
+//! The view gives the keys, the pointer, and the scroll wheel.
+//! `mackeys.zig` maps the key codes and the modifier flags. A tracking
+//! area of the view gives the motion with no button down, the leave, and
+//! the cursor updates. Each pointer position also goes to the render
+//! thread with `Window.feedPointer`.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -30,6 +35,7 @@ const Platform = plat.Platform;
 const Frame = @import("../scene.zig").Frame;
 const Target = @import("../render/thread.zig").Target;
 const Atlas = @import("../text/atlas.zig").Atlas;
+const mackeys = @import("mackeys.zig");
 const Id = objc.Id;
 const Sel = objc.Sel;
 const Class = objc.Class;
@@ -68,6 +74,11 @@ pub const Win = struct {
     renderer: *metal.Metal,
     /// The atlas page that the draws read. The patches of each frame fill it.
     atlas: Atlas,
+    /// The shape of the pointer over the view, an `NSCursor`.
+    cursor: plat.Cursor = .default,
+    /// The keysym of each key code that is down, so a release has the
+    /// keysym of its press.
+    down_syms: [128]u32 = @splat(0),
 };
 
 pub const AppKit = struct {
@@ -116,6 +127,7 @@ pub const AppKit = struct {
         .poll = vPoll,
         .nowUs = vNowUs,
         .target = vTarget,
+        .setCursor = vSetCursor,
     };
 
     fn self(ptr: *anyopaque) *AppKit {
@@ -168,6 +180,8 @@ pub const AppKit = struct {
         send(view, "setLayer:", .{layer});
         send(view, "setWantsLayer:", .{true});
         send(ns_window, "setContentView:", .{view});
+        _ = objc.call(fn (Id, Sel, Id) callconv(.c) bool, ns_window, "makeFirstResponder:", .{view});
+        addTracking(view);
 
         const delegate = objc.new(a.delegate_class);
         send(ns_window, "setDelegate:", .{delegate});
@@ -364,6 +378,168 @@ pub const AppKit = struct {
         try w.renderer.drawLayer(w.layer, &frame.scene, &w.atlas);
     }
 
+    // ---- Input ----
+
+    fn addTracking(view: Id) void {
+        // mouseEnteredAndExited, mouseMoved, cursorUpdate, activeAlways (the
+        // hover of a window that is not the key window, as on the other
+        // systems), and inVisibleRect, so the area follows the size of the view.
+        const options: usize = 0x01 | 0x02 | 0x04 | 0x80 | 0x200;
+        const alloc = objc.call(fn (Class, Sel) callconv(.c) Id, objc.class("NSTrackingArea").?, "alloc", .{});
+        const zero = NSRect{ .origin = .{ .x = 0, .y = 0 }, .size = .{ .w = 0, .h = 0 } };
+        const area = objc.call(fn (Id, Sel, NSRect, usize, Id, ?Id) callconv(.c) Id, alloc, "initWithRect:options:owner:userInfo:", .{ zero, options, view, null });
+        send(view, "addTrackingArea:", .{area});
+        objc.release(area);
+    }
+
+    fn timeMs(ev: Id) u32 {
+        const s = objc.call(fn (Id, Sel) callconv(.c) f64, ev, "timestamp", .{});
+        return @truncate(@as(u64, @intFromFloat(@max(s, 0) * 1000)));
+    }
+
+    fn flagsOf(ev: Id) u64 {
+        return objc.call(fn (Id, Sel) callconv(.c) u64, ev, "modifierFlags", .{});
+    }
+
+    fn pressedButtons() u64 {
+        return objc.call(fn (Class, Sel) callconv(.c) u64, objc.class("NSEvent").?, "pressedMouseButtons", .{});
+    }
+
+    /// The position of a mouse event in the view, in logical pixels from
+    /// the top left (the view is flipped).
+    fn pointIn(w: *Win, ev: Id) NSPoint {
+        const p = objc.call(fn (Id, Sel) callconv(.c) NSPoint, ev, "locationInWindow", .{});
+        return objc.call(fn (Id, Sel, NSPoint, ?Id) callconv(.c) NSPoint, w.view, "convertPoint:fromView:", .{ p, null });
+    }
+
+    fn keyEvent(w: *Win, ev: Id, pressed: bool) void {
+        const code = objc.call(fn (Id, Sel) callconv(.c) u16, ev, "keyCode", .{});
+        const flags = flagsOf(ev);
+        const m = mackeys.mods(flags, pressedButtons());
+        const slot: ?*u32 = if (code < w.down_syms.len) &w.down_syms[code] else null;
+        if (!pressed) {
+            const sym = if (slot) |sl| sl.* else 0;
+            if (slot) |sl| sl.* = 0;
+            const s = if (sym != 0) sym else mackeys.special(code) orelse return;
+            w.owner.push(.{ .key = .{ .window = &w.window, .keysym = s, .keycode = code, .pressed = false, .repeat = false, .mods = m, .time_ms = timeMs(ev) } });
+            return;
+        }
+        const plain = textOf(objc.call(fn (Id, Sel) callconv(.c) ?Id, ev, "charactersIgnoringModifiers", .{}));
+        const typed = textOf(objc.call(fn (Id, Sel) callconv(.c) ?Id, ev, "characters", .{}));
+        var e: Event = .{ .key = .{ .window = &w.window, .keysym = 0, .keycode = code, .pressed = true, .repeat = objc.call(fn (Id, Sel) callconv(.c) bool, ev, "isARepeat", .{}), .mods = m, .time_ms = timeMs(ev) } };
+        const r = mackeys.press(code, plain, typed, flags, &e.key.text) orelse return;
+        e.key.keysym = r.sym;
+        e.key.text_len = r.len;
+        if (slot) |sl| sl.* = r.sym;
+        w.owner.push(e);
+    }
+
+    fn textOf(str: ?Id) []const u8 {
+        return objc.utf8(str orelse return "");
+    }
+
+    /// A modifier key: a press when its flag is now set, else a release.
+    fn flagsEvent(w: *Win, ev: Id) void {
+        const code = objc.call(fn (Id, Sel) callconv(.c) u16, ev, "keyCode", .{});
+        const sym = mackeys.modifierKey(code) orelse return;
+        const flags = flagsOf(ev);
+        const pressed = flags & mackeys.modifierFlag(code) != 0;
+        // The state before the key, as X11 gives it: the flag of a press is not in it yet.
+        const before = if (pressed) flags & ~mackeys.modifierFlag(code) else flags | mackeys.modifierFlag(code);
+        w.owner.push(.{ .key = .{ .window = &w.window, .keysym = sym, .keycode = code, .pressed = pressed, .repeat = false, .mods = mackeys.mods(before, pressedButtons()), .time_ms = timeMs(ev) } });
+    }
+
+    fn buttonEvent(w: *Win, ev: Id, pressed: bool) void {
+        const number = objc.call(fn (Id, Sel) callconv(.c) isize, ev, "buttonNumber", .{});
+        const b = mackeys.button(number) orelse return;
+        const p = pointIn(w, ev);
+        const x: f32 = @floatCast(p.x);
+        const y: f32 = @floatCast(p.y);
+        w.window.feedPointer(x, y);
+        // The state before the event, as X11 gives it: a press is not in it yet.
+        var buttons = pressedButtons();
+        const bit: u64 = switch (number) {
+            0 => 1,
+            1 => 2,
+            2 => 4,
+            else => 0,
+        };
+        buttons = if (pressed) buttons & ~bit else buttons | bit;
+        w.owner.push(.{ .button = .{ .window = &w.window, .button = b, .pressed = pressed, .x = x, .y = y, .mods = mackeys.mods(flagsOf(ev), buttons), .time_ms = timeMs(ev) } });
+    }
+
+    fn motionEvent(w: *Win, ev: Id) void {
+        const p = pointIn(w, ev);
+        const x: f32 = @floatCast(p.x);
+        const y: f32 = @floatCast(p.y);
+        w.window.feedPointer(x, y);
+        w.owner.push(.{ .motion = .{ .window = &w.window, .x = x, .y = y, .mods = mackeys.mods(flagsOf(ev), pressedButtons()), .time_ms = timeMs(ev) } });
+    }
+
+    /// A trackpad gives precise deltas in points, and a mouse wheel gives
+    /// lines. The event counts steps of 10 points, as the Wayland backend
+    /// does, and a line is one step. AppKit gives a positive delta for a
+    /// scroll toward the top, and the event a positive delta toward the bottom.
+    fn scrollEvent(w: *Win, ev: Id) void {
+        const precise = objc.call(fn (Id, Sel) callconv(.c) bool, ev, "hasPreciseScrollingDeltas", .{});
+        var dx = objc.call(fn (Id, Sel) callconv(.c) f64, ev, "scrollingDeltaX", .{});
+        var dy = objc.call(fn (Id, Sel) callconv(.c) f64, ev, "scrollingDeltaY", .{});
+        if (precise) {
+            dx /= 10;
+            dy /= 10;
+        }
+        if (dx == 0 and dy == 0) return;
+        const p = pointIn(w, ev);
+        w.owner.push(.{ .scroll = .{ .window = &w.window, .dx = @floatCast(-dx), .dy = @floatCast(-dy), .x = @floatCast(p.x), .y = @floatCast(p.y), .mods = mackeys.mods(flagsOf(ev), pressedButtons()), .time_ms = timeMs(ev) } });
+    }
+
+    fn vSetCursor(_: *anyopaque, win: *Window, shape: plat.Cursor) void {
+        const w = winOf(win);
+        if (w.cursor == shape) return;
+        w.cursor = shape;
+        // The shape changes now when the pointer is over the view, and at
+        // the next cursor update otherwise.
+        const p = objc.call(fn (Id, Sel) callconv(.c) NSPoint, w.ns_window, "mouseLocationOutsideOfEventStream", .{});
+        const v = objc.call(fn (Id, Sel, NSPoint, ?Id) callconv(.c) NSPoint, w.view, "convertPoint:fromView:", .{ p, null });
+        const b = objc.callStruct(NSRect, w.view, "bounds");
+        if (v.x >= 0 and v.y >= 0 and v.x < b.size.w and v.y < b.size.h) send(nsCursor(shape), "set", .{});
+    }
+
+    /// The `NSCursor` of a shape. AppKit has no wait, progress, move, or
+    /// help cursor, so those are the arrow. The diagonal resize shapes need
+    /// macOS 15.
+    fn nsCursor(shape: plat.Cursor) Id {
+        const cls = objc.class("NSCursor").?;
+        const name: [*:0]const u8 = switch (shape) {
+            .pointer => "pointingHandCursor",
+            .text => "IBeamCursor",
+            .crosshair => "crosshairCursor",
+            .not_allowed => "operationNotAllowedCursor",
+            .grab => "openHandCursor",
+            .grabbing, .move => "closedHandCursor",
+            .ew_resize => "resizeLeftRightCursor",
+            .ns_resize => "resizeUpDownCursor",
+            .nwse_resize, .nesw_resize => return diagonal(cls, shape) orelse arrow(cls),
+            else => "arrowCursor",
+        };
+        return objc.call(fn (Class, Sel) callconv(.c) Id, cls, name, .{});
+    }
+
+    fn arrow(cls: Class) Id {
+        return objc.call(fn (Class, Sel) callconv(.c) Id, cls, "arrowCursor", .{});
+    }
+
+    /// `frameResizeCursorFromPosition:inDirections:` of macOS 15. The
+    /// position is a corner of `NSCursorFrameResizePosition`: top (1) with
+    /// left (2) or right (8). The directions are inward and outward (3).
+    fn diagonal(cls: Class, shape: plat.Cursor) ?Id {
+        const s = objc.sel("frameResizeCursorFromPosition:inDirections:");
+        const meta: Id = @ptrCast(cls);
+        if (!objc.call(fn (Id, Sel, Sel) callconv(.c) bool, meta, "respondsToSelector:", .{s})) return null;
+        const position: usize = if (shape == .nwse_resize) 1 | 2 else 1 | 8;
+        return objc.call(fn (Class, Sel, usize, usize) callconv(.c) ?Id, cls, "frameResizeCursorFromPosition:inDirections:", .{ position, 3 });
+    }
+
     // ---- The classes made at run time ----
 
     fn winOf(win: *Window) *Win {
@@ -381,6 +557,18 @@ pub const AppKit = struct {
         b.method("isFlipped", @ptrCast(&yes), "c@:");
         b.method("acceptsFirstResponder", @ptrCast(&yes), "c@:");
         b.method("ztkTick:", @ptrCast(&onTick), "v@:@");
+        // "v@:@": no result and one object, the NSEvent.
+        b.method("keyDown:", @ptrCast(&onKeyDown), "v@:@");
+        b.method("keyUp:", @ptrCast(&onKeyUp), "v@:@");
+        b.method("flagsChanged:", @ptrCast(&onFlags), "v@:@");
+        for ([_][*:0]const u8{ "mouseDown:", "rightMouseDown:", "otherMouseDown:" }) |n| b.method(n, @ptrCast(&onDown), "v@:@");
+        for ([_][*:0]const u8{ "mouseUp:", "rightMouseUp:", "otherMouseUp:" }) |n| b.method(n, @ptrCast(&onUp), "v@:@");
+        for ([_][*:0]const u8{ "mouseMoved:", "mouseDragged:", "rightMouseDragged:", "otherMouseDragged:", "mouseEntered:" }) |n| b.method(n, @ptrCast(&onMotion), "v@:@");
+        b.method("mouseExited:", @ptrCast(&onExit), "v@:@");
+        b.method("scrollWheel:", @ptrCast(&onScroll), "v@:@");
+        b.method("cursorUpdate:", @ptrCast(&onCursorUpdate), "v@:@");
+        // The first click on a window that is not the key window also goes to the view.
+        b.method("acceptsFirstMouse:", @ptrCast(&yesFor), "c@:@");
         return b.finish();
     }
 
@@ -397,6 +585,46 @@ pub const AppKit = struct {
 
     fn yes(_: Id, _: Sel) callconv(.c) bool {
         return true;
+    }
+
+    fn yesFor(_: Id, _: Sel, _: ?Id) callconv(.c) bool {
+        return true;
+    }
+
+    fn onKeyDown(view: Id, _: Sel, ev: Id) callconv(.c) void {
+        if (dataOf(view)) |w| keyEvent(w, ev, true);
+    }
+
+    fn onKeyUp(view: Id, _: Sel, ev: Id) callconv(.c) void {
+        if (dataOf(view)) |w| keyEvent(w, ev, false);
+    }
+
+    fn onFlags(view: Id, _: Sel, ev: Id) callconv(.c) void {
+        if (dataOf(view)) |w| flagsEvent(w, ev);
+    }
+
+    fn onDown(view: Id, _: Sel, ev: Id) callconv(.c) void {
+        if (dataOf(view)) |w| buttonEvent(w, ev, true);
+    }
+
+    fn onUp(view: Id, _: Sel, ev: Id) callconv(.c) void {
+        if (dataOf(view)) |w| buttonEvent(w, ev, false);
+    }
+
+    fn onMotion(view: Id, _: Sel, ev: Id) callconv(.c) void {
+        if (dataOf(view)) |w| motionEvent(w, ev);
+    }
+
+    fn onExit(view: Id, _: Sel, _: Id) callconv(.c) void {
+        if (dataOf(view)) |w| w.owner.push(.{ .leave = .{ .window = &w.window } });
+    }
+
+    fn onScroll(view: Id, _: Sel, ev: Id) callconv(.c) void {
+        if (dataOf(view)) |w| scrollEvent(w, ev);
+    }
+
+    fn onCursorUpdate(view: Id, _: Sel, _: Id) callconv(.c) void {
+        if (dataOf(view)) |w| send(nsCursor(w.cursor), "set", .{});
     }
 
     fn onTick(view: Id, _: Sel, _: Id) callconv(.c) void {
