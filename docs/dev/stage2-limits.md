@@ -174,6 +174,16 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - The Tk test file `listbox.test` does not run in ztk: the interpreter has no `package` command. Its counts in `wish` were not measured for this task.
 - `zig build bench`, ReleaseFast, 2026-11-25, development machine with a load average of 1.5: `listbox-scroll-10000` (fine wheel steps scroll a listbox of 10,000 rows, one step each 16 ms, and a press selects a row each 20 frames) median 0.056 ms and 99th percentile 0.081 ms, under the gate of 8 ms.
 
+## menu (task 12)
+
+- `menu` has the options of `wish` 8.6.16 in its order, with its defaults and messages. Each entry type has the entry options of `wish` in the order of `entryconfigure`. The cases of `src/tests/menu.zig` were checked against `wish` 8.6.16 under `xvfb-run` on 2026-11-25.
+- An index is `active`, `end`, `last`, `none`, `@y`, an integer, or a pattern of a label, as in `wish`. `@y` and `yposition` use the rows of the theme, so their numbers differ from `wish`. `xposition` gives the left padding of the menu.
+- The tearoff entry is stored as entry 0, and it cannot be deleted, as in `wish`. A tear-off window does not exist: `invoke` of the tearoff entry has no effect, and `-tearoffcommand` does not run.
+- `clone` makes a menu with the options and the entries of the menu. The clone has no link to the menu, and a later change of the menu does not change the clone.
+- `activate` does not send `<<MenuSelect>>`, as in `wish`. The pointer and the keys of the drawn menus send it (PR 3 of `docs/dev/menus.md`). A native menu sends it through the menu handler.
+- The drawn menus are not in this PR. Without native menus, `post` and `postcascade` record the state, and the menu does not show until PR 3.
+- `. configure` has the options of `toplevel`. `. cget -class` gives `Toplevel`, where `wish` gives the class of the application.
+
 ## Additions
 
 - `ztk::animate`, `ztk::clock`, the timing function `spring()`, and the flag `--time` of the `ztk` program.

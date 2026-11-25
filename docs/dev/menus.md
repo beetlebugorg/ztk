@@ -65,7 +65,8 @@ A drawn menu opens with a fade and a short slide from its anchor, as the list of
 ## The PRs
 
 1. This page, the interface in `src/platform/platform.zig`, the `menu` and `app_command` events, the map of the application commands, and the record of the calls in the headless backend. The core ignores the `menu` event until PR 2.
-2. The menu model, the drawn menus in popup windows of the headless backend, and the native path against the record of the headless backend.
-3. The popup surfaces of the Wayland backend and the popup layer of the web backend.
+2. The menu model: the `menu` widget with its entries, options, subcommands, and messages, `tk_popup`, the native path against the record of the headless backend, and the native menu bar from `toplevel -menu`.
+3. The drawn menus: the menu bar row, the popups and cascades in popup windows of the headless backend, the keys, the open move, `menubutton`, `ttk::menubutton`, the gallery, and the widget page.
+4. The popup surfaces of the Wayland backend and the popup layer of the web backend.
 
 The macOS and Windows backends fill the native functions in their own PRs.
