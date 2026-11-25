@@ -198,6 +198,9 @@ pub const App = struct {
     tip: @import("grab.zig").Tip = .{},
     /// The open list of a `ttk::combobox`.
     popdown: @import("ttk/combobox.zig").Popdown = .{},
+    /// The menu widget of each native menu id, and the next id.
+    menu_ids: std.AutoHashMapUnmanaged(u32, *Widget) = .empty,
+    menu_next: u32 = 1,
     tooltips: std.StringHashMapUnmanaged([]u8) = .empty,
     /// The browser build: the text of a file of the page by its name, or null.
     virtual_file: ?*const fn (name: []const u8) ?[]const u8 = null,
@@ -325,6 +328,7 @@ pub const App = struct {
         for (app.render_pool.items) |r| r.deinit();
         app.render_pool.deinit(app.gpa);
         app.widgets.deinit(app.gpa);
+        app.menu_ids.deinit(app.gpa);
         app.classes.deinit(app.gpa);
         app.clipboard.deinit(app.gpa);
         app.text_input.deinit(app.gpa);
@@ -930,8 +934,7 @@ pub const App = struct {
             .scale => top.invalidate(.{ .style = false, .measure = false, .layout = false, .paint = true }),
             .motion, .button, .leave, .key, .scroll, .preedit, .commit => dispatch.handleIn(app, ev, top),
             .appearance => app.followSystem(),
-            // The menu model of task 12 handles the native menu events.
-            .menu => {},
+            .menu => |m| @import("widgets/menu.zig").handleEvent(app, m.menu, m.entry, m.action),
             .app_command => {},
         }
     }

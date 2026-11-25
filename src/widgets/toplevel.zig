@@ -48,7 +48,8 @@ pub const specs = [_]Spec{
 pub const class: widget.Class = .{ .command = "toplevel", .tk_class = "Toplevel", .role = "window", .is_toplevel = true, .specs = &specs, .init = init, .teardown = teardown, .deinit = freeTop, .configured = configured, .measure = measure, .paint = paintBox };
 
 /// The class of ".". Its `data` is the platform window.
-pub const root_class: widget.Class = .{ .command = "toplevel", .tk_class = "Toplevel", .role = "window", .is_toplevel = true, .deinit = deinitRoot, .paint = paintBox };
+/// It has the options of `toplevel`, so `. configure -menu` works.
+pub const root_class: widget.Class = .{ .command = "toplevel", .tk_class = "Toplevel", .role = "window", .is_toplevel = true, .specs = &specs, .configured = configured, .deinit = deinitRoot, .paint = paintBox };
 
 fn paintBox(w: *widget.Widget, b: *scene.Builder) anyerror!void {
     try paint.box(w, b, anim.shown(w.app, w));
@@ -63,6 +64,7 @@ fn measure(w: *widget.Widget) geom.Size {
 fn configured(w: *widget.Widget, changed: []const usize) ztcl.Error!void {
     for (changed) |i| {
         if (std.mem.eql(u8, w.class.specs[i].name, "-class")) w.tk_class = w.opts[i].text;
+        if (std.mem.eql(u8, w.class.specs[i].name, "-menu")) try @import("menu.zig").setBar(w, w.opts[i].text);
     }
 }
 
