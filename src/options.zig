@@ -29,6 +29,10 @@ pub const Type = enum {
     variable,
     script,
     synonym,
+    /// One word of `words`. A bad value gives "bad <db_name> ...".
+    word,
+    /// A floating-point number.
+    double,
 };
 
 pub const Spec = struct {
@@ -73,6 +77,7 @@ pub const Parsed = union(enum) {
     relief: Relief,
     word: u8,
     justify: Justify,
+    double: f64,
 };
 
 pub const Slot = struct {
@@ -165,6 +170,7 @@ const justify_words = [_][]const u8{ "left", "right", "center" };
 /// normalized text in `norm`.
 pub fn parseValue(w: *const Widget, it: *ztcl.Interp, spec: Spec, text: []const u8, norm: *[]const u8) ztcl.Error!Parsed {
     norm.* = text;
+    if (text.len == 0 and spec.allow_empty and spec.type != .synonym) return .{ .text = text };
     switch (spec.type) {
         .string, .font, .variable, .script => return .{ .text = text },
         .synonym => return .none,
@@ -202,6 +208,17 @@ pub fn parseValue(w: *const Widget, it: *ztcl.Interp, spec: Spec, text: []const 
             const i = matchWord(text, &justify_words) orelse
                 return it.fail("bad justification \"{s}\": must be left, right, or center", .{text});
             return .{ .justify = @enumFromInt(if (i == 1) 2 else if (i == 2) 1 else i) };
+        },
+        .word => {
+            const i = matchWord(text, spec.words) orelse
+                return it.fail("bad {s} \"{s}\": must be {s}", .{ spec.db_name, text, try joinWords(it, spec.words) });
+            return .{ .word = @intCast(i) };
+        },
+        .double => {
+            const v = std.fmt.parseFloat(f64, std.mem.trim(u8, text, " ")) catch
+                return it.fail("expected floating-point number but got \"{s}\"", .{text});
+            if (std.math.isNan(v) or std.math.isInf(v)) return it.fail("expected floating-point number but got \"{s}\"", .{text});
+            return .{ .double = v };
         },
         .state => {
             const i = matchWord(text, spec.words) orelse
@@ -341,6 +358,23 @@ pub fn applyEx(w: *Widget, it: *ztcl.Interp, pairs: []const ztcl.Value, creating
     }
     w.afterConfigure(changed) catch |e| return e;
     w.invalidate(.{ .style = true, .measure = true, .layout = true, .paint = true });
+}
+
+/// Sets one option with the given dirty flags, for an animation step. A
+/// color changes no size, so its step runs no measure and no layout.
+pub fn setOne(w: *Widget, it: *ztcl.Interp, i: usize, text: []const u8, d: widget_mod.Dirty) ztcl.Error!void {
+    var norm: []const u8 = text;
+    const parsed = try parseValue(w, it, w.class.specs[i], text, &norm);
+    const gpa = w.app.gpa;
+    const owned = try gpa.dupe(u8, norm);
+    const slot = &w.opts[i];
+    if (slot.set) gpa.free(slot.text);
+    slot.* = .{ .set = true, .text = owned, .value = parsed };
+    if (parsed == .text) slot.value = .{ .text = owned };
+    const changed = [_]usize{i};
+    try w.afterConfigure(&changed);
+    if (w.life == .dead) return;
+    w.invalidate(d);
 }
 
 /// A typed reader for the class code. The name is a real option.

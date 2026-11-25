@@ -20,6 +20,16 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - The backends have no reduced motion setting yet. `ZTK_NO_ANIMATION=1` and `ztk::animate reduce 1` give the end states.
 - `zig build bench`, ReleaseFast, 2026-11-24, development machine with a load average of 8 to 9: `anim-hover-1000` median 0.85 ms and 99th percentile 1.36 ms; `anim-1000` (1 000 option animations at once) median 4.06 ms and 99th percentile 7.20 ms. Both are under the gate of 8 ms. `anim-1000` is near it, because each step of an option animation goes through `configure`.
 
+## checkbutton and radiobutton (task 03)
+
+- The options of `wish` 8.6.16 exist with their defaults, except `-borderwidth`, `-padx`, and `-pady`, whose defaults are 0 because the theme gives the border and the padding (as for `label` and `button`). `-bitmap`, `-image`, `-selectimage`, `-tristateimage`, `-compound`, `-underline`, `-wraplength`, `-highlight*`, `-offrelief`, `-overrelief`, and `-selectcolor` are stored and have no effect on the look. `-indicatoron 0` removes the indicator.
+- A press invokes the widget, as the class bindings of `wish` on X11 do. A press does not give the focus, as in `wish`.
+- `flash` has no effect.
+- The motion of the indicator (the check mark, the dot, the knob of a switch) runs on the UI thread, from the `transition` of the part `::indicator`.
+- The role of a switch is the role of its class, `check box`. A role for each widget comes with Stage 8.
+- `zig build bench`, ReleaseFast, 2026-11-24, load average 9: `check-toggle-1000` (1 000 checkbuttons, one toggles each 10 frames and its indicator moves) median 3.63 ms, 99th percentile 5.12 ms. A second run under the same load gave a 99th percentile of 13.5 ms, so the gate of 8 ms holds only on a machine with less load.
+
 ## Additions
 
 - `ztk::animate`, `ztk::clock`, the timing function `spring()`, and the flag `--time` of the `ztk` program.
+- The style classes `switch` (checkbutton) and `segmented` (radiobutton), and the part `::indicator`.

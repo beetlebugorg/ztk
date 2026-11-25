@@ -132,6 +132,10 @@ pub const App = struct {
     reduce_motion: bool = false,
     /// While set, `anim.shown` gives this style for this widget. The paint uses it
     /// to paint the start of a transition for the render thread.
+    /// True when a paint asks for the next frame: a part of a widget moves.
+    anim_more: bool = false,
+    /// The time of the frame that set `anim_more`.
+    anim_more_us: i64 = -1,
     /// The frame that the paint fills, for the transitions of the render thread.
     anim_frame: ?*scene_mod.Frame = null,
     paint_override: ?struct { widget: *const Widget, style: *const style_mod.Style } = null,
@@ -455,6 +459,8 @@ pub const App = struct {
         const now = app.platform.nowUs();
         const opt_running = @import("animate.zig").tick(app, now);
         const animating = anim.tick(app, now) or opt_running;
+        // A part that moved in the last frame paints again when the time moved on.
+        if (app.anim_more and now != app.anim_more_us) top.dirty.paint = true;
         if (!top.dirty.any() and !app.style_pending and app.styles.generation == app.style_gen) return false;
         const wall = &app.wall;
         app.stats.begin(.style, wall.*());
@@ -497,6 +503,7 @@ pub const App = struct {
         fr.scene.clear = colorF(top.style.background);
         var b = scene_mod.Builder.init(app.gpa, &fr.scene, scale);
         fr.time_us = now;
+        app.anim_more = false;
         app.anim_frame = fr;
         defer app.anim_frame = null;
         try app.paintNode(top, &b);
@@ -506,12 +513,13 @@ pub const App = struct {
         app.render.submit();
         app.stats.end(.render, wall.*());
         top.dirty = widget.Dirty.none;
+        app.anim_more_us = now;
         app.frames += 1;
         if (app.frames == 1) app.stats.first_frame_us = wall.*() - app.start_us;
         app.stats.frameDone(wall.*());
         // An animation asks for the next frame.
         // The time must move on, so a frame at the same time (a manual clock) does not loop.
-        if (animating and now != app.anim_requested_us) {
+        if ((animating or app.anim_more) and now != app.anim_requested_us) {
             app.anim_requested_us = now;
             app.requestFrame();
         }

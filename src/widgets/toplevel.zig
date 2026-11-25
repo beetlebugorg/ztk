@@ -7,7 +7,7 @@ const paint = @import("../paint.zig");
 const scene = @import("../scene.zig");
 const Window = @import("../platform/platform.zig").Window;
 
-pub const class: widget.Class = .{ .command = "toplevel", .tk_class = "Toplevel", .is_toplevel = true, .deinit = deinit, .paint = paintBox };
+pub const class: widget.Class = .{ .command = "toplevel", .tk_class = "Toplevel", .role = "window", .is_toplevel = true, .deinit = deinit, .paint = paintBox };
 
 fn paintBox(w: *widget.Widget, b: *scene.Builder) anyerror!void {
     try paint.box(w, b, anim.shown(w.app, w));

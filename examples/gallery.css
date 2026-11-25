@@ -1,0 +1,29 @@
+/* The cards of the widget gallery, on top of the modern theme. */
+#title {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.heading {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.group {
+  background-color: var(--field-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.group Label, .group Checkbutton, .group Radiobutton, .group Frame {
+  background-color: var(--field-bg);
+}
+
+.group Radiobutton.segmented:checked {
+  background-color: var(--accent);
+}

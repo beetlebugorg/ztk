@@ -47,6 +47,7 @@ pub fn register(app: *App) !void {
     try it.register("event", dispatch.cmdEvent);
     try focus.register(app);
     try button.register(app);
+    try @import("widgets/check.zig").register(app);
     try entry.register(app);
     try it.register("tk", wm.cmdTk);
     app.root = try widget.makeNode(app, &toplevel.class, ".", null);

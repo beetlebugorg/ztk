@@ -31,7 +31,7 @@ pub const specs = [_]Spec{
     .{ .name = "-width", .db_name = "width", .db_class = "Width", .type = .pixels, .default = "0" },
 };
 
-pub const class: widget.Class = .{ .command = "frame", .tk_class = "Frame", .specs = &specs, .configured = configured, .measure = measure, .paint = paintBox };
+pub const class: widget.Class = .{ .command = "frame", .tk_class = "Frame", .role = "group", .specs = &specs, .configured = configured, .measure = measure, .paint = paintBox };
 
 fn paintBox(w: *widget.Widget, b: *scene.Builder) anyerror!void {
     try paint.box(w, b, anim.shown(w.app, w));

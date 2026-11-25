@@ -51,6 +51,7 @@ pub const extra = [_][]const u8{ "flash", "invoke" };
 pub const class: widget.Class = .{
     .command = "button",
     .tk_class = "Button",
+    .role = "button",
     .focusable = true,
     .specs = &specs,
     .init = label.init,

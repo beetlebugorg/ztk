@@ -62,11 +62,18 @@ fn ownTrace(app: *App, table_name: []const u8, ops: u8, old: ?[]const u8, elem: 
     if (words.len != 2) return false;
     const path = it.str(words[1]) catch return false;
     const w = app.find(path) orelse return false;
-    const get = w.class.traced_var orelse return false;
     const word = it.str(words[0]) catch return false;
-    if (!std.mem.eql(u8, word, w.class.trace_command)) return false;
-    if (!std.mem.eql(u8, text, widget.traceScript(it.alloc(), w.class.trace_command, w.path))) return false;
-    return sameVariable(get(w), table_name, elem);
+    const pairs = [_]struct { ?*const fn (w: *const widget.Widget) []const u8, []const u8 }{
+        .{ w.class.traced_var, w.class.trace_command },
+        .{ w.class.traced_var2, w.class.trace_command2 },
+    };
+    for (pairs) |pr| {
+        const get = pr[0] orelse continue;
+        if (!std.mem.eql(u8, word, pr[1])) continue;
+        if (!std.mem.eql(u8, text, widget.traceScript(it.alloc(), pr[1], w.path))) continue;
+        if (sameVariable(get(w), table_name, elem)) return true;
+    }
+    return false;
 }
 
 fn inTable(it: *ztcl.Interp, cell: *const ztcl.interp.Var) bool {

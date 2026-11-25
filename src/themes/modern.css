@@ -10,6 +10,7 @@
   --radius: 6px;
   --focus-ring: #7aa2f7;
   --accent-hover: #1d4ed8;
+  --knob: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -23,6 +24,7 @@
     --field-bg: #2a2a2c;
     --focus-ring: #7aa2f7;
     --accent-hover: #6aa0ff;
+    --knob: #f2f2f2;
   }
 }
 
@@ -114,5 +116,77 @@ Entry:disabled {
 
 Entry::selection {
   background-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+Checkbutton, Radiobutton {
+  color: var(--fg);
+  background-color: var(--bg);
+  padding: 3px 2px;
+  border-radius: var(--radius);
+}
+
+Checkbutton:focus, Radiobutton:focus {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 0px;
+}
+
+Checkbutton:disabled, Radiobutton:disabled {
+  color: var(--muted);
+}
+
+Checkbutton::indicator, Radiobutton::indicator {
+  color: var(--accent-fg);
+  background-color: var(--field-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+Radiobutton::indicator {
+  border-radius: 50%;
+  transition: all 180ms ease-out;
+}
+
+Checkbutton:hover::indicator, Radiobutton:hover::indicator {
+  border-color: var(--accent);
+}
+
+Checkbutton:checked::indicator, Checkbutton:indeterminate::indicator, Radiobutton:checked::indicator {
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+
+Checkbutton:disabled::indicator, Radiobutton:disabled::indicator {
+  opacity: 0.5;
+}
+
+Checkbutton.switch::indicator {
+  color: var(--knob);
+  background-color: var(--border);
+  border: 0;
+  border-radius: 50%;
+  transition: all 320ms spring(260 20 1);
+}
+
+Checkbutton.switch:checked::indicator {
+  background-color: var(--accent);
+}
+
+Radiobutton.segmented {
+  background-color: var(--field-bg);
+  border: 1px solid var(--border);
+  padding: 5px 14px;
+  border-radius: var(--radius);
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+Radiobutton.segmented:hover {
+  background-color: var(--bg);
+}
+
+Radiobutton.segmented:checked {
+  background-color: var(--accent);
+  border-color: var(--accent);
   color: var(--accent-fg);
 }
