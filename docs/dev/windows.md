@@ -18,8 +18,8 @@ Measured on 2026-11-25 on an x64 PC with Windows 11 (build 26200) and Zig 0.16.0
 | # | PR | Tests |
 |---|---|---|
 | 1 | This plan, the fixes above, and a CI job on `windows-latest` | `zig build test` and the headless script on Windows in CI |
-| 2 | `src/platform/win32.zig` and `src/render/d3d12_api.zig`: the Win32 functions and the COM interfaces that ztk calls | Unit tests that make a window class and a hidden window |
-| 3 | The Direct3D 12 renderer, offscreen | Each golden scene drawn by Direct3D 12 equals the CPU image within the tolerance of the Vulkan tests |
+| 2 | `src/platform/win32.zig`: the Win32 functions that ztk calls | Unit tests that make a window class and a hidden window |
+| 3 | `src/render/d3d12_api.zig` (the COM interfaces that ztk calls) and the Direct3D 12 renderer, offscreen | Each golden scene drawn by Direct3D 12 equals the CPU image within the tolerance of the Vulkan tests |
 | 4 | The Win32 backend: windows, the event loop, the frame clock, the scale, and a swapchain target. The CPU output with `SetDIBitsToDevice` when no Direct3D 12 device exists. | Window tests that run only with `ZTK_TEST_WINDOWS=1` |
 | 5 | Keyboard, pointer, wheel, and cursors (`setCursor`) | Unit tests of the key and modifier maps from recorded messages |
 | 6 | The clipboard of the system (`clipboardGet`, `clipboardSet`) | `clipboard` tests against the clipboard of the CI machine |

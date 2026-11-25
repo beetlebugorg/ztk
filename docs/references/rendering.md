@@ -72,6 +72,14 @@ The Vulkan specification, version 1.0 core: the render pass, the graphics pipeli
 
 **How ztk uses it:** `src/render/vulkan.zig` uses only Vulkan 1.0 core functions and the extension `VK_EXT_debug_utils` when validation is on. The blend is `ONE` and `ONE_MINUS_SRC_ALPHA` with a premultiplied output color, so that a box with a fill and a border blends in one step. The result equals "source over" of the CPU renderer. The CPU renderer blends the fill and the border in two steps. The two differ by at most 2 levels in a channel in the tests.
 
+## The Direct3D 12 renderer
+
+The Direct3D 12 and DXGI documentation of Microsoft, and the headers `d3d12.h`, `dxgi1_6.h`, and `d3dcompiler.h` of the Windows SDK 10.0.26100.0: the root signature with root shader resource views, the committed resources in upload and readback heaps, the resource barriers, the placed footprint copy, the fence, and `D3DCompile`. https://learn.microsoft.com/windows/win32/direct3d12/
+
+**License:** Documentation, and the license of the Windows SDK. This page did not check the text of that license.
+
+**How ztk uses it:** `src/render/d3d12_api.zig` has its own Zig declarations of the methods, the interface IDs, the structures, and the constants that the renderer calls. The slot of each method is its place in the C table of the header. `src/render/d3d12.zig` draws the quads with one instanced draw, the quads in a structured buffer, and the formulas of `src/render/renderer.zig` in HLSL. The blend is that of the Vulkan renderer.
+
 ## WebGPU and WGSL
 
 W3C, "WebGPU" and "WebGPU Shading Language" (Candidate Recommendations). https://www.w3.org/TR/webgpu/ and https://www.w3.org/TR/WGSL/
