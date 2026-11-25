@@ -77,6 +77,25 @@ pub fn main(init: std.process.Init) !void {
         report("build-1000", &s);
     }
 
+    // pack-resize-1000: 1 000 packed labels in 25 rows, and one resize of `.` for each frame.
+    {
+        var pw: World = undefined;
+        try pw.init(io);
+        defer pw.deinit();
+        pw.head.skip_draw = true;
+        pw.eval("for {set r 0} {$r < 25} {incr r} { frame .r$r; pack .r$r -fill x -expand 1;" ++
+            " for {set c 0} {$c < 40} {incr c} { label .r$r.l$c -text $c; pack .r$r.l$c -side left -fill both -expand 1 } }; update");
+        const runs = 200;
+        for (buf[0..runs], 0..) |*slot, i| {
+            var cmd: [64]u8 = undefined;
+            const text = try std.fmt.bufPrint(&cmd, "wm geometry . {d}x{d}; update", .{ 1200 + (i % 50) * 4, 700 + (i % 30) * 3 });
+            const t0 = nowNs();
+            pw.eval(text);
+            slot.* = nowNs() - t0;
+        }
+        report("pack-resize-1000", buf[0..runs]);
+    }
+
     var w: World = undefined;
     try w.init(io);
     defer w.deinit();

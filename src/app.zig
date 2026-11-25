@@ -402,7 +402,7 @@ pub const App = struct {
         app.stats.begin(.layout, wall.*());
         _ = layout.run(top);
         app.stats.end(.layout, wall.*());
-        if (app.wm.geometry == null and grid.hasContent(top)) {
+        if (app.wm.geometry == null and layout.propagates(top)) {
             const m = app.wm.minsize;
             const x = app.wm.maxsize;
             const want: geom.Size = .{

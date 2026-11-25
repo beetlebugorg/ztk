@@ -9,11 +9,14 @@
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
+const ztcl = @import("ztcl");
 const num = @import("num.zig");
 const geom = @import("geom.zig");
 const widget = @import("widget.zig");
 const paint = @import("paint.zig");
 const grid = @import("grid.zig");
+const pack = @import("pack.zig");
+const place = @import("place.zig");
 const Widget = widget.Widget;
 
 pub const Manager = struct {
@@ -29,6 +32,10 @@ pub const Manager = struct {
     /// The container is deleted. The manager frees its data and lets go of
     /// the content that still exists.
     release: *const fn (container: *Widget) void,
+    /// True when the container has managed content.
+    has_content: ?*const fn (container: *const Widget) bool = null,
+    /// True when the content sets the requested size of the container.
+    propagates: ?*const fn (container: *const Widget) bool = null,
 };
 
 /// The space that the border and the padding of a container take, in
@@ -91,6 +98,10 @@ fn arrangeNode(w: *Widget, changed: *bool) void {
             w.app.arrange_count += 1;
             changed.* = true;
         }
+        if (w.placed.items.len > 0) {
+            place.arrange(w);
+            changed.* = true;
+        }
     }
     for (w.children.items) |c| arrangeNode(c, changed);
 }
@@ -104,10 +115,36 @@ pub fn run(top: *Widget) bool {
     return changed;
 }
 
+/// True when the manager of the container has content in it.
+pub fn hasContent(w: *const Widget) bool {
+    if (w.container_manager) |m| if (m.has_content) |f| return f(w);
+    return false;
+}
+
+/// True when the content of the container sets its requested size.
+pub fn propagates(w: *const Widget) bool {
+    if (!hasContent(w)) return false;
+    if (w.container_manager) |m| if (m.propagates) |f| return f(w);
+    return true;
+}
+
+/// Makes `m` the manager of the content of `c`. Another manager with
+/// content in `c` gives the message of `wish`. Another manager with no
+/// content lets go of `c` first.
+pub fn claim(c: *Widget, m: *const Manager) ztcl.Error!void {
+    const old = c.container_manager orelse return;
+    if (old == m) return;
+    if (hasContent(c)) return c.app.it.fail("cannot use geometry manager {s} inside {s} which already has slaves managed by {s}", .{ m.name, c.path, old.name });
+    old.release(c);
+}
+
 /// Called when a widget is deleted: the manager forgets the widget, and
 /// a container gives up its content.
 pub fn destroyed(w: *Widget) void {
     if (w.manager) |m| m.forget(w);
     grid.dropCell(w);
+    pack.dropData(w);
+    place.dropData(w);
     if (w.container_manager) |m| m.release(w);
+    place.releaseContainer(w);
 }

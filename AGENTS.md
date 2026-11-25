@@ -28,6 +28,7 @@ systemd-run --user --scope -q -p MemoryMax=4G -p MemorySwapMax=0 -- <command>
 | `zig build test` | Runs all unit tests. `-Dtest-filter=<text>` runs the tests with that text in the name. |
 | `zig build run -- file.tcl` | Runs a script. |
 | `tools/oracle.sh script.tcl args` | Runs a script in `wish` and in `ztk --headless`, and prints the difference. |
+| `tools/oracle.sh tools/oracle-pack.tcl seed count` | Compares random `pack` layouts with `wish`. `oracle-place.tcl` does the same for `place`. |
 | `zig-out/bin/ztk [flags] script.tcl` | Runs a script. See `ztk --version` and the flags in `docs/tasks/17-wayland.md`. |
 | `tests/wayland-smoke.sh` | Runs `ztk` on a private headless compositor. |
 | `tools/shots.sh [folder]` | Draws the screenshots of the examples into `docs/site/shots`, in light and dark at scale 2. |

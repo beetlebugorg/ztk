@@ -319,11 +319,13 @@ fn cellOf(w: *const Widget) ?*Cell {
 }
 
 fn containerOf(w: *const Widget) ?*Container {
+    if (w.container_manager != &manager) return null;
     return @ptrCast(@alignCast(w.container_data orelse return null));
 }
 
 fn ensureContainer(w: *Widget) !*Container {
     if (containerOf(w)) |c| return c;
+    try layout.claim(w, &manager);
     const c = try w.app.gpa.create(Container);
     c.* = .{ .gpa = w.app.gpa };
     w.container_data = c;
@@ -535,7 +537,12 @@ pub fn dropCell(s: *Widget) void {
     }
 }
 
-pub const manager: layout.Manager = .{ .name = "grid", .measure = measure, .arrange = arrange, .forget = forgetAtDelete, .release = release };
+pub const manager: layout.Manager = .{ .name = "grid", .measure = measure, .arrange = arrange, .forget = forgetAtDelete, .release = release, .has_content = hasContent, .propagates = propagates };
+
+fn propagates(w: *const Widget) bool {
+    const c = containerOf(w) orelse return true;
+    return c.propagate;
+}
 
 // ---- The command ----
 
@@ -544,7 +551,7 @@ const sub_list = "anchor, bbox, columnconfigure, configure, content, forget, inf
 
 const Sub = enum { anchor, bbox, columnconfigure, configure, content, forget, info, location, propagate, remove, rowconfigure, size, slaves };
 
-fn findPrefix(comptime T: type, names: []const []const u8, text: []const u8) ?struct { idx: usize, ambiguous: bool } {
+pub fn findPrefix(comptime T: type, names: []const []const u8, text: []const u8) ?struct { idx: usize, ambiguous: bool } {
     _ = T;
     var found: ?usize = null;
     var count: usize = 0;
@@ -656,13 +663,13 @@ fn parseIndexValue(it: *ztcl.Interp, what: []const u8, text: []const u8, min: i6
     return v;
 }
 
-fn parsePad1(it: *ztcl.Interp, app: *App, text: []const u8, which: []const u8) ztcl.Error!i32 {
+pub fn parsePad1(it: *ztcl.Interp, app: *App, text: []const u8, which: []const u8) ztcl.Error!i32 {
     const v = options.parsePixels(text, app.scaling);
     if (v == null or v.? < 0) return it.fail("bad {s} value \"{s}\": must be positive screen distance", .{ which, text });
     return v.?;
 }
 
-fn parsePad(it: *ztcl.Interp, app: *App, v: Value) ztcl.Error![2]i32 {
+pub fn parsePad(it: *ztcl.Interp, app: *App, v: Value) ztcl.Error![2]i32 {
     const parts = try it.list(v);
     if (parts.len < 1 or parts.len > 2) return it.fail("wrong number of parts to pad specification", .{});
     const a = try parsePad1(it, app, try strOf(it, parts[0]), "pad");
@@ -702,7 +709,7 @@ fn isRelative(s: []const u8) bool {
     return s.len == 1 and (s[0] == '-' or s[0] == 'x' or s[0] == '^');
 }
 
-fn isDescendant(w: *const Widget, of: *const Widget) bool {
+pub fn isDescendant(w: *const Widget, of: *const Widget) bool {
     var x: ?*const Widget = w;
     while (x) |p| : (x = p.parent) if (p == of) return true;
     return false;
@@ -766,6 +773,13 @@ fn configure(it: *ztcl.Interp, app: *App, args: []const Value) ztcl.Error!Value 
         }
     }
 
+    // The old manager of each window lets go first, so a container that it leaves empty can change its manager.
+    for (words) |wd| {
+        const s = try strOf(it, wd);
+        if (s[0] != '.') continue;
+        const w = app.find(s).?;
+        if (w.manager) |m| if (m != &manager) m.forget(w);
+    }
     const cont = try ensureContainer(container);
     const gpa = app.gpa;
     var col: i64 = 0;
@@ -901,7 +915,7 @@ fn infoCmd(it: *ztcl.Interp, app: *App, args: []const Value) ztcl.Error!Value {
     return ztcl.value.wrapList(a, items);
 }
 
-fn padValue(a: std.mem.Allocator, p: [2]i32) !Value {
+pub fn padValue(a: std.mem.Allocator, p: [2]i32) !Value {
     if (p[0] == p[1]) return .{ .int = p[0] };
     return .{ .str = try std.fmt.allocPrint(a, "{d} {d}", .{ p[0], p[1] }) };
 }
@@ -948,7 +962,7 @@ fn slavesCmd(it: *ztcl.Interp, app: *App, args: []const Value) ztcl.Error!Value 
     return ztcl.value.wrapList(a, try list.toOwnedSlice(a));
 }
 
-fn boolArg(it: *ztcl.Interp, v: Value) ztcl.Error!bool {
+pub fn boolArg(it: *ztcl.Interp, v: Value) ztcl.Error!bool {
     const text = try strOf(it, v);
     if (options.parseBool(text)) |b| return b;
     if (std.fmt.parseInt(i64, text, 0)) |n| return n != 0 else |_| {}
