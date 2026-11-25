@@ -23,6 +23,10 @@ The paned windows and the notebook work.
 
 A sash drag follows the pointer from the render thread. A tab change slides the indicator and fades the page. The fluid gate: `sash-drag` and `tab-change` are under 8 ms.
 
+## The apps of task 14
+
+Change the spreadsheet and the vector tool of [task 14](14-canvas.md#the-two-example-apps) to use the widgets of this task: a paned window between the canvas and the panels of the vector tool, and a notebook for the sheets of the spreadsheet or the panels of the vector tool. Their tests still pass.
+
 ## Acceptance
 
 - The tests of this file pass.

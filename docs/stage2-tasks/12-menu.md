@@ -24,6 +24,10 @@ Menus work: a menu bar from `-menu`, pull-down menus with cascades, separators, 
 
 A menu opens with a fade and a short scale from its anchor, and closes with a fade. The active entry background moves. The fluid gate: `menu-open` shows in the next frame and is under 8 ms.
 
+## The apps of task 14
+
+Change the spreadsheet and the vector tool of [task 14](14-canvas.md#the-two-example-apps) to use the widgets of this task: a menu bar and context menus in both apps. Their tests still pass.
+
 ## Acceptance
 
 - The tests of this file pass.

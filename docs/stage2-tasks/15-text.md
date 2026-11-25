@@ -26,6 +26,10 @@ The `text` widget works with tags, marks, embedded windows, undo, and scrolling.
 
 Smooth scroll and the caret blink on the render thread. The budget: 1 MB of text scrolls at the full rate, and a key in it shows in the next frame. The fluid gate: `text-1mb-scroll` and `text-1mb-type` are under 8 ms.
 
+## The apps of task 14
+
+Change the spreadsheet and the vector tool of [task 14](14-canvas.md#the-two-example-apps) to use the widgets of this task: the output area of the console of the vector tool. Their tests still pass.
+
 ## Acceptance
 
 - The tests of this file pass.
