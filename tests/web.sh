@@ -104,6 +104,18 @@ ok = len(c) == 4 and float(c[0]) > 0.3 and c[0:2] == c[2:4]
 print(("ok" if ok else "FAIL") + ": a DOM wheel event scrolls the entry and its scrollbar (%r)" % r.get("check"))
 sys.exit(0 if ok else 1)
 PY
+# The canvas of the gallery: a DOM drag moves the rectangle by its item bindings.
+{ cat "$root/examples/gallery.tcl"; printf '\nwm geometry . 860x680\nupdate\nset c .cols.left.canvas.body.c\nputs "[expr {[winfo rootx $c] + 40}],[expr {[winfo rooty $c] + 30}],[expr {[winfo rootx $c] + 80}],[expr {[winfo rooty $c] + 50}]"\nexit\n'; } > "$work/cwhere.tcl"
+cwhere="$(cd "$work" && "$root/zig-out/bin/ztk" --headless cwhere.tcl 2>/dev/null)"
+out="$(page "example=gallery&light&size=860x680&drag=$cwhere&test=.cols.left.canvas.body.c%20coords%201")"
+echo "$out" > "$work/drag.json"
+python3 -I - "$work/drag.json" <<'PY' || fail=1
+import json, sys
+r = json.load(open(sys.argv[1]))
+ok = r.get("check") == "48.0 30.0 128.0 86.0"
+print(("ok" if ok else "FAIL") + ": a DOM drag moves a canvas item by its bindings (%r)" % r.get("check"))
+sys.exit(0 if ok else 1)
+PY
 # The pixels: each renderer against the CPU renderer, for the gallery at the same size.
 gsize=720x440
 q="example=gallery&light&size=$gsize&test=wm%20geometry%20.%20$gsize"

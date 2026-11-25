@@ -284,6 +284,18 @@ Scale:disabled {
   opacity: 0.5;
 }
 
+/* The canvas is a field: the items that keep the default black of Tk
+   draw with the color of the text. */
+Canvas {
+  color: var(--fg);
+  background-color: var(--field-bg);
+}
+
+Canvas::selection {
+  background-color: var(--accent);
+  color: var(--accent-fg);
+}
+
 /* An overlay scrollbar: a thin thumb on a clear trough. The thumb shows
    while the view scrolls and on hover, and fades out after a delay. */
 Scrollbar {

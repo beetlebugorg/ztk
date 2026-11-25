@@ -104,6 +104,9 @@ test {
     _ = @import("tests/toplevel.zig");
     _ = @import("tests/scale.zig");
     _ = @import("tests/scrollbar.zig");
+    _ = @import("tests/canvas.zig");
+    _ = @import("canvas/tags.zig");
+    _ = @import("canvas/items.zig");
     _ = @import("path.zig");
     _ = @import("easing.zig");
     _ = @import("tests/review.zig");

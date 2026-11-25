@@ -248,6 +248,8 @@ pub const Class = struct {
     extra_subcommands: []const []const u8 = &.{},
     /// The complete list of subcommand names for the error message. It replaces `extra_subcommands`.
     bad_option_list: []const u8 = "",
+    /// Runs for each event of the widget before its bindings: the items of a canvas.
+    event: ?*const fn (w: *Widget, ev: *const bind.WidgetEvent) void = null,
 };
 
 /// The name of a variable in the global namespace, as `-textvariable` reads it.

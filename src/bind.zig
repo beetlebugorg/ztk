@@ -641,6 +641,10 @@ pub fn deliver(app: *App, ev: *const WidgetEvent) void {
     app.enter();
     defer app.leave();
     const w = ev.widget;
+    if (w.class.event) |f| if (w.alive()) {
+        f(w, ev);
+        if (!w.alive() and ev.type != .destroy) return;
+    };
     var buf: [4][]const u8 = undefined;
     const tags = tagsOf(w, &buf);
     // The tag list can change in a script, so copy the names that it holds.
@@ -654,6 +658,22 @@ pub fn deliver(app: *App, ev: *const WidgetEvent) void {
         const e = app.bindings.matchEntry(tag, ev) orelse continue;
         const code = runEntry(app, e, ev);
         switch (code) {
+            .brk, .err => return,
+            .cont, .ok => {},
+        }
+    }
+}
+
+/// Runs the bindings of an event for each tag of a list, in a table of
+/// its own: the item bindings of a canvas.
+pub fn runTags(app: *App, table: *Table, tags: []const []const u8, ev: *const WidgetEvent) void {
+    if (app.closing) return;
+    app.enter();
+    defer app.leave();
+    for (tags) |tag| {
+        if (!ev.widget.alive()) return;
+        const e = table.matchEntry(tag, ev) orelse continue;
+        switch (runEntry(app, e, ev)) {
             .brk, .err => return,
             .cont, .ok => {},
         }

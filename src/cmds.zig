@@ -55,6 +55,7 @@ pub fn register(app: *App) !void {
     try @import("widgets/scale.zig").register(app);
     try @import("widgets/scrollbar.zig").register(app);
     try entry.register(app);
+    try @import("canvas/canvas.zig").register(app);
     try it.register("tk", wm.cmdTk);
     app.root = try widget.makeNode(app, &toplevel.root_class, ".", null);
     try toplevel.register(app);

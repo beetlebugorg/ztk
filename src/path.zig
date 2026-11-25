@@ -1,9 +1,9 @@
 //! Shapes that the quad form has no kind for: polygons, strokes, and
 //! ellipses. A shape is a list of closed contours in device pixels. The
-//! rasterizer samples each pixel of the bounding box at 4 by 4 points.
-//! A point is in the shape when one contour has it by the nonzero winding
-//! rule, and gives a coverage from 0 to 16 for
-//! each pixel. Each run of pixels with the same coverage in a row is one
+//! rasterizer has 4 sample lines in each row of pixels. On each line the
+//! crossings of the edges give the spans inside the shape by the nonzero
+//! winding rule. Each pixel has 4 sample points on each line, so the
+//! coverage of a pixel is from 0 to 16. Each run of pixels with the same coverage in a row is one
 //! box quad with the color at that alpha, so the scene keeps one quad
 //! form and the CPU and GPU renderers need no new kind. Section D4 of the
 //! plan has the reason. A stroke is the union of one quad for each
@@ -63,7 +63,7 @@ pub const Shape = struct {
 /// True when a point is inside the shape: inside one of its contours
 /// with the nonzero rule. The shape is the union of its contours, so the
 /// pieces of a stroke do not cancel where they overlap.
-fn inside(s: *const Shape, x: f32, y: f32) bool {
+pub fn inside(s: *const Shape, x: f32, y: f32) bool {
     var start: u32 = 0;
     for (s.ends.items) |end| {
         const c = s.pts.items[start..end];
@@ -80,8 +80,29 @@ fn inside(s: *const Shape, x: f32, y: f32) bool {
     return false;
 }
 
+const Cross = struct { x: f32, dir: i8 };
+
+fn crossLess(_: void, a: Cross, b: Cross) bool {
+    return a.x < b.x;
+}
+
+/// Counts the sample points of each pixel in the span from `x0` to `x1`.
+/// A row of pixels has 4 sample points in each pixel, at the quarters.
+fn addSpan(cov: []u8, base: f32, x0: f32, x1: f32) void {
+    const n: f32 = @floatFromInt(cov.len * 4);
+    const j0: f32 = std.math.clamp(@ceil((x0 - base) * 4 - 0.5), 0, n);
+    const j1: f32 = std.math.clamp(@ceil((x1 - base) * 4 - 0.5), 0, n);
+    var j: usize = @intFromFloat(j0);
+    const end: usize = @intFromFloat(j1);
+    while (j < end) : (j += 1) cov[j / 4] += 1;
+}
+
 /// The coverage rows of a shape inside a clip, as box quads. The points
-/// are device pixels. `color` is the color at full coverage.
+/// are device pixels. `color` is the color at full coverage. Each row has
+/// 4 sample lines. On each line the crossings of the edges, with the
+/// direction of each contour made the same, give the spans by the nonzero
+/// rule, so the result is the union of the contours. A pixel has 4 by 4
+/// sample points.
 pub fn fill(gpa: std.mem.Allocator, out: *std.ArrayListUnmanaged(scene.Quad), s: *const Shape, clip: [4]f32, color: [4]f32, opacity: f32) !void {
     if (s.pts.items.len < 3 or color[3] == 0) return;
     var x0: f32 = std.math.inf(f32);
@@ -98,38 +119,74 @@ pub fn fill(gpa: std.mem.Allocator, out: *std.ArrayListUnmanaged(scene.Quad), s:
     const cy0 = @max(@floor(y0), clip[1]);
     const cx1 = @min(@ceil(x1), clip[0] + clip[2]);
     const cy1 = @min(@ceil(y1), clip[1] + clip[3]);
-    if (cx1 <= cx0 or cy1 <= cy0) return;
+    if (!(cx1 > cx0 and cy1 > cy0)) return;
     // A limit for a very large shape: 4096 by 4096 device pixels.
     const ix0: i32 = @intFromFloat(cx0);
     const iy0: i32 = @intFromFloat(cy0);
     const ix1: i32 = @min(@as(i32, @intFromFloat(cx1)), ix0 + 4096);
     const iy1: i32 = @min(@as(i32, @intFromFloat(cy1)), iy0 + 4096);
+    const width: usize = @intCast(ix1 - ix0);
+    const cov = try gpa.alloc(u8, width);
+    defer gpa.free(cov);
+    // The sign of each contour, so that each one turns the same way.
+    const signs = try gpa.alloc(i8, s.ends.items.len);
+    defer gpa.free(signs);
+    var start: u32 = 0;
+    for (s.ends.items, signs) |end, *sg| {
+        const c = s.pts.items[start..end];
+        start = end;
+        var area: f32 = 0;
+        for (c, 0..) |a, i| {
+            const b = c[(i + 1) % c.len];
+            area += a.x * b.y - b.x * a.y;
+        }
+        sg.* = if (area < 0) -1 else 1;
+    }
+    var crosses: std.ArrayListUnmanaged(Cross) = .empty;
+    defer crosses.deinit(gpa);
+    const base: f32 = @floatFromInt(ix0);
     var y = iy0;
     while (y < iy1) : (y += 1) {
-        var run_start = ix0;
-        var run_cov: u8 = 255;
-        var x = ix0;
-        while (x <= ix1) : (x += 1) {
-            var cov: u8 = 0;
-            if (x < ix1) {
-                const fx: f32 = @floatFromInt(x);
-                const fy: f32 = @floatFromInt(y);
-                var sy: u8 = 0;
-                while (sy < 4) : (sy += 1) {
-                    var sx: u8 = 0;
-                    while (sx < 4) : (sx += 1) {
-                        const px = fx + (@as(f32, @floatFromInt(sx)) + 0.5) / 4;
-                        const py = fy + (@as(f32, @floatFromInt(sy)) + 0.5) / 4;
-                        if (inside(s, px, py)) cov += 1;
-                    }
+        @memset(cov, 0);
+        var sub: u8 = 0;
+        while (sub < 4) : (sub += 1) {
+            const sy = @as(f32, @floatFromInt(y)) + (@as(f32, @floatFromInt(sub)) + 0.5) / 4;
+            crosses.clearRetainingCapacity();
+            start = 0;
+            for (s.ends.items, signs) |end, sg| {
+                const c = s.pts.items[start..end];
+                start = end;
+                for (c, 0..) |a, i| {
+                    const b = c[(i + 1) % c.len];
+                    const up = a.y <= sy and b.y > sy;
+                    const down = b.y <= sy and a.y > sy;
+                    if (!up and !down) continue;
+                    const x = a.x + (sy - a.y) * (b.x - a.x) / (b.y - a.y);
+                    try crosses.append(gpa, .{ .x = x, .dir = if (up) sg else -sg });
                 }
             }
-            if (x == ix1 or cov != run_cov) {
+            std.mem.sort(Cross, crosses.items, {}, crossLess);
+            var wn: i32 = 0;
+            var span_x: f32 = 0;
+            for (crosses.items) |c| {
+                const prev = wn;
+                wn += c.dir;
+                if (prev == 0 and wn != 0) span_x = c.x;
+                if (prev != 0 and wn == 0) addSpan(cov, base, span_x, c.x);
+            }
+        }
+        // Each run of pixels with the same coverage in 16 levels is one quad.
+        var run_start: usize = 0;
+        var run_cov: u8 = 255;
+        var x: usize = 0;
+        while (x <= width) : (x += 1) {
+            const level: u8 = if (x < width) cov[x] else 255;
+            if (x == width or level != run_cov) {
                 if (run_cov != 255 and run_cov > 0 and x > run_start) {
                     var c = color;
                     c[3] *= @as(f32, @floatFromInt(run_cov)) / 16;
                     try out.append(gpa, .{
-                        .rect = .{ @floatFromInt(run_start), @floatFromInt(y), @floatFromInt(x - run_start), 1 },
+                        .rect = .{ base + @as(f32, @floatFromInt(run_start)), @floatFromInt(y), @floatFromInt(x - run_start), 1 },
                         .clip = clip,
                         .radii = .{ 0, 0, 0, 0 },
                         .border = .{ 0, 0, 0, 0 },
@@ -142,7 +199,7 @@ pub fn fill(gpa: std.mem.Allocator, out: *std.ArrayListUnmanaged(scene.Quad), s:
                     });
                 }
                 run_start = x;
-                run_cov = cov;
+                run_cov = level;
             }
         }
     }
