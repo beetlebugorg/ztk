@@ -53,11 +53,18 @@ pub const Options = struct {
 };
 
 pub const Target = struct {
+    /// The texture that the next draw writes: the offscreen texture, or
+    /// the current back buffer of the swapchain.
     texture: *api.Resource,
     rtv_heap: *api.DescriptorHeap,
     rtv: api.CPU_DESCRIPTOR_HANDLE,
     width: u32,
     height: u32,
+    /// The state of the texture between draws.
+    rest: u32 = api.RESOURCE_STATE_COPY_SOURCE,
+    swap: ?*api.SwapChain3 = null,
+    buffers: [2]*api.Resource = undefined,
+    rtvs: [2]api.CPU_DESCRIPTOR_HANDLE = undefined,
 };
 
 const Buffer = struct {
@@ -329,11 +336,75 @@ pub const D3D12 = struct {
         return t;
     }
 
+    /// Makes a flip-model swapchain with two buffers for a window. `hwnd`
+    /// is the handle of the window.
+    pub fn createSwapchain(v: *D3D12, hwnd: *anyopaque, width: u32, height: u32) !*Target {
+        const desc: api.SWAP_CHAIN_DESC1 = .{ .Width = width, .Height = height };
+        var sc1: ?*anyopaque = null;
+        try check(call(api.HRESULT, v.factory, slot.factory_create_swapchain_for_hwnd, .{ @as(*anyopaque, @ptrCast(v.queue)), hwnd, &desc, @as(?*const anyopaque, null), @as(?*anyopaque, null), &sc1 }));
+        defer api.release(sc1.?);
+        var sc3: ?*anyopaque = null;
+        try check(call(api.HRESULT, sc1.?, slot.unknown_query, .{ &api.IID_IDXGISwapChain3, &sc3 }));
+        const swap: *api.SwapChain3 = @ptrCast(sc3.?);
+        errdefer api.release(swap);
+        // Alt+Enter is a key of the script, and ztk has no full screen mode.
+        _ = call(api.HRESULT, v.factory, slot.factory_make_window_association, .{ hwnd, api.DXGI_MWA_NO_ALT_ENTER });
+        const hd: api.DESCRIPTOR_HEAP_DESC = .{ .Type = api.DESCRIPTOR_HEAP_TYPE_RTV, .NumDescriptors = 2 };
+        var heap: ?*anyopaque = null;
+        try check(call(api.HRESULT, v.device, slot.device_create_descriptor_heap, .{ &hd, &api.IID_ID3D12DescriptorHeap, &heap }));
+        errdefer api.release(heap.?);
+        var start: api.CPU_DESCRIPTOR_HANDLE = undefined;
+        _ = call(*api.CPU_DESCRIPTOR_HANDLE, heap.?, slot.heap_cpu_start, .{&start});
+        const step = call(u32, v.device, slot.device_descriptor_size, .{api.DESCRIPTOR_HEAP_TYPE_RTV});
+        const t = try v.gpa.create(Target);
+        errdefer v.gpa.destroy(t);
+        t.* = .{
+            .texture = undefined,
+            .rtv_heap = @ptrCast(heap.?),
+            .rtv = start,
+            .width = width,
+            .height = height,
+            .rest = api.RESOURCE_STATE_PRESENT,
+            .swap = swap,
+            .rtvs = .{ start, .{ .ptr = start.ptr + step } },
+        };
+        try v.getBuffers(t);
+        return t;
+    }
+
+    fn getBuffers(v: *D3D12, t: *Target) !void {
+        for (0..2) |i| {
+            var buf: ?*anyopaque = null;
+            try check(call(api.HRESULT, t.swap.?, slot.swap_get_buffer, .{ @as(u32, @intCast(i)), &api.IID_ID3D12Resource, &buf }));
+            t.buffers[i] = @ptrCast(buf.?);
+            call(void, v.device, slot.device_create_render_target_view, .{ t.buffers[i], @as(?*const anyopaque, null), t.rtvs[i] });
+        }
+        t.texture = t.buffers[0];
+    }
+
+    /// Gives the swapchain of a window a new size in device pixels.
+    pub fn resizeSwapchain(v: *D3D12, t: *Target, width: u32, height: u32) !void {
+        v.waitIdle();
+        for (t.buffers) |b| api.release(b);
+        try check(call(api.HRESULT, t.swap.?, slot.swap_resize_buffers, .{ @as(u32, 0), width, height, api.DXGI_FORMAT_UNKNOWN, @as(u32, 0) }));
+        t.width = width;
+        t.height = height;
+        try v.getBuffers(t);
+    }
+
+    /// Shows the last draw of a swapchain at the next refresh.
+    pub fn present(_: *D3D12, t: *Target) !void {
+        try check(call(api.HRESULT, t.swap.?, slot.swap_present, .{ @as(u32, 1), @as(u32, 0) }));
+    }
+
     pub fn destroyTarget(v: *D3D12, t: *Target) void {
         v.waitIdle();
         if (v.target == t) v.target = null;
+        if (t.swap) |sc| {
+            for (t.buffers) |b| api.release(b);
+            api.release(sc);
+        } else api.release(t.texture);
         api.release(t.rtv_heap);
-        api.release(t.texture);
         v.gpa.destroy(t);
     }
 
@@ -388,8 +459,13 @@ pub const D3D12 = struct {
         }
         if (n > 0) @memcpy(v.instances.mapped.?[0..need], std.mem.sliceAsBytes(scene.quads.items));
         v.syncAtlas(atlas);
+        if (t.swap) |sc| {
+            const i = call(u32, sc, slot.swap_current_index, .{});
+            t.texture = t.buffers[i];
+            t.rtv = t.rtvs[i];
+        }
         try v.begin();
-        v.barrier(t.texture, api.RESOURCE_STATE_COPY_SOURCE, api.RESOURCE_STATE_RENDER_TARGET);
+        v.barrier(t.texture, t.rest, api.RESOURCE_STATE_RENDER_TARGET);
         call(void, v.list, slot.list_set_render_targets, .{ @as(u32, 1), &t.rtv, @as(api.BOOL, 0), @as(?*const anyopaque, null) });
         call(void, v.list, slot.list_clear_rtv, .{ t.rtv, &scene.clear, @as(u32, 0), @as(?*const anyopaque, null) });
         if (n > 0) {
@@ -405,7 +481,7 @@ pub const D3D12 = struct {
             call(void, v.list, slot.list_set_topology, .{api.D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP});
             call(void, v.list, slot.list_draw_instanced, .{ @as(u32, 4), @as(u32, @intCast(n)), @as(u32, 0), @as(u32, 0) });
         }
-        v.barrier(t.texture, api.RESOURCE_STATE_RENDER_TARGET, api.RESOURCE_STATE_COPY_SOURCE);
+        v.barrier(t.texture, api.RESOURCE_STATE_RENDER_TARGET, t.rest);
         try v.submitAndWait();
     }
 

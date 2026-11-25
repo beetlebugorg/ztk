@@ -171,6 +171,7 @@ pub const VK_LWIN: c_int = 0x5B;
 pub const VK_RWIN: c_int = 0x5C;
 
 // Waitable timers.
+pub const CREATE_WAITABLE_TIMER_MANUAL_RESET: DWORD = 0x00000001;
 pub const CREATE_WAITABLE_TIMER_HIGH_RESOLUTION: DWORD = 0x00000002;
 pub const TIMER_ALL_ACCESS: DWORD = 0x1F0003;
 
@@ -186,6 +187,7 @@ pub extern "kernel32" fn QueryPerformanceFrequency(freq: *i64) callconv(.winapi)
 pub extern "kernel32" fn CreateWaitableTimerExW(attrs: ?*anyopaque, name: ?LPCWSTR, flags: DWORD, access: DWORD) callconv(.winapi) ?HANDLE;
 pub extern "kernel32" fn SetWaitableTimer(timer: HANDLE, due: *const i64, period: LONG, routine: ?*anyopaque, arg: ?*anyopaque, resume_: BOOL) callconv(.winapi) BOOL;
 pub extern "kernel32" fn CloseHandle(h: HANDLE) callconv(.winapi) BOOL;
+pub extern "kernel32" fn WaitForSingleObject(h: HANDLE, ms: DWORD) callconv(.winapi) DWORD;
 pub extern "kernel32" fn GlobalAlloc(flags: UINT, bytes: usize) callconv(.winapi) ?HGLOBAL;
 pub extern "kernel32" fn GlobalFree(mem: HGLOBAL) callconv(.winapi) ?HGLOBAL;
 pub extern "kernel32" fn GlobalLock(mem: HGLOBAL) callconv(.winapi) ?*anyopaque;

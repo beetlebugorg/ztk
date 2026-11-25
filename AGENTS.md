@@ -38,6 +38,8 @@ systemd-run --user --scope -q -p MemoryMax=4G -p MemorySwapMax=0 -- <command>
 | `tests/web.sh` | Runs the demo and the gallery in a headless Chromium: DOM input, the accessible roles, WebGPU, WebGL 2, and the CPU renderer in a 2D canvas against the native CPU renderer, a display-p3 canvas, a WebGPU device loss, the CPU time of a frame with WebGPU and with WebGL 2, and the frame time in V8. It needs `node`. |
 | `tests/site.sh` | Builds the site with the web build, makes each card of the landing page go live in a headless Chromium, compares its first frame with its poster in light and dark, and sends a click, text, and a toggle. It then checks the size and the aspect ratio of each canvas of the playground and the landing page at three page sizes and the pixel ratios 1, 2, and 3. That check needs `node`. Set `PYTHON` to a Python with `markdown-it-py` and `Pillow`. |
 | `tests/shots.sh` | Checks that the files in `docs/site/shots` equal new shots, and runs each example in `wish`. |
+| `ZTK_TEST_WINDOWS=1 zig build test -Dtest-filter=windows` | On Windows: runs the tests of the Win32 backend with hidden windows. Without the variable they print `SKIP:`. |
+| `ZTK_RENDERER=cpu\|d3d12\|warp zig-out/bin/ztk script.tcl` | On Windows: runs a script in a window with the CPU output, Direct3D 12, or Direct3D 12 on WARP. The default is Direct3D 12, and the CPU output when no device exists. |
 
 Each later task adds its commands to this table.
 

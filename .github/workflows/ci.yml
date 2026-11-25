@@ -98,6 +98,9 @@ jobs:
     # The core and the headless backend on Windows, as on macOS.
     name: Test (Windows)
     runs-on: windows-latest
+    env:
+      # The tests of the Win32 backend make hidden windows.
+      ZTK_TEST_WINDOWS: "1"
     defaults:
       run:
         shell: bash
