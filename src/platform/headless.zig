@@ -59,6 +59,13 @@ pub const Headless = struct {
     /// clipboard in the place of another program. A set clears `clip_foreign`.
     clip_set: std.ArrayListUnmanaged(u8) = .empty,
     clip_foreign: ?[]const u8 = null,
+    /// The last call of `textInput`, and the count of the calls.
+    ime_on: bool = false,
+    ime_rect: geom.Rect = .{},
+    ime_calls: u32 = 0,
+    /// The texts of the input method events in the queue, freed at the next `poll`.
+    ime_texts: std.ArrayListUnmanaged([]u8) = .empty,
+    ime_texts_old: std.ArrayListUnmanaged([]u8) = .empty,
 
     pub fn init(gpa: std.mem.Allocator) !*Headless {
         const h = try gpa.create(Headless);
@@ -78,6 +85,10 @@ pub const Headless = struct {
         h.windows.deinit(h.gpa);
         h.queue.deinit(h.gpa);
         h.clip_set.deinit(h.gpa);
+        h.freeTexts(&h.ime_texts);
+        h.freeTexts(&h.ime_texts_old);
+        h.ime_texts.deinit(h.gpa);
+        h.ime_texts_old.deinit(h.gpa);
         h.gpa.destroy(h);
     }
 
@@ -97,7 +108,34 @@ pub const Headless = struct {
         .setCursor = vSetCursor,
         .clipboardSet = vClipboardSet,
         .clipboardGet = vClipboardGet,
+        .textInput = vTextInput,
     };
+
+    fn vTextInput(ptr: *anyopaque, _: *Window, on: bool, rect: geom.Rect) void {
+        const h = self(ptr);
+        h.ime_on = on;
+        h.ime_rect = rect;
+        h.ime_calls += 1;
+    }
+
+    fn freeTexts(h: *Headless, list: *std.ArrayListUnmanaged([]u8)) void {
+        for (list.items) |s| h.gpa.free(s);
+        list.clearRetainingCapacity();
+    }
+
+    /// Queues a `preedit` event as an input method gives it.
+    pub fn imePreedit(h: *Headless, w: *Window, text: []const u8, caret: u32) !void {
+        const s = try h.gpa.dupe(u8, text);
+        try h.ime_texts.append(h.gpa, s);
+        h.push(.{ .preedit = .{ .window = w, .text = s, .caret = caret } });
+    }
+
+    /// Queues a `commit` event as an input method gives it.
+    pub fn imeCommit(h: *Headless, w: *Window, text: []const u8) !void {
+        const s = try h.gpa.dupe(u8, text);
+        try h.ime_texts.append(h.gpa, s);
+        h.push(.{ .commit = .{ .window = w, .text = s } });
+    }
 
     fn vClipboardSet(ptr: *anyopaque, _: []const u8, data: []const u8) void {
         const h = self(ptr);
@@ -185,6 +223,9 @@ pub const Headless = struct {
 
     fn vPoll(ptr: *anyopaque, gpa: std.mem.Allocator, out: *std.ArrayListUnmanaged(Event)) anyerror!void {
         const h = self(ptr);
+        // The texts of the last poll are done. The texts of this poll stay until the next one.
+        h.freeTexts(&h.ime_texts_old);
+        std.mem.swap(std.ArrayListUnmanaged([]u8), &h.ime_texts, &h.ime_texts_old);
         try out.appendSlice(gpa, h.queue.items);
         h.queue.clearRetainingCapacity();
         for (h.windows.items) |*r| if (r.frame_wanted) {

@@ -73,6 +73,8 @@ test {
     _ = @import("tests/headless.zig");
     _ = @import("tests/cursor.zig");
     _ = @import("tests/sysclip.zig");
+    _ = @import("tests/ime.zig");
+    _ = @import("textinput.zig");
     _ = @import("tests/tree.zig");
     _ = @import("tests/options.zig");
     _ = @import("tests/loop.zig");
@@ -96,9 +98,12 @@ test {
         _ = @import("platform/win32.zig");
         _ = @import("tests/win32.zig");
         _ = @import("render/d3d12_api.zig");
+        _ = @import("sys/com.zig");
         _ = @import("tests/d3d12.zig");
         _ = @import("platform/windows.zig");
         _ = @import("tests/windows.zig");
+        _ = @import("platform/tsf.zig");
+        _ = @import("tests/tsf.zig");
         _ = @import("platform/winkeys.zig");
     }
     _ = anim;

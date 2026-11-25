@@ -315,6 +315,24 @@ pub fn handleIn(app: *App, ev: event.Event, root: *Widget) void {
             };
             bind.deliver(app, &e);
         },
+        .commit => |c| {
+            // Each character of the text is a press and a release of its
+            // keysym, as typed keys give, so the bindings of the entry insert it.
+            @import("textinput.zig").setPreedit(app, "", 0);
+            var it = std.unicode.Utf8View.init(c.text) catch return;
+            var cps = it.iterator();
+            while (cps.nextCodepointSlice()) |s| {
+                const cp = std.unicode.utf8Decode(s) catch continue;
+                var k: event.Event = .{ .key = .{ .window = c.window, .keysym = keysym.fromCodepoint(cp), .keycode = 0, .pressed = true, .repeat = false, .mods = .{}, .time_ms = 0 } };
+                @memcpy(k.key.text[0..s.len], s);
+                k.key.text_len = @intCast(s.len);
+                handleIn(app, k, root);
+                k.key.pressed = false;
+                k.key.text_len = 0;
+                handleIn(app, k, root);
+            }
+        },
+        .preedit => |p| @import("textinput.zig").setPreedit(app, p.text, p.caret),
         else => {},
     }
 }
