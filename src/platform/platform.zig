@@ -114,7 +114,15 @@ pub const Platform = struct {
         /// `gpa`. Null: the system has no data of the type, or the data of
         /// the last `clipboardSet` is still the latest.
         clipboardGet: ?*const fn (ptr: *anyopaque, gpa: std.mem.Allocator, typ: []const u8) ?[]u8 = null,
+        /// Turns the input method of a window on for a text widget with the
+        /// focus, or off. `rect` is the place of the text in logical pixels
+        /// of the window, for the candidate window of the input method.
+        textInput: ?*const fn (ptr: *anyopaque, w: *Window, on: bool, rect: geom.Rect) void = null,
     };
+
+    pub fn textInput(p: Platform, w: *Window, on: bool, rect: geom.Rect) void {
+        if (p.vtable.textInput) |f| f(p.ptr, w, on, rect);
+    }
 
     pub fn clipboardSet(p: Platform, typ: []const u8, data: []const u8) void {
         if (p.vtable.clipboardSet) |f| f(p.ptr, typ, data);

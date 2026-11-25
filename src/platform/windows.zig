@@ -42,6 +42,7 @@ const winkeys = @import("winkeys.zig");
 const keysym_mod = @import("../keysym.zig");
 const Mods = event.Mods;
 const Cursor = plat.Cursor;
+const tsf = @import("tsf.zig");
 
 pub const Renderer = enum { auto, d3d12, cpu };
 
@@ -80,6 +81,8 @@ const WinRec = struct {
     cursor: ?w32.HCURSOR = null,
     /// True after `TrackMouseEvent`, until `WM_MOUSELEAVE`.
     tracking: bool = false,
+    /// The text store of the input method, when TSF exists.
+    store: ?*tsf.Store = null,
     /// The buttons that are down, bit 0 for button 1.
     buttons: u8 = 0,
 };
@@ -98,6 +101,11 @@ pub const Win32 = struct {
     high_surrogate: u16 = 0,
     /// The sequence number of the clipboard after the last `clipboardSet`.
     own_seq: u32 = 0,
+    /// The thread manager of TSF, or null with no input method.
+    tsf: ?tsf.Tsf = null,
+    /// The texts of the input method events, freed one `poll` later.
+    ime_texts: std.ArrayListUnmanaged([]u8) = .empty,
+    ime_texts_old: std.ArrayListUnmanaged([]u8) = .empty,
     last_frame_us: i64 = 0,
     /// Counts of the frames that each output drew, for the tests.
     gpu_frames: std.atomic.Value(u32) = .init(0),
@@ -120,6 +128,7 @@ pub const Win32 = struct {
         const timer = w32.CreateWaitableTimerExW(null, null, w32.CREATE_WAITABLE_TIMER_MANUAL_RESET | w32.CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, w32.TIMER_ALL_ACCESS) orelse return error.NoTimer;
         const b = try gpa.create(Win32);
         b.* = .{ .gpa = gpa, .opts = opts, .inst = inst, .timer = timer };
+        b.tsf = tsf.Tsf.init() catch null;
         return b;
     }
 
@@ -127,6 +136,11 @@ pub const Win32 = struct {
         while (b.windows.items.len > 0) destroy(b, b.windows.items[b.windows.items.len - 1].win);
         b.windows.deinit(b.gpa);
         b.queue.deinit(b.gpa);
+        if (b.tsf) |*m| m.deinit();
+        b.freeTexts(&b.ime_texts);
+        b.freeTexts(&b.ime_texts_old);
+        b.ime_texts.deinit(b.gpa);
+        b.ime_texts_old.deinit(b.gpa);
         _ = w32.CloseHandle(b.timer);
         b.gpa.destroy(b);
     }
@@ -150,6 +164,7 @@ pub const Win32 = struct {
         .setCursor = vSetCursor,
         .clipboardSet = vClipboardSet,
         .clipboardGet = vClipboardGet,
+        .textInput = vTextInput,
     };
 
     fn self(ptr: *anyopaque) *Win32 {
@@ -207,6 +222,12 @@ pub const Win32 = struct {
         errdefer b.gpa.destroy(rec);
         rec.* = .{ .win = w, .hwnd = hwnd, .host = b, .surface = surf };
         try b.windows.append(b.gpa, rec);
+        if (b.tsf) |*m| {
+            const store = try tsf.Store.init(b.gpa, .{ .ctx = rec, .preedit = onPreedit, .commit = onCommit });
+            if (m.attach(store)) |_| {
+                rec.store = store;
+            } else |_| store.deinit();
+        }
         _ = w32.SetWindowLongPtrW(hwnd, w32.GWLP_USERDATA, @bitCast(@intFromPtr(rec)));
         const outer = outerSize(hwnd, opts.size, scale);
         _ = w32.SetWindowPos(hwnd, null, 0, 0, outer[0], outer[1], w32.SWP_NOMOVE | w32.SWP_NOZORDER | w32.SWP_NOACTIVATE);
@@ -225,6 +246,13 @@ pub const Win32 = struct {
             break;
         };
         _ = w32.SetWindowLongPtrW(rec.hwnd, w32.GWLP_USERDATA, 0);
+        if (rec.store) |s| {
+            if (b.tsf) |*m| {
+                m.focus(s, rec.hwnd, false);
+                m.detach(s);
+            }
+            s.deinit();
+        }
         freeSurface(b, rec.surface);
         _ = w32.DestroyWindow(rec.hwnd);
         b.gpa.destroy(rec);
@@ -287,6 +315,9 @@ pub const Win32 = struct {
 
     fn vPoll(ptr: *anyopaque, gpa: std.mem.Allocator, out: *std.ArrayListUnmanaged(Event)) anyerror!void {
         const b = self(ptr);
+        // The texts of the events of the last poll are done.
+        b.freeTexts(&b.ime_texts_old);
+        std.mem.swap(std.ArrayListUnmanaged([]u8), &b.ime_texts, &b.ime_texts_old);
         var msg: w32.MSG = .{};
         while (w32.PeekMessageW(&msg, null, 0, 0, w32.PM_REMOVE) != 0) {
             _ = w32.TranslateMessage(&msg);
@@ -358,6 +389,51 @@ pub const Win32 = struct {
             .nwse_resize => w32.IDC_SIZENWSE,
             .nesw_resize => w32.IDC_SIZENESW,
         };
+    }
+
+    // ---- Input method ----
+
+    fn freeTexts(b: *Win32, list: *std.ArrayListUnmanaged([]u8)) void {
+        for (list.items) |s| b.gpa.free(s);
+        list.clearRetainingCapacity();
+    }
+
+    /// A copy of a text of the store that lives until one `poll` after the next.
+    fn keepText(b: *Win32, text: []const u8) ?[]const u8 {
+        const s = b.gpa.dupe(u8, text) catch return null;
+        b.ime_texts.append(b.gpa, s) catch {
+            b.gpa.free(s);
+            return null;
+        };
+        return s;
+    }
+
+    fn onPreedit(ctx: *anyopaque, text: []const u8, caret: u32) void {
+        const rec: *WinRec = @ptrCast(@alignCast(ctx));
+        const s = rec.host.keepText(text) orelse return;
+        rec.host.push(.{ .preedit = .{ .window = rec.win, .text = s, .caret = caret } });
+    }
+
+    fn onCommit(ctx: *anyopaque, text: []const u8) void {
+        const rec: *WinRec = @ptrCast(@alignCast(ctx));
+        const s = rec.host.keepText(text) orelse return;
+        rec.host.push(.{ .commit = .{ .window = rec.win, .text = s } });
+    }
+
+    fn vTextInput(ptr: *anyopaque, w: *Window, on: bool, rect: geom.Rect) void {
+        const b = self(ptr);
+        const rec = b.recOf(w) orelse return;
+        const store = rec.store orelse return;
+        if (b.tsf) |*m| {
+            store.setRect(rec.hwnd, w.scale, rect);
+            m.focus(store, rec.hwnd, on);
+        }
+    }
+
+    /// The text store of a window, for the tests.
+    pub fn storeOf(b: *Win32, w: *Window) ?*tsf.Store {
+        const rec = b.recOf(w) orelse return null;
+        return rec.store;
     }
 
     // ---- Clipboard ----
@@ -527,6 +603,8 @@ pub const Win32 = struct {
         const vk: u32 = @intCast(wp & 0xffff);
         const ulp: usize = @bitCast(lp);
         const scan: u32 = @intCast((ulp >> 16) & 0x1ff);
+        // VK_PROCESSKEY: the input method has the key.
+        if (vk == 0xE5) return;
         const pressed = msg == w32.WM_KEYDOWN or msg == w32.WM_SYSKEYDOWN;
         if (!pressed) {
             const sym = b.down_syms[scan];

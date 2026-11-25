@@ -37,7 +37,7 @@ PR 6 and PR 7 use the entries and the events that the macOS PRs 7 and 8 add. Whi
 | `textInput(window, on, rect)` | `ITfThreadMgr::AssociateFocus` with the document of the window for `on`, and the rectangle that `ITextStoreACP2::GetTextExt` gives for `rect` |
 | `appearance()` | `AppsUseLightTheme` under `HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`, and `DwmGetColorizationColor` |
 
-Input methods use the Text Services Framework (TSF), by the decision of the user (2026-11-25). At start, the UI thread calls `CoInitializeEx` for a single-threaded apartment, makes the thread manager (`CLSID_TF_ThreadMgr`), and calls `Activate`. Each window has a document manager with one context. The context gets a text store of ztk, a COM object in Zig that implements `ITextStoreACP2` and `ITfContextOwnerCompositionSink`. The store has the text of the current composition only. `OnStartComposition` and `OnUpdateComposition` give `preedit` with the text of the composition range and the caret in it. `OnEndComposition` gives `commit` with the text that the input method left, and the store then empties. `GetTextExt` and `GetScreenExt` give the caret rectangle of `textInput`, in screen pixels, so the candidate window shows at the caret. The DLLs are `ole32` and `msctf`, both parts of Windows.
+Input methods use the Text Services Framework (TSF), by the decision of the user (2026-11-25). At start, the UI thread calls `CoInitializeEx` for a single-threaded apartment, makes the thread manager (`CLSID_TF_ThreadMgr`), and calls `Activate`. Each window has a document manager with one context. The context gets a text store of ztk, a COM object in Zig that implements `ITextStoreACP2` and `ITfContextOwnerCompositionSink`. The store has the text of the current composition only. `OnStartComposition` and `OnUpdateComposition` give `preedit` with the text of the composition range and the caret in it. `OnEndComposition` gives `commit` with the text that the input method left, and the store then empties. `GetTextExt` gives the rectangle of `textInput` (the box of the text widget), and `GetScreenExt` the client area of the window, in screen pixels, so the candidate window shows next to the widget. `textInput` comes from `src/textinput.zig`, which gives the backend the text widget with the focus after each flush. A `commit` event becomes one key press and release for each character, so the bindings of the entry insert it. The DLLs are `ole32` and `msctf`, both parts of Windows.
 
 ## The event loop
 
@@ -77,6 +77,9 @@ Rule 12 of `AGENTS.md` forbids windows on the live desktop session of the develo
 - `DefWindowProc` runs its own message loop while a person moves or sizes a window. The UI thread does not return to the loop of the App in that time, so the window shows its last frame until the move ends. A timer during `WM_ENTERSIZEMOVE` can run the loop of the App, in a later PR.
 - The frame clock has 60 ticks in each second on each monitor, also on a monitor with a higher refresh rate.
 - The pointer positions reach the render thread from the UI thread only, so a drag that the render thread moves stops while the UI thread is busy.
+- The entry does not draw the composition text yet. The `preedit` event keeps it in `app.text_input` for the widget code, and the candidate window of the input method shows the choices.
+- The candidate window shows at the box of the text widget. The caret position is known only to the paint code of the entry.
+- The clipboard code of PR 6 has not run with success: the development machine and the CI runner give the test process no clipboard access.
 - The fonts of the system (DirectWrite) and the accessibility tree (UI Automation) are not part of this plan.
 
 ## Decisions

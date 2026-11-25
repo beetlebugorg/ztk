@@ -469,6 +469,7 @@ pub fn destroy(w: *Widget) void {
 fn release(w: *Widget) void {
     const app = w.app;
     app.dispatch.forget(w);
+    app.text_input.forget(w);
     focus.forget(app, w);
     anim.forget(app, w);
     @import("grab.zig").forget(app, w);
