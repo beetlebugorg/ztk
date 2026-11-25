@@ -1,0 +1,35 @@
+/* The vector tool: the tool column, the properties panel, and the
+   console on top of the modern theme. The canvas items take their
+   colors from ztk::style scheme. */
+.panel {
+  background-color: var(--bg);
+}
+
+.heading {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+Radiobutton.tool {
+  padding: 4px 10px;
+}
+
+Radiobutton.tool:checked {
+  background-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+.console {
+  border-top: 1px solid var(--border);
+}
+
+.conout {
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--muted);
+}

@@ -1,0 +1,17 @@
+/* The spreadsheet: a toolbar and a name box on top of the modern theme.
+   The canvas items take their colors from ztk::style scheme. */
+.toolbar {
+  background-color: var(--bg);
+}
+
+.ref {
+  font-weight: 700;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.celledit {
+  border-radius: 0;
+}
