@@ -248,6 +248,31 @@ pub fn main(init: std.process.Init) !void {
         report("scale-drag", buf[0..runs]);
     }
 
+    // scroll-wheel: fine wheel steps (a touchpad) scroll an entry and its scrollbar beside 1 000 widgets,
+    // one step for each frame, on an App with transitions on, so the view eases and glides.
+    {
+        var sw: World = undefined;
+        try sw.it.init(gpa);
+        sw.head = try ztk.headless.Headless.init(gpa);
+        sw.app = try ztk.App.init(gpa, &sw.it, .{ .platform = sw.head.platform(), .io = io, .animations = true });
+        defer sw.deinit();
+        sw.head.skip_draw = true;
+        sw.eval(thousand);
+        sw.eval("entry .we -width 30 -xscrollcommand {.ws set}; scrollbar .ws -orient horizontal -command {.we xview}; .we insert 0 [string repeat {scroll the long text } 200]; .we icursor 0; grid .we -row 101 -column 0 -columnspan 20; grid .ws -row 102 -column 0 -columnspan 20 -sticky ew; update");
+        const we = sw.app.find(".we").?;
+        const win = sw.app.window.?;
+        sw.head.pointerMove(win, @floatFromInt(we.geom.x + 20), @floatFromInt(we.geom.y + 5));
+        const runs = 200;
+        for (buf[0..runs], 0..) |*slot, i| {
+            sw.head.advance(16);
+            sw.head.pointerScroll(win, if ((i / 50) % 2 == 0) 0.3 else -0.3, 0);
+            const t0 = nowNs();
+            sw.eval("update");
+            slot.* = nowNs() - t0;
+        }
+        report("scroll-wheel", buf[0..runs]);
+    }
+
     // idle-1000: App.frame with no dirty flag.
     {
         const runs = 400;

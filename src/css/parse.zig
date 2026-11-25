@@ -26,6 +26,8 @@ pub const Pseudo = enum {
     indeterminate,
     window_inactive,
     root,
+    /// ztk: a scrollbar or a view that scrolled a moment ago.
+    scrolling,
 };
 
 pub const Compound = struct {
@@ -163,6 +165,7 @@ const pseudo_names = [_]struct { []const u8, Pseudo }{
     .{ "indeterminate", .indeterminate },
     .{ "window-inactive", .window_inactive },
     .{ "root", .root },
+    .{ "scrolling", .scrolling },
 };
 
 const Err = std.mem.Allocator.Error;

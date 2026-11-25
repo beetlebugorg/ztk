@@ -36,7 +36,7 @@ test "entry: insert, index, and icursor" {
     try t.expectEqualStrings("bad entry index \"bogus\"", try h.evalError(".e index bogus"));
     try t.expectEqualStrings("wrong # args: should be \".e insert index text\"", try h.evalError(".e insert 0"));
     try t.expectEqualStrings("bad option \"bogus\": must be bbox, cget, configure, delete, get, icursor, index, insert, scan, selection, validate, or xview", try h.evalError(".e bogus"));
-    try t.expectEqualStrings("xview is not supported in this stage", try h.evalError(".e xview"));
+    try t.expectEqualStrings("0.0 1.0", try h.eval(".e xview"));
 }
 
 test "entry: selection and delete" {

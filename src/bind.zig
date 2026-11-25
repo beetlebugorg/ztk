@@ -35,6 +35,7 @@ pub const EventType = enum(u8) {
     map = 19,
     configure = 22,
     virtual = 35,
+    mouse_wheel = 38,
 };
 
 pub const Pattern = struct {
@@ -75,6 +76,9 @@ pub const WidgetEvent = struct {
     serial: u32 = 0,
     virtual: []const u8 = "",
     data: []const u8 = "",
+    /// The wheel delta of `%D`: 120 for one step up, and a fraction of it
+    /// for a touchpad or a wheel with fine steps.
+    delta: f32 = 0,
 };
 
 // ---- Parsing ----
@@ -181,6 +185,7 @@ const type_names = [_]TypeName{
     .{ .name = "Destroy", .t = .destroy },
     .{ .name = "Map", .t = .map },
     .{ .name = "Unmap", .t = .unmap },
+    .{ .name = "MouseWheel", .t = .mouse_wheel },
 };
 
 fn findMod(name: []const u8) ?ModName {
@@ -350,6 +355,7 @@ fn writePattern(w: *std.Io.Writer, p: Pattern) !void {
         .unmap => "Unmap",
         .map => "Map",
         .configure => "Configure",
+        .mouse_wheel => "MouseWheel",
         .virtual => "",
     };
     try w.writeAll(type_text);
@@ -527,8 +533,9 @@ pub fn substitute(gpa: std.mem.Allocator, script: []const u8, ev: *const WidgetE
         const f = script[i];
         const is_key = isKeyType(ev.type);
         const is_button = isButtonType(ev.type);
-        const has_xy = is_button or is_key or ev.type == .motion or ev.type == .enter or ev.type == .leave or ev.type == .configure or ev.type == .virtual;
-        const has_state = is_button or is_key or ev.type == .motion or ev.type == .enter or ev.type == .leave;
+        const wheel = ev.type == .mouse_wheel;
+        const has_xy = is_button or is_key or wheel or ev.type == .motion or ev.type == .enter or ev.type == .leave or ev.type == .configure or ev.type == .virtual;
+        const has_state = is_button or is_key or wheel or ev.type == .motion or ev.type == .enter or ev.type == .leave;
         switch (f) {
             '%' => try out.append(gpa, '%'),
             'W' => try appendQuoted(gpa, &out, ev.widget.path),
@@ -548,6 +555,9 @@ pub fn substitute(gpa: std.mem.Allocator, script: []const u8, ev: *const WidgetE
             'h' => if (ev.type == .configure) try out.print(gpa, "{d}", .{ev.height}) else try out.appendSlice(gpa, "??"),
             'w' => if (ev.type == .configure) try out.print(gpa, "{d}", .{ev.width}) else try out.appendSlice(gpa, "??"),
             '#' => try out.print(gpa, "{d}", .{ev.serial}),
+            'D' => if (wheel) {
+                if (ev.delta == @trunc(ev.delta)) try out.print(gpa, "{d}", .{@as(i64, @intFromFloat(ev.delta))}) else try out.print(gpa, "{d}", .{ev.delta});
+            } else try out.appendSlice(gpa, "??"),
             'd' => if (ev.type == .virtual) try appendQuoted(gpa, &out, ev.data) else try out.appendSlice(gpa, "??"),
             else => try out.append(gpa, f),
         }

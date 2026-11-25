@@ -248,6 +248,21 @@ pub fn handleIn(app: *App, ev: event.Event, root: *Widget) void {
                 }
             }
         },
+        .scroll => |sc| {
+            // A wheel event goes to the widget under the pointer, or to the grab.
+            const target = d.grab orelse grab.redirect(app, widgetAt(root, num.pxFloor(sc.x), num.pxFloor(sc.y)));
+            if (!target.alive()) return;
+            // A vertical step and a horizontal step are two events. A
+            // horizontal step is Shift with the wheel, as in Tk 8.7.
+            const steps = [2]f32{ sc.dy, sc.dx };
+            for (steps, 0..) |s, i| {
+                if (s == 0 or !target.alive()) continue;
+                var e = pointerEvent(app, .mouse_wheel, target, sc.x, sc.y, sc.mods, sc.time_ms);
+                if (i == 1) e.mods.shift = true;
+                e.delta = -s * 120;
+                bind.deliver(app, &e);
+            }
+        },
         .leave => {
             if (d.grab != null) return;
             updateHover(app, null, 0, 0, .{}, 0);
@@ -367,6 +382,8 @@ pub fn cmdEvent(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztc
             ev.time_ms = @intCast(std.math.clamp(try it.int(argv[i]), 0, std.math.maxInt(u32)));
         } else if (std.mem.eql(u8, opt, "-data")) {
             ev.data = try it.alloc().dupe(u8, val);
+        } else if (std.mem.eql(u8, opt, "-delta")) {
+            ev.delta = @floatCast(std.fmt.parseFloat(f64, val) catch return it.fail("expected integer but got \"{s}\"", .{val}));
         } else if (std.mem.eql(u8, opt, "-width")) {
             ev.width = num.px(try it.int(argv[i]));
         } else if (std.mem.eql(u8, opt, "-height")) {

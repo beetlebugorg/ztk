@@ -23,6 +23,7 @@ const shape = @import("../text/shape.zig");
 const font_mod = @import("../text/font.zig");
 const edit_mod = @import("../text/edit.zig");
 const loop_mod = @import("../loop.zig");
+const scroll = @import("../scroll.zig");
 const App = @import("../app.zig").App;
 const Spec = options.Spec;
 const Widget = widget.Widget;
@@ -53,6 +54,7 @@ pub const specs = [_]Spec{
     .{ .name = "-takefocus", .db_name = "takeFocus", .db_class = "TakeFocus", .type = .string, .allow_empty = true },
     .{ .name = "-textvariable", .db_name = "textVariable", .db_class = "Variable", .type = .variable, .allow_empty = true },
     .{ .name = "-width", .db_name = "width", .db_class = "Width", .type = .int, .default = "20" },
+    .{ .name = "-xscrollcommand", .db_name = "xScrollCommand", .db_class = "ScrollCommand", .type = .script, .allow_empty = true },
 };
 
 const subcommand_list = "bbox, cget, configure, delete, get, icursor, index, insert, scan, selection, validate, or xview";
@@ -78,8 +80,10 @@ pub const class: widget.Class = .{
 
 const Data = struct {
     edit: edit_mod.Edit,
-    /// The scroll offset of the text in logical pixels.
-    left: i32 = 0,
+    /// The scroll offset of the text in logical pixels (`xview`).
+    view: scroll.View = .{},
+    /// The next paint scrolls the view so that the caret shows.
+    see: bool = true,
     caret_on: bool = true,
     timer: ?loop_mod.TimerId = null,
     /// The time of the next blink, in microseconds on the clock of the loop.
@@ -291,24 +295,30 @@ fn paintEntry(w: *Widget, b: *scene.Builder) anyerror!void {
     const m = font_mod.Fonts.metrics(mfont);
     var run1 = try shape.shape(a, mfont, shown);
     defer run1.deinit(a);
-    // Keep the caret inside the content rectangle.
+    // The view: the text and the caret, in the content rectangle.
     const insw: i32 = blk: {
         const v = options.get(w, "-insertwidth").value;
         break :blk if (v == .pixels) v.pixels else 2;
     };
     const caret_byte = shownByte(w, shown, d.edit.caret);
     const caret_x = run1.caretX(shown, caret_byte);
-    if (run1.width + insw <= content.w) {
-        d.left = 0;
-    } else {
-        if (caret_x - d.left > content.w - insw) d.left = caret_x - content.w + insw;
-        if (caret_x - d.left < 0) d.left = caret_x;
-        d.left = @max(d.left, 0);
+    d.view.setSize(@floatFromInt(run1.width + insw), @floatFromInt(content.w));
+    if (d.see) {
+        // Keep the caret inside the content rectangle.
+        d.see = false;
+        const left: i32 = @intFromFloat(@round(d.view.pos));
+        var to = left;
+        if (caret_x - to > content.w - insw) to = caret_x - content.w + insw;
+        if (caret_x - to < 0) to = caret_x;
+        if (to != left) d.view.jump(@floatFromInt(to));
     }
+    scroll.report(w, &d.view, "-xscrollcommand");
     var run = try shape.shape(a, pfont, shown);
     defer run.deinit(a);
     const base_y = content.y + @divTrunc(content.h - m.line_height, 2) + m.ascent;
-    const x0 = content.x - d.left;
+    const x0 = content.x - num.pxRound(d.view.shown(w));
+    const first_quad = b.scene.quads.items.len;
+    defer scroll.paintDrag(w, b, &d.view, first_quad, 0) catch {};
     b.pushClip(content);
     defer b.popClip();
     var sel_x0: i32 = 0;
@@ -383,6 +393,7 @@ fn armTimer(w: *Widget, d: *Data, from_us: ?i64) void {
 /// Shows the caret and starts the on time again.
 fn restartCaret(w: *Widget) void {
     const d = dataOf(w);
+    d.see = true;
     d.caret_on = true;
     armTimer(w, d, null);
     changed(w);
@@ -400,7 +411,7 @@ fn indexAtX(w: *Widget, x: i32) usize {
     var run = shape.shape(a, mfont, shown) catch return d.edit.caret;
     defer run.deinit(a);
     const content = paint.contentRect(w, &w.style);
-    const byte = run.indexAt(shown, x - content.x + d.left);
+    const byte = run.indexAt(shown, x - content.x + num.pxRound(d.view.pos));
     // Convert the byte offset in the shown text to a character index.
     var chars: usize = 0;
     for (shown[0..@min(byte, shown.len)]) |c| {
@@ -430,13 +441,14 @@ fn parseIndex(w: *Widget, it: *ztcl.Interp, v: Value) ztcl.Error!usize {
 
 // ---- Widget subcommands ----
 
-const unsupported = [_][]const u8{ "bbox", "scan", "validate", "xview" };
+const unsupported = [_][]const u8{ "bbox", "scan", "validate" };
 
 fn subcommand(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!?Value {
     const sub = try it.str(argv[1]);
     const d = dataOf(w);
     const a = it.alloc();
     for (unsupported) |u| if (std.mem.eql(u8, sub, u)) return it.fail("{s} is not supported in this stage", .{u});
+    if (std.mem.eql(u8, sub, "xview")) return try xview(w, it, argv);
     if (std.mem.eql(u8, sub, "get")) {
         if (argv.len != 2) return it.fail("wrong # args: should be \"{s} get\"", .{w.path});
         return .{ .str = try a.dupe(u8, d.edit.text()) };
@@ -494,6 +506,61 @@ fn selection(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!Value
         return it.fail("selection {s} is not supported in this stage", .{opt});
     }
     return it.fail("bad selection option \"{s}\": must be adjust, clear, from, present, range, or to", .{opt});
+}
+
+/// `xview ?index?`, `xview moveto f`, and `xview scroll n units|pages`. A
+/// unit is the width of "0" and a page is the width of the window.
+fn xview(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!Value {
+    const d = dataOf(w);
+    w.app.ensureStyle(w);
+    syncView(w);
+    // A view that a script sets stays until the caret moves again.
+    d.see = false;
+    const content = paint.contentRect(w, &w.style);
+    const unit: f64 = @floatFromInt(@max(paint.zeroWidth(w.app, w.style.font), 1));
+    const steps: scroll.Steps = .{ .unit = unit, .page = @max(@as(f64, @floatFromInt(content.w)) - unit, unit) };
+    if (try scroll.command(w, it, argv, &d.view, steps, true)) |v| {
+        if (argv.len > 2) scroll.report(w, &d.view, "-xscrollcommand");
+        return v;
+    }
+    if (argv.len != 3) return it.fail("unknown option \"{s}\": must be moveto or scroll", .{try it.str(argv[2])});
+    // `xview index`: the character goes to the left edge.
+    const index = try parseIndex(w, it, argv[2]);
+    d.view.jump(@floatFromInt(indexX(w, index)));
+    scroll.report(w, &d.view, "-xscrollcommand");
+    changed(w);
+    return Value.empty;
+}
+
+/// The x of the character `index` in the text, from its start.
+fn indexX(w: *Widget, index: usize) i32 {
+    const d = dataOf(w);
+    const a = w.app.gpa;
+    const shown = shownText(w, a) catch return 0;
+    defer if (shown.ptr != d.edit.text().ptr) a.free(shown);
+    const mfont = scaleOne(w) orelse return 0;
+    var run = shape.shape(a, mfont, shown) catch return 0;
+    defer run.deinit(a);
+    return run.caretX(shown, shownByte(w, shown, index));
+}
+
+/// Gives the view the size of the text and of the window, as the paint does.
+fn syncView(w: *Widget) void {
+    const d = dataOf(w);
+    const a = w.app.gpa;
+    const shown = shownText(w, a) catch return;
+    defer if (shown.ptr != d.edit.text().ptr) a.free(shown);
+    const mfont = scaleOne(w) orelse return;
+    var run = shape.shape(a, mfont, shown) catch return;
+    defer run.deinit(a);
+    const insw: i32 = blk: {
+        const v = options.get(w, "-insertwidth").value;
+        break :blk if (v == .pixels) v.pixels else 2;
+    };
+    // Before its first layout the entry has its requested width.
+    const ins = paint.insets(&w.style);
+    const vis = if (w.mapped) paint.contentRect(w, &w.style).w else measure(w).w - ins.horizontal();
+    d.view.setSize(@floatFromInt(run.width + insw), @floatFromInt(@max(vis, 0)));
 }
 
 fn afterEdit(w: *Widget) void {
@@ -601,6 +668,7 @@ pub fn register(app: *App) !void {
     _ = try it.eval(
         \\bind Entry <Button-1> {::ztk::priv::entry click %W %x}
         \\bind Entry <B1-Motion> {::ztk::priv::entry drag %W %x}
+        \\bind Entry <Shift-MouseWheel> {%W xview scroll [expr {-%D / 30.0}] units}
         \\bind Entry <Double-Button-1> {::ztk::priv::entry word %W %x}
         \\bind Entry <Triple-Button-1> {::ztk::priv::entry all %W}
         \\bind Entry <Shift-Button-1> {::ztk::priv::entry extend %W %x}

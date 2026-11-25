@@ -431,6 +431,8 @@ pub fn applyAnims(f: *Frame, time_us: i64) bool {
 /// drag moves only the far edge of each quad. The distances are logical
 /// pixels and `scale` turns them into device pixels. `rects` is the
 /// index of the rectangles of the quads at the paint in `Frame.drag_rects`.
+/// `gain` multiplies the distance: the content of a scrolled view moves
+/// against its scrollbar thumb, by the ratio of the view to the track.
 pub const FrameDrag = struct {
     first: u32,
     count: u32,
@@ -441,6 +443,7 @@ pub const FrameDrag = struct {
     lo: f32,
     hi: f32,
     scale: f32,
+    gain: f32 = 1,
 };
 
 /// Moves the quads of each drag for a pointer position in logical pixels
@@ -451,7 +454,7 @@ pub fn applyDrags(f: *Frame, px: f32, py: f32) void {
     for (f.drags.items) |d| {
         if (d.first + d.count > quads.len or d.rects + d.count > rects.len) continue;
         const ptr = if (d.axis == 0) px else py;
-        const off = std.math.clamp(ptr - d.base, d.lo, d.hi) * d.scale;
+        const off = std.math.clamp(ptr - d.base, d.lo, d.hi) * d.gain * d.scale;
         for (quads[d.first..][0..d.count], rects[d.rects..][0..d.count]) |*q, r| {
             q.rect = r;
             if (d.stretch) q.rect[2 + @as(usize, d.axis)] = @max(r[2 + @as(usize, d.axis)] + off, 0) else q.rect[d.axis] = r[d.axis] + off;

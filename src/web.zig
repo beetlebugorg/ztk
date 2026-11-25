@@ -136,6 +136,11 @@ export fn ztk_button(button: u8, pressed: bool) void {
     head.pointerButton(app.window.?, button, pressed);
 }
 
+/// A wheel or touchpad scroll, in wheel steps (1 is one step down or right).
+export fn ztk_wheel(dx: f32, dy: f32) void {
+    head.pointerScroll(app.window.?, dx, dy);
+}
+
 export fn ztk_leave() void {
     head.pointerLeave(app.window.?);
 }

@@ -649,7 +649,8 @@ pub const Wayland = struct {
 
     fn onPointerAxis(data: ?*anyopaque, _: ?*c.wl_pointer, _: u32, axis: u32, value: c.wl_fixed_t) callconv(.c) void {
         const w: *Wayland = @ptrCast(@alignCast(data.?));
-        const v = fixed(value);
+        // A wheel step is 10 pixels on the axis. The event counts steps.
+        const v = fixed(value) / 10;
         if (w.window) |win| w.push(.{ .scroll = .{
             .window = win,
             .dx = if (axis == c.WL_POINTER_AXIS_HORIZONTAL_SCROLL) v else 0,

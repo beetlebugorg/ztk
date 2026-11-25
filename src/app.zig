@@ -166,6 +166,8 @@ pub const App = struct {
     part_move: PartMove = .none,
     /// True while `paintOwn` paints the parts at the end of their moves.
     part_end: bool = false,
+    /// The drag of a scrollbar thumb, for the view that it scrolls.
+    scroll_link: ?@import("scroll.zig").Link = null,
     anim_last_us: i64 = -1,
     anim_requested_us: i64 = -1,
     stats: stats_mod.Stats = .{},
@@ -659,12 +661,17 @@ pub const App = struct {
     /// frame, so the render thread moves them with the pointer. `base`,
     /// `lo`, and `hi` are logical pixels of the window. See `scene.FrameDrag`.
     pub fn addDrag(app: *App, b: *scene_mod.Builder, first: usize, axis: u1, stretch: bool, base: f32, lo: f32, hi: f32) !void {
+        return app.addDragGain(b, first, axis, stretch, base, lo, hi, 1);
+    }
+
+    /// `addDrag` with a gain: the quads move by `gain` times the distance of the pointer.
+    pub fn addDragGain(app: *App, b: *scene_mod.Builder, first: usize, axis: u1, stretch: bool, base: f32, lo: f32, hi: f32, gain: f32) !void {
         const fr = app.anim_frame orelse return;
         const quads = b.scene.quads.items;
         if (first >= quads.len) return;
         const at = fr.drag_rects.items.len;
         for (quads[first..]) |q| try fr.drag_rects.append(app.gpa, q.rect);
-        try fr.drags.append(app.gpa, .{ .first = @intCast(first), .count = @intCast(quads.len - first), .rects = @intCast(at), .axis = axis, .stretch = stretch, .base = base, .lo = lo, .hi = hi, .scale = b.scale });
+        try fr.drags.append(app.gpa, .{ .first = @intCast(first), .count = @intCast(quads.len - first), .rects = @intCast(at), .axis = axis, .stretch = stretch, .base = base, .lo = lo, .hi = hi, .scale = b.scale, .gain = gain });
     }
 
     /// Notes the move of a part in the paint of a widget, for `paintOwn`.
@@ -876,8 +883,7 @@ pub const App = struct {
             },
             .focus => |f| focus_mod.windowFocus(app, f.focused),
             .scale => top.invalidate(.{ .style = false, .measure = false, .layout = false, .paint = true }),
-            .motion, .button, .leave, .key => dispatch.handleIn(app, ev, top),
-            else => {},
+            .motion, .button, .leave, .key, .scroll => dispatch.handleIn(app, ev, top),
         }
     }
 

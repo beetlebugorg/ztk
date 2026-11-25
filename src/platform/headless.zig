@@ -266,6 +266,12 @@ pub const Headless = struct {
         h.pointerButton(w, 1, false);
     }
 
+    /// A wheel or touchpad scroll at the pointer, in wheel steps: 1 is one
+    /// step down (dy) or right (dx).
+    pub fn pointerScroll(h: *Headless, w: *Window, dx: f32, dy: f32) void {
+        h.push(.{ .scroll = .{ .window = w, .dx = dx, .dy = dy, .x = h.px, .y = h.py, .mods = h.currentMods(), .time_ms = h.timeMs() } });
+    }
+
     pub fn pointerLeave(h: *Headless, w: *Window) void {
         h.push(.{ .leave = .{ .window = w } });
     }

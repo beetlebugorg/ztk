@@ -77,9 +77,23 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - The examples that read no files run as they are. `ztk::style load` gets the style sheet that the page fetched.
 - The page has no budget check of its size yet. The module is 3.0 MB (1.0 MB with gzip) and loads only when the first card goes live.
 
+## Scrolling and scrollbar (task 07)
+
+- `scrollbar` has the options of `wish` 8.6.16 with their defaults, and the subcommands `activate`, `delta`, `fraction`, `get`, `identify`, and `set`, with the old protocol of four integers. `-activebackground`, `-activerelief`, `-elementborderwidth`, `-highlight*`, `-relief`, `-repeatdelay`, `-repeatinterval`, and `-troughcolor` are stored and have no effect on the look.
+- The modern theme draws no arrows, so `identify` gives `trough1`, `slider`, or `trough2`, and never `arrow1` or `arrow2`. `fraction` and `delta` count from the ends of the trough, and `wish` counts from the arrows, so the numbers differ from `wish` for the same size. The thumb is at least 16 pixels long, or twice the width of the trough. The classic look with arrows comes with the `classic` theme of task 09.
+- A press on the trough scrolls one page. Holding the button does not repeat.
+- The modern scrollbar is an overlay: the trough is clear, and the thumb shows while the view scrolls (the pseudo-class `:scrolling`, for 0.9 s after a `set` that moves it), on hover, and during a drag, and fades out after a delay. A new scrollbar shows its thumb for 0.9 s, as a view that appears. A scrollbar with the fractions 0 and 1 has no thumb. A script that packs a scrollbar beside its content keeps the requested width, and a script can `place` it over the content. The widgets that scroll themselves (canvas, listbox, text) get a built-in overlay in their tasks.
+- The wheel: `<MouseWheel>` with `%D` (120 for one step up) goes to the widget under the pointer, and a horizontal step is `<Shift-MouseWheel>`, as in Tk 8.7. A step of a touchpad or of a fine wheel gives a fraction of 120. `event generate` has `-delta`. The X11 events `<Button-4>` and `<Button-5>` do not come from the wheel. The Wayland backend counts 10 pixels of an axis as one step, and the browser counts 100 pixels (`deltaMode` 0) or 3 lines as one step.
+- `xview scroll` and `yview scroll` accept a number with a fraction, where Tk 8.6 accepts an integer. The message for a word is the message of `wish`.
+- `xview moveto` and a scroll by units or pages move the view with an ease of 160 ms. `xview` gives the end fractions at once. A step with a fraction of a unit adds momentum: the view glides on by the speed of the last steps for 450 ms. The backends give no end event of a touchpad gesture, so the glide follows each step and not the lift of the fingers.
+- The render thread moves the thumb and the view with the pointer during a drag of the thumb, when `-command` is `path xview` or `path yview` of a widget with a view (an `entry` in this task). The view moves only the quads that it painted, so text outside the painted part shows when the UI thread paints again.
+- `entry` has `xview` (with an index, `moveto`, and `scroll`) and `-xscrollcommand`. A unit is the width of `0`, and a page is the width of the window less one unit. The fractions count pixels, and `wish` counts characters, so they differ from `wish` for a text with characters of other widths. An `xview` of a script stays until the caret moves.
+- `zig build bench`, ReleaseFast, 2026-11-25, development machine with a load average of 5 to 7: `scroll-wheel` (fine wheel steps scroll an entry and its scrollbar beside 1 000 widgets, one step for each frame, with transitions on) median 5.08 ms and 99th percentile 7.23 ms, under the gate of 8 ms. Most of the time is the paint of the whole scene for each frame. In the same run `anim-1000` had a 99th percentile of 8.05 ms under that load.
+
 ## Additions
 
 - `ztk::animate`, `ztk::clock`, the timing function `spring()`, and the flag `--time` of the `ztk` program.
 - The style classes `switch` (checkbutton) and `segmented` (radiobutton), and the part `::indicator`.
 - `ztk::tooltip path ?text?`, the parts `::tooltip` of a toplevel and `::label` of a labelframe.
 - The parts `::trough`, `::fill`, `::slider`, and `::value` of a scale.
+- The pseudo-class `:scrolling`, the parts `::trough` and `::thumb` of a scrollbar, a fraction of a unit for `xview scroll` and `yview scroll`, and the event `<MouseWheel>` with a fraction of 120 in `%D`.
