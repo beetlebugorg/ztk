@@ -80,8 +80,10 @@ The `test` job gets a matrix entry for `macos-latest`. The macOS runner has no L
 
 Rule 12 of `AGENTS.md` forbids windows on the live desktop session of the development machine. The Metal tests draw offscreen. The window tests of PR 5 run only with `ZTK_TEST_WINDOWS=1`, which CI sets.
 
-## Decisions for the user
+## Decisions
 
-1. The modifier keys. The `bind` manual page of Tk 8.6 lists `Command` as a name of `Mod1` and `Option` as a name of `Mod2`, for macOS. With that map, a script with `<Command-c>` works on Tk and on ztk. The other choice is the X11 map (Command as `Mod4`, Option as `Mod1`, the Alt of a PC). The recommendation is the map of Tk on macOS.
-2. The default backend of `ztk` on macOS. The recommendation is AppKit when a window server exists, and the headless backend with `--headless` and in CI, as on Linux.
+The user decided these on 2026-11-25 (a comment on the PR of this plan):
+
+1. The modifier map is the map of Tk on macOS. The `bind` manual page of Tk 8.6 lists `Command` as a name of `Mod1` and `Option` as a name of `Mod2`. A script with `<Command-c>` works on Tk and on ztk.
+2. The default backend of `ztk` on macOS is AppKit with the Metal renderer. The CPU renderer is the fallback when Metal gives no device. `--headless` selects the headless backend, as on Linux.
 3. The native menu bar and dialogs of decision D9 wait for Stage 7. Until then, a toplevel menu draws in the window on macOS too.
