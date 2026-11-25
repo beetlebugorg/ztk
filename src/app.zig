@@ -178,6 +178,8 @@ pub const App = struct {
     clipboard: @import("clipboard.zig").Store = .{},
     /// The input method: what the backend has, and the composition text.
     text_input: @import("textinput.zig").State = .{},
+    /// The accent color of the system, when the backend gives one. The themes do not use it yet.
+    accent: ?geom.Color = null,
     anim_last_us: i64 = -1,
     anim_requested_us: i64 = -1,
     stats: stats_mod.Stats = .{},
@@ -235,6 +237,8 @@ pub const App = struct {
         const root_dir: ?[]const u8 = if (opts.style_root) |r| try gpa.dupe(u8, r) else null;
         app.* = .{ .gpa = gpa, .it = it, .root_class = rc, .app_name = an, .platform = opts.platform, .loop = undefined, .err_output = opts.err_output, .styles = style_mod.StyleSet.init(gpa), .io = opts.io, .on_exit = opts.on_exit, .animations = opts.animations, .start_us = opts.start_us, .compact_threshold = opts.compact_threshold, .fonts = fonts, .atlas = atlas_mod.Atlas.init(gpa), .bindings = bind.Table.init(gpa) };
         app.env.dark = opts.dark;
+        // With no --dark, the scheme follows the system when the backend gives it.
+        if (!opts.dark) app.followSystem();
         app.style_root = root_dir;
         app.loop = loop.Loop.init(app, app.platform.clock());
         return app;
@@ -407,6 +411,18 @@ pub const App = struct {
         if (!w.dirty.style) return;
         if (w.parent) |p| app.ensureStyle(p);
         app.computeOne(w);
+    }
+
+    /// Reads the dark mode and the accent color of the system, and restyles
+    /// each widget when the scheme changed.
+    pub fn followSystem(app: *App) void {
+        const a = app.platform.appearance() orelse return;
+        app.accent = a.accent;
+        if (a.dark == app.env.dark) return;
+        app.env.dark = a.dark;
+        app.styles.generation +%= 1;
+        if (app.root) |r| r.invalidate(.{ .style = true, .measure = true, .layout = true, .paint = true });
+        for (app.tops.items) |t| t.invalidate(.{ .style = true, .measure = true, .layout = true, .paint = true });
     }
 
     fn markAllStyle(app: *App) void {
@@ -920,6 +936,7 @@ pub const App = struct {
             .focus => |f| focus_mod.windowFocus(app, f.focused),
             .scale => top.invalidate(.{ .style = false, .measure = false, .layout = false, .paint = true }),
             .motion, .button, .leave, .key, .scroll, .preedit, .commit => dispatch.handleIn(app, ev, top),
+            .appearance => app.followSystem(),
         }
     }
 

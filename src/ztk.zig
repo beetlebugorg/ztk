@@ -74,6 +74,7 @@ test {
     _ = @import("tests/cursor.zig");
     _ = @import("tests/sysclip.zig");
     _ = @import("tests/ime.zig");
+    _ = @import("tests/appearance.zig");
     _ = @import("textinput.zig");
     _ = @import("tests/tree.zig");
     _ = @import("tests/options.zig");

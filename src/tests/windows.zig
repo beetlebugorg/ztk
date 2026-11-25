@@ -334,3 +334,21 @@ test "windows: an entry with the focus gets the text store, and a commit inserts
     _ = try it.eval("update");
     try t.expectEqualStrings("\u{65E5}\u{672C}", try it.str(try it.eval(".e get")));
 }
+
+test "windows: the appearance of the system and its change message" {
+    if (!enabled()) return;
+    var events: std.ArrayListUnmanaged(Event) = .empty;
+    defer events.deinit(t.allocator);
+    const o = try openHidden(&events);
+    defer o.b.deinit();
+    const a = o.b.appearanceNow();
+    std.debug.print("windows: dark {}, accent {any}\n", .{ a.dark, a.accent });
+    const name = std.unicode.utf8ToUtf16LeStringLiteral("ImmersiveColorSet");
+    _ = w32.SendMessageW(o.hwnd, w32.WM_SETTINGCHANGE, 0, @bitCast(@intFromPtr(name)));
+    try pollAll(o.b, &events);
+    try t.expect(has(events.items, .appearance) != null);
+    const other = std.unicode.utf8ToUtf16LeStringLiteral("intl");
+    _ = w32.SendMessageW(o.hwnd, w32.WM_SETTINGCHANGE, 0, @bitCast(@intFromPtr(other)));
+    try pollAll(o.b, &events);
+    try t.expect(has(events.items, .appearance) == null);
+}

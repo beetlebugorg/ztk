@@ -53,6 +53,9 @@ pub const Event = union(enum) {
     /// The text that an input method gives to the widget, in UTF-8. The
     /// text belongs to the backend until the next `poll`.
     commit: struct { window: *Window, text: []const u8 },
+    /// The dark mode or the accent color of the system changed. The core
+    /// reads them again with `Platform.appearance`.
+    appearance: struct { window: *Window },
 
     /// The window of the event. The pointer is never dereferenced by the
     /// caller when the window may be gone.

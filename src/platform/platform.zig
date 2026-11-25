@@ -13,6 +13,13 @@ const RenderThread = @import("../render/thread.zig").RenderThread;
 
 pub const WindowOptions = struct { title: []const u8 = "", size: geom.Size = .{ .w = 200, .h = 200 } };
 
+/// The appearance of the system.
+pub const Appearance = struct {
+    dark: bool,
+    /// The accent color, when the system has one.
+    accent: ?geom.Color = null,
+};
+
 /// The pointer shapes, with the names of the CSS `cursor` property.
 pub const Cursor = enum {
     default,
@@ -118,7 +125,16 @@ pub const Platform = struct {
         /// focus, or off. `rect` is the place of the text in logical pixels
         /// of the window, for the candidate window of the input method.
         textInput: ?*const fn (ptr: *anyopaque, w: *Window, on: bool, rect: geom.Rect) void = null,
+        /// The dark mode and the accent color of the system. A backend
+        /// gives an `appearance` event when they change.
+        appearance: ?*const fn (ptr: *anyopaque) Appearance = null,
     };
+
+    /// Null: the backend has no appearance of the system.
+    pub fn appearance(p: Platform) ?Appearance {
+        const f = p.vtable.appearance orelse return null;
+        return f(p.ptr);
+    }
 
     pub fn textInput(p: Platform, w: *Window, on: bool, rect: geom.Rect) void {
         if (p.vtable.textInput) |f| f(p.ptr, w, on, rect);
