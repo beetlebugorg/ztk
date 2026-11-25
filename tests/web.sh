@@ -89,6 +89,21 @@ ok = r.get("check", "").endswith("Ada")
 print(("ok" if ok else "FAIL") + ": typed text reaches the entry through the hidden input (%r)" % r.get("check"))
 sys.exit(0 if ok else 1)
 PY
+# The scrollbar of the gallery: a DOM wheel event over its entry scrolls the
+# entry, and the scrollbar follows through -xscrollcommand.
+cp "$root/examples/gallery.tcl" "$root/examples/gallery.css" "$work/"
+{ cat "$root/examples/gallery.tcl"; printf '\nwm geometry . 860x680\nupdate\nset e .cols.right.scroll.e\nputs "[expr {[winfo rootx $e] + 10}],[expr {[winfo rooty $e] + 5}]"\nexit\n'; } > "$work/gwhere.tcl"
+gwhere="$(cd "$work" && "$root/zig-out/bin/ztk" --headless gwhere.tcl 2>/dev/null)"
+out="$(page "example=gallery&light&size=860x680&wheel=$gwhere,200,0&test=list%20%5B.cols.right.scroll.e%20xview%5D%20%5B.cols.right.scroll.s%20get%5D")"
+echo "$out" > "$work/wheel.json"
+python3 -I - "$work/wheel.json" <<'PY' || fail=1
+import json, sys
+r = json.load(open(sys.argv[1]))
+c = r.get("check", "").replace("{", "").replace("}", "").split()
+ok = len(c) == 4 and float(c[0]) > 0.3 and c[0:2] == c[2:4]
+print(("ok" if ok else "FAIL") + ": a DOM wheel event scrolls the entry and its scrollbar (%r)" % r.get("check"))
+sys.exit(0 if ok else 1)
+PY
 # The pixels: each renderer against the CPU renderer, for the gallery at the same size.
 gsize=720x440
 q="example=gallery&light&size=$gsize&test=wm%20geometry%20.%20$gsize"

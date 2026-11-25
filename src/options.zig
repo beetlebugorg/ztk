@@ -52,6 +52,8 @@ pub const Spec = struct {
     target: []const u8 = "",
     /// The words that `state` accepts, for a `state` option.
     words: []const []const u8 = &.{},
+    /// The name in the message of a bad `word`, when it is not the option name.
+    word_name: []const u8 = "",
     /// An empty string is a valid value.
     allow_empty: bool = false,
     /// The option can be set only when the widget is made.
@@ -218,7 +220,7 @@ pub fn parseValue(w: *const Widget, it: *ztcl.Interp, spec: Spec, text: []const 
         },
         .word => {
             const i = matchWord(text, spec.words) orelse
-                return it.fail("bad {s} \"{s}\": must be {s}", .{ spec.name[1..], text, try joinWords(it, spec.words) });
+                return it.fail("bad {s} \"{s}\": must be {s}", .{ if (spec.word_name.len > 0) spec.word_name else spec.name[1..], text, try joinWords(it, spec.words) });
             return .{ .word = @intCast(i) };
         },
         .double => {

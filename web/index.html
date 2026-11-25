@@ -98,6 +98,13 @@ if (params.has("test")) {
     input.dispatchEvent(new InputEvent("input", { data: input.value }));
     ztk.frame(performance.now());
   }
+  // ?wheel=x,y,dx,dy: a DOM wheel event at a point, in pixels (deltaMode 0).
+  if (params.get("wheel")) {
+    const [x, y, dx, dy] = params.get("wheel").split(",").map(Number);
+    const r = canvas.getBoundingClientRect();
+    canvas.dispatchEvent(new WheelEvent("wheel", { clientX: r.left + x, clientY: r.top + y, deltaX: dx, deltaY: dy, deltaMode: 0, bubbles: true, cancelable: true }));
+    ztk.frame(performance.now());
+  }
   ztk.frame(performance.now() + 1000);
   // ?probe: the CSS size and the backing store of the canvas, and its first image.
   const probe = params.has("probe") ? (() => {

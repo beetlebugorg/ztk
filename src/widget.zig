@@ -46,7 +46,9 @@ pub const State = packed struct(u16) {
     invalid: bool = false,
     alternate: bool = false,
     background: bool = false,
-    _pad: u7 = 0,
+    /// A scroll moved the view a moment ago (`:scrolling`).
+    scrolling: bool = false,
+    _pad: u6 = 0,
 };
 
 pub const Dirty = packed struct(u8) {
@@ -440,6 +442,7 @@ fn finish(w: *Widget) void {
     // A Destroy binding can use `grid` on the widget again.
     release(w);
     if (w.class.teardown) |f| f(w);
+    @import("scroll.zig").forget(w);
     app.bindings.removeTag(w.path);
     @import("grab.zig").dropTooltip(app, w.path);
     _ = app.widgets.remove(w.path);

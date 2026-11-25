@@ -380,6 +380,13 @@ export async function start(canvas, options = {}) {
   });
   on(canvas, "pointerup", (e) => { mods(e); ex.ztk_pointer(...pos(e)); ex.ztk_button([1, 2, 3][e.button] || 1, false); });
   on(canvas, "pointerleave", () => ex.ztk_leave());
+  // A wheel step is 100 pixels in deltaMode 0 and 3 lines in deltaMode 1.
+  canvas.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    mods(e); ex.ztk_pointer(...pos(e));
+    const k = e.deltaMode === 1 ? 1 / 3 : e.deltaMode === 2 ? 10 : 1 / 100;
+    ex.ztk_wheel(e.deltaX * k, e.deltaY * k);
+  }, { passive: false, signal });
   on(canvas, "contextmenu", (e) => e.preventDefault());
   let composing = false;
   on(input, "compositionstart", () => { composing = true; });

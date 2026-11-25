@@ -102,6 +102,17 @@ scale .cols.right.scales.s -orient horizontal -from 0 -to 100 -variable vol -tic
 pack .cols.right.scales.s -fill x
 pack .cols.right.scales -fill x -pady {10 4} -padx 6
 
+# A scrollbar: an entry with a long text scrolls with the scrollbar under it.
+set sc .cols.right.scroll
+labelframe $sc -text "Scrollbar" -padx 12 -pady 6
+entry $sc.e -width 22 -xscrollcommand [list $sc.s set]
+scrollbar $sc.s -orient horizontal -command [list $sc.e xview]
+$sc.e insert 0 "A long line of text that is wider than its entry, so the scrollbar under it moves the view."
+pack $sc.e $sc.s -fill x
+pack $sc -fill x -pady {10 4} -padx 6
+$sc.e xview moveto 0.3
+$sc.s set {*}[$sc.e xview]
+
 # A labelframe with a message, and a tooltip on the Save button.
 labelframe .cols.left.notes -text "Labelframe and message" -padx 12 -pady 6
 message .cols.left.notes.m -width 300 -text "A message breaks its text into lines. A labelframe puts a title above a group of widgets."

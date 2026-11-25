@@ -23,6 +23,7 @@ fn pseudoMatches(p: parse.Pseudo, w: *const Widget) bool {
         .indeterminate => w.state.alternate,
         .window_inactive => w.state.background,
         .root => w.parent == null,
+        .scrolling => w.state.scrolling,
     };
 }
 
