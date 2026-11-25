@@ -156,6 +156,19 @@ grid $tk.cb $tk.sp $tk.sc -sticky w -padx 4 -pady 3
 grid $tk.pb -columnspan 3 -sticky ew -padx 4 -pady {3 6}
 pack .cols.right.ttk -fill x -pady 4
 
+# Lists: a sidebar, and a list with a scrollbar and the extended selection mode.
+set ls [card .cols.left.lists "Lists"]
+listbox $ls.side -height 4 -width 12 -activestyle none -exportselection 0
+$ls.side insert end Inbox Drafts Sent Archive
+$ls.side selection set 0
+cls $ls.side sidebar
+listbox $ls.l -height 4 -width 16 -selectmode extended -exportselection 0 -yscrollcommand [list $ls.sb set]
+scrollbar $ls.sb -command [list $ls.l yview]
+$ls.l insert end Apple Apricot Banana Blueberry Cherry Date Fig Grape Kiwi Lemon Mango
+$ls.l selection set 2
+grid $ls.side $ls.l $ls.sb -sticky nsew -padx 4
+pack .cols.left.lists -fill x -pady 4
+
 # A labelframe with a message, and a tooltip on the Save button.
 labelframe .cols.left.notes -text "Labelframe and message" -padx 12 -pady 6
 message .cols.left.notes.m -width 300 -text "A message breaks its text into lines. A labelframe puts a title above a group of widgets."

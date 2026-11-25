@@ -296,6 +296,12 @@ pack .tools.gap
 button .tools.undo -text Undo -command vec::undo
 button .tools.redo -text Redo -command vec::redo
 pack .tools.undo .tools.redo -fill x -pady 2
+label .tools.ll -text Layers -anchor w
+listbox .tools.layers -height 8 -width 10 -selectmode extended -exportselection 0 -activestyle none
+pack .tools.ll -fill x -pady {12 2}
+pack .tools.layers -fill both -expand 1
+cls .tools.ll heading
+bind .tools.layers <<ListboxSelect>> vec::picklayers
 
 frame .props -padx 10 -pady 8
 pack .props -side right -fill y
@@ -405,8 +411,41 @@ proc vec::selbox {} {
     return [list [lindex $xs 0] [lindex $ys 0] [lindex $xs end] [lindex $ys end]]
 }
 
+# Fills the layer list from the shapes, the top shape first, and shows
+# the selection in it. The rows change only when the shapes change.
+proc vec::layers {} {
+    variable order; variable sel; variable S; variable layerrows
+    set rows {}
+    foreach id [lreverse $order] {
+        set label "[string totitle [dict get $S($id) type]] $id"
+        if {[dict get $S($id) group] ne ""} { append label "  (group [dict get $S($id) group])" }
+        lappend rows $label
+    }
+    if {![info exists layerrows] || $rows ne $layerrows} {
+        set layerrows $rows
+        .tools.layers delete 0 end
+        .tools.layers insert end {*}$rows
+    }
+    .tools.layers selection clear 0 end
+    set n [llength $order]
+    foreach id $sel {
+        set i [lsearch -exact $order $id]
+        if {$i >= 0} { .tools.layers selection set [expr {$n - 1 - $i}] }
+    }
+}
+
+# A pick in the layer list selects the shapes of its rows.
+proc vec::picklayers {} {
+    variable order
+    set n [llength $order]
+    set ids {}
+    foreach i [.tools.layers curselection] { lappend ids [lindex $order [expr {$n - 1 - $i}]] }
+    select $ids
+}
+
 proc vec::handles {} {
     variable P
+    layers
     .c delete ui
     set box [selbox]
     if {$box eq ""} { props; return }

@@ -307,6 +307,31 @@ pub fn main(init: std.process.Init) !void {
         report("scroll-wheel", buf[0..runs]);
     }
 
+    // listbox-scroll-10000: fine wheel steps scroll a listbox of 10,000 rows, one step
+    // for each frame, with transitions on, and a press selects a row each 20 frames.
+    {
+        var lw: World = undefined;
+        try lw.it.init(gpa);
+        lw.head = try ztk.headless.Headless.init(gpa);
+        lw.app = try ztk.App.init(gpa, &lw.it, .{ .platform = lw.head.platform(), .io = io, .animations = true });
+        defer lw.deinit();
+        lw.head.skip_draw = true;
+        lw.eval("listbox .lb -height 20; for {set i 0} {$i < 10000} {incr i} {.lb insert end \"Row $i of the list\"}; pack .lb; update");
+        const lb = lw.app.find(".lb").?;
+        const win = lw.app.window.?;
+        lw.head.pointerMove(win, @floatFromInt(lb.geom.x + 30), @floatFromInt(lb.geom.y + 40));
+        const runs = 200;
+        for (buf[0..runs], 0..) |*slot, i| {
+            lw.head.advance(16);
+            lw.head.pointerScroll(win, 0, if ((i / 100) % 2 == 0) 0.4 else -0.4);
+            if (i % 20 == 10) lw.head.click(win, @floatFromInt(lb.geom.x + 30), @floatFromInt(lb.geom.y + 40));
+            const t0 = nowNs();
+            lw.eval("update");
+            slot.* = nowNs() - t0;
+        }
+        report("listbox-scroll-10000", buf[0..runs]);
+    }
+
     // canvas-10000-scroll: a canvas with 10 000 items (a grid of 5 000 cells, each a rectangle
     // and a text) scrolls by fine wheel steps, one step for each frame, with transitions on.
     // canvas-drag: the pointer drags one item of the same canvas, one motion for each frame.

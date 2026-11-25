@@ -182,6 +182,15 @@ check "the console has no exit" [lindex $vec::conlines end] {error: invalid comm
 vec::run {llength [shape list]}
 check "the app goes on after the errors" [lindex $vec::conlines end] [llength $vec::order]
 
+# The layer list: a row for each shape, the top shape first, and a pick selects the shape.
+update
+check "the layer list has a row for each shape" [.tools.layers size] [llength $vec::order]
+.tools.layers selection clear 0 end
+.tools.layers selection set end
+event generate .tools.layers <<ListboxSelect>>
+check "a pick in the layer list selects the bottom shape" $vec::sel [lindex $vec::order 0]
+check "the selection shows in the layer list" [.tools.layers curselection] [expr {[llength $vec::order] - 1}]
+
 # SVG export, and the own format.
 vec::exportsvg
 set svg $vec::svg

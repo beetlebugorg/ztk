@@ -228,6 +228,29 @@ Canvas::selection {
   color: var(--fg);
 }
 
+Listbox {
+  color: var(--fg);
+  background-color: var(--field-bg);
+  border: 1px inset var(--bg);
+}
+
+Listbox::item {
+  padding: 1px 2px;
+}
+
+Listbox::selection {
+  background-color: var(--select);
+  color: var(--fg);
+}
+
+Listbox::active {
+  border: 1px solid var(--fg);
+}
+
+Listbox::empty {
+  color: var(--muted);
+}
+
 /* A classic scrollbar: a sunken trough and a raised thumb that always shows. */
 Scrollbar {
   background-color: var(--trough);

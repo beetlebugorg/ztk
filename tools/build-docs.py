@@ -37,6 +37,7 @@ PAGES = [
     ("docs/widgets/toggles.md", "widgets/toggles/", "Widgets", "Check and radio buttons"),
     ("docs/widgets/entry.md", "widgets/entry/", "Widgets", "Entry and spinbox"),
     ("docs/widgets/range.md", "widgets/range/", "Widgets", "Scale and scrollbar"),
+    ("docs/widgets/listbox.md", "widgets/listbox/", "Widgets", "Listbox"),
     ("docs/widgets/canvas.md", "widgets/canvas/", "Widgets", "Canvas"),
     ("docs/widgets/ttk.md", "widgets/ttk/", "Widgets", "Themed widgets (ttk)"),
     ("docs/widgets/geometry.md", "widgets/geometry/", "Widgets", "pack, grid, and place"),
