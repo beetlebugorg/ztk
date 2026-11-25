@@ -168,6 +168,8 @@ pub const App = struct {
     part_end: bool = false,
     /// The drag of a scrollbar thumb, for the view that it scrolls.
     scroll_link: ?@import("scroll.zig").Link = null,
+    /// The contents of the clipboard (`clipboard append`).
+    clipboard: @import("clipboard.zig").Store = .{},
     anim_last_us: i64 = -1,
     anim_requested_us: i64 = -1,
     stats: stats_mod.Stats = .{},
@@ -294,6 +296,7 @@ pub const App = struct {
         app.render_pool.deinit(app.gpa);
         app.widgets.deinit(app.gpa);
         app.classes.deinit(app.gpa);
+        app.clipboard.deinit(app.gpa);
         while (app.handles) |h| {
             app.handles = h.next;
             app.gpa.destroy(h);

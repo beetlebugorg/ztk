@@ -50,7 +50,6 @@ test "entry: selection and delete" {
     _ = try h.eval(".e selection clear");
     try t.expectEqualStrings("selection isn't in widget .e", try h.evalError(".e index sel.first"));
     try t.expectEqualStrings("bad selection option \"bogus\": must be adjust, clear, from, present, range, or to", try h.evalError(".e selection bogus"));
-    try t.expectEqualStrings("selection adjust is not supported in this stage", try h.evalError(".e selection adjust 1"));
     _ = try h.eval(".e delete 0 end; .e insert end abc; .e insert 1 XY");
     try t.expectEqualStrings("aXYbc", try get(&h));
     _ = try h.eval(".e delete 2");

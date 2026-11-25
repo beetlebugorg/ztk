@@ -90,8 +90,22 @@ label $e.l2 -text "Read only" -anchor w
 entry $e.e2 -width 22
 $e.e2 insert 0 "SP-0092-1187"
 $e.e2 configure -state disabled
+label $e.l3 -text "Search" -anchor w
+entry $e.s -width 17
+if {$ztk} {
+    $e.s configure -placeholder "Search files"
+    cls $e.s search
+}
+label $e.l4 -text "Copies" -anchor w
+spinbox $e.n -from 1 -to 99 -width 6
+label $e.l5 -text "Size" -anchor w
+spinbox $e.z -values {Small Medium Large} -state readonly -width 10
+$e.z set Medium
 grid $e.l $e.e -sticky ew -padx 4 -pady 3
 grid $e.l2 $e.e2 -sticky ew -padx 4 -pady 3
+grid $e.l3 $e.s -sticky ew -padx 4 -pady 3
+grid $e.l4 $e.n -sticky w -padx 4 -pady 3
+grid $e.l5 $e.z -sticky w -padx 4 -pady 3
 grid columnconfigure $e 1 -weight 1
 pack .cols.right.input -fill x -pady 4
 

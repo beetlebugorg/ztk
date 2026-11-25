@@ -95,6 +95,8 @@ test {
     _ = vulkan;
     _ = @import("tests/vulkan.zig");
     _ = @import("tests/entry.zig");
+    _ = @import("tests/entry2.zig");
+    _ = @import("tests/spinbox.zig");
     _ = @import("tests/frame.zig");
     _ = @import("tests/grid.zig");
     _ = @import("tests/pack.zig");
