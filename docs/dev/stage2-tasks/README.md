@@ -31,7 +31,7 @@ Do the tasks in order. One task is one branch, one PR, and one review. A task st
 | 17 | [The dialogs](17-dialogs.md) | 16 |
 | 18 | [The gallery and the site](18-gallery.md) | 17 |
 
-The state on 2026-11-25: the tasks of the table up to task 11 are merged.
+The state on 2026-11-25: the tasks of the table up to task 11 are merged. Task 12 has four PRs ([the menu design](../menus.md)). PR 1 (the platform interface, #52) and PR 2 (the menu model and the native path, #69) are merged. PR 3, the drawn menus, is next.
 
 Task 14 has two PRs (a decision for the user, 2026-11-25). PR 14a has the canvas widget, its scrolling, the stand-in `image` command, and `ztk::animate` on items. PR 14b has the two apps of the task, `examples/spreadsheet.tcl` and `examples/vector.tcl` with its script console, and their tests, gates, and gallery cards.
 
