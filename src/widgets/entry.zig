@@ -18,6 +18,7 @@ const std = @import("std");
 const num = @import("../num.zig");
 const ztcl = @import("ztcl");
 const geom = @import("../geom.zig");
+const clipboard = @import("../clipboard.zig");
 const widget = @import("../widget.zig");
 const anim = @import("../anim.zig");
 const options = @import("../options.zig");
@@ -1369,8 +1370,7 @@ fn cmdEntry(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
         },
         .copy, .cut => {
             const sel = selectedText(w, a) orelse return Value.empty;
-            app.clipboard.clear(app.gpa);
-            app.clipboard.append(app.gpa, "STRING", sel) catch return error.OutOfMemory;
+            clipboard.setText(app, sel) catch return error.OutOfMemory;
             if (act == .cut and normal) {
                 record(w, false);
                 deleteChars(w, e.sel_first, e.sel_last);
@@ -1378,9 +1378,8 @@ fn cmdEntry(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
             return Value.empty;
         },
         .paste => {
-            const data = app.clipboard.get("STRING") orelse return Value.empty;
             if (!normal) return Value.empty;
-            const text = try a.dupe(u8, data);
+            const text = (clipboard.read(app, a, "STRING") catch return error.OutOfMemory) orelse return Value.empty;
             record(w, false);
             // The paste of Tk on a windowing system other than x11 replaces the selection.
             if (e.hasSelection()) deleteChars(w, e.sel_first, e.sel_last);

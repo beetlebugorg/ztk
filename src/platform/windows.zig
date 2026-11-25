@@ -96,6 +96,8 @@ pub const Win32 = struct {
     down_syms: [512]u32 = @splat(0),
     /// The first half of a surrogate pair of `WM_CHAR`.
     high_surrogate: u16 = 0,
+    /// The sequence number of the clipboard after the last `clipboardSet`.
+    own_seq: u32 = 0,
     last_frame_us: i64 = 0,
     /// Counts of the frames that each output drew, for the tests.
     gpu_frames: std.atomic.Value(u32) = .init(0),
@@ -146,6 +148,8 @@ pub const Win32 = struct {
         .nowUs = vNowUs,
         .target = vTarget,
         .setCursor = vSetCursor,
+        .clipboardSet = vClipboardSet,
+        .clipboardGet = vClipboardGet,
     };
 
     fn self(ptr: *anyopaque) *Win32 {
@@ -354,6 +358,89 @@ pub const Win32 = struct {
             .nwse_resize => w32.IDC_SIZENWSE,
             .nesw_resize => w32.IDC_SIZENESW,
         };
+    }
+
+    // ---- Clipboard ----
+
+    /// Opens the clipboard for the first window. Another program can hold
+    /// it for a moment, so the open tries again for up to 20 ms.
+    fn openClipboard(b: *Win32) bool {
+        if (b.windows.items.len == 0) return false;
+        const hwnd = b.windows.items[0].hwnd;
+        for (0..20) |_| {
+            if (w32.OpenClipboard(hwnd) != 0) return true;
+            host.sleepUs(1000);
+        }
+        return false;
+    }
+
+    fn isText(typ: []const u8) bool {
+        return std.mem.eql(u8, typ, "STRING") or std.mem.eql(u8, typ, "UTF8_STRING");
+    }
+
+    /// Puts UTF-8 text on the clipboard as `CF_UNICODETEXT`, with each
+    /// `\n` as `\r\n`, the line end of Windows text.
+    fn vClipboardSet(ptr: *anyopaque, typ: []const u8, data: []const u8) void {
+        const b = self(ptr);
+        if (!isText(typ)) return;
+        const wide = std.unicode.utf8ToUtf16LeAlloc(b.gpa, data) catch return;
+        defer b.gpa.free(wide);
+        var lines: usize = 0;
+        for (wide) |u| {
+            if (u == '\n') lines += 1;
+        }
+        const units = wide.len + lines + 1;
+        const mem = w32.GlobalAlloc(w32.GMEM_MOVEABLE, units * 2) orelse return;
+        const p: [*]u16 = @ptrCast(@alignCast(w32.GlobalLock(mem) orelse {
+            _ = w32.GlobalFree(mem);
+            return;
+        }));
+        var n: usize = 0;
+        for (wide) |u| {
+            if (u == '\n') {
+                p[n] = '\r';
+                n += 1;
+            }
+            p[n] = u;
+            n += 1;
+        }
+        p[n] = 0;
+        _ = w32.GlobalUnlock(mem);
+        if (!b.openClipboard()) {
+            _ = w32.GlobalFree(mem);
+            return;
+        }
+        _ = w32.EmptyClipboard();
+        // The clipboard owns the memory after a set that worked.
+        if (w32.SetClipboardData(w32.CF_UNICODETEXT, mem) == null) _ = w32.GlobalFree(mem);
+        _ = w32.CloseClipboard();
+        b.own_seq = w32.GetClipboardSequenceNumber();
+    }
+
+    /// The text of the clipboard as UTF-8 with `\n` line ends, or null when
+    /// the last set of the App is still the latest change.
+    fn vClipboardGet(ptr: *anyopaque, gpa: std.mem.Allocator, typ: []const u8) ?[]u8 {
+        const b = self(ptr);
+        if (!isText(typ)) return null;
+        if (b.own_seq != 0 and w32.GetClipboardSequenceNumber() == b.own_seq) return null;
+        if (!b.openClipboard()) return null;
+        defer _ = w32.CloseClipboard();
+        const mem = w32.GetClipboardData(w32.CF_UNICODETEXT) orelse return null;
+        const raw = w32.GlobalLock(mem) orelse return null;
+        defer _ = w32.GlobalUnlock(mem);
+        const all: [*]const u16 = @ptrCast(@alignCast(raw));
+        const cap = w32.GlobalSize(mem) / 2;
+        const len = std.mem.indexOfScalar(u16, all[0..cap], 0) orelse cap;
+        const text = std.unicode.utf16LeToUtf8Alloc(gpa, all[0..len]) catch return null;
+        var n: usize = 0;
+        for (text, 0..) |ch, i| {
+            if (ch == '\r' and i + 1 < text.len and text[i + 1] == '\n') continue;
+            text[n] = ch;
+            n += 1;
+        }
+        if (n == text.len) return text;
+        defer gpa.free(text);
+        return gpa.dupe(u8, text[0..n]) catch null;
     }
 
     // ---- Input ----

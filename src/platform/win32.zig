@@ -230,6 +230,7 @@ pub extern "user32" fn CloseClipboard() callconv(.winapi) BOOL;
 pub extern "user32" fn EmptyClipboard() callconv(.winapi) BOOL;
 pub extern "user32" fn GetClipboardData(format: UINT) callconv(.winapi) ?HANDLE;
 pub extern "user32" fn SetClipboardData(format: UINT, mem: ?HANDLE) callconv(.winapi) ?HANDLE;
+pub extern "user32" fn GetClipboardSequenceNumber() callconv(.winapi) DWORD;
 
 pub extern "gdi32" fn SetDIBitsToDevice(dc: HDC, x: c_int, y: c_int, w: DWORD, h: DWORD, sx: c_int, sy: c_int, start: UINT, lines: UINT, bits: *const anyopaque, info: *const BITMAPINFOHEADER, usage: UINT) callconv(.winapi) c_int;
 

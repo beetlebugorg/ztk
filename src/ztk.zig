@@ -72,6 +72,7 @@ test {
     _ = @import("tests/scene.zig");
     _ = @import("tests/headless.zig");
     _ = @import("tests/cursor.zig");
+    _ = @import("tests/sysclip.zig");
     _ = @import("tests/tree.zig");
     _ = @import("tests/options.zig");
     _ = @import("tests/loop.zig");

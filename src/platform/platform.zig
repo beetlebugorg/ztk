@@ -107,7 +107,23 @@ pub const Platform = struct {
         /// Sets the pointer shape over the client area of a window. Null:
         /// the backend keeps its own shape.
         setCursor: ?*const fn (ptr: *anyopaque, w: *Window, shape: Cursor) void = null,
+        /// Puts data of a type on the clipboard of the system. The core
+        /// calls it with the type `STRING` and UTF-8 text.
+        clipboardSet: ?*const fn (ptr: *anyopaque, typ: []const u8, data: []const u8) void = null,
+        /// The data of a type on the clipboard of the system, in memory of
+        /// `gpa`. Null: the system has no data of the type, or the data of
+        /// the last `clipboardSet` is still the latest.
+        clipboardGet: ?*const fn (ptr: *anyopaque, gpa: std.mem.Allocator, typ: []const u8) ?[]u8 = null,
     };
+
+    pub fn clipboardSet(p: Platform, typ: []const u8, data: []const u8) void {
+        if (p.vtable.clipboardSet) |f| f(p.ptr, typ, data);
+    }
+
+    pub fn clipboardGet(p: Platform, gpa: std.mem.Allocator, typ: []const u8) ?[]u8 {
+        const f = p.vtable.clipboardGet orelse return null;
+        return f(p.ptr, gpa, typ);
+    }
 
     pub fn setCursor(p: Platform, w: *Window, shape: Cursor) void {
         if (p.vtable.setCursor) |f| f(p.ptr, w, shape);
