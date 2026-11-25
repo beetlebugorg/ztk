@@ -98,6 +98,8 @@ test {
     _ = @import("tests/frame.zig");
     _ = @import("tests/grid.zig");
     _ = @import("tests/pack.zig");
+    _ = @import("tests/anim2.zig");
+    _ = @import("easing.zig");
     _ = @import("tests/review.zig");
     _ = @import("tests/lifetime.zig");
     _ = @import("tests/ttf.zig");

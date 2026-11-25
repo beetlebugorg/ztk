@@ -16,7 +16,10 @@ Each specification is a W3C document. https://www.w3.org/Style/CSS/
 | CSS Backgrounds and Borders Module Level 3 | `background-color`, `border`, `border-radius`, `box-shadow` |
 | CSS Images Module Level 3 | `linear-gradient` and its angle and length rule |
 | CSS Values and Units Module Level 3 | `px`, `pt`, `em`, `rem`, and percentages |
-| CSS Transitions | `transition` and the `ease` timing function |
+| CSS Transitions Level 1 | `transition` with the property list, the duration, the timing function, and the delay; a change during a transition starts from the shown value |
+| CSS Animations Level 1 | `@keyframes`, `animation`, the count, the direction, and the fill mode |
+| CSS Easing Functions Level 1 | `linear`, `ease`, `ease-in`, `ease-out`, `ease-in-out`, `cubic-bezier()`, and `steps()` with its jump positions |
+| The damped harmonic oscillator of classical mechanics | The closed form of the motion of `spring()`, a ztk timing function that CSS does not have |
 | Media Queries Level 5 | `prefers-color-scheme` |
 | WCAG 2 | The contrast ratio of the scene checks |
 

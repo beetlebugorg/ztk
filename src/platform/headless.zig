@@ -83,7 +83,12 @@ pub const Headless = struct {
         .poll = vPoll,
         .nowUs = vNowUs,
         .target = vTarget,
+        .setTimeUs = vSetTime,
     };
+
+    fn vSetTime(ptr: *anyopaque, us: i64) void {
+        self(ptr).now_us = us;
+    }
 
     fn self(ptr: *anyopaque) *Headless {
         return @ptrCast(@alignCast(ptr));

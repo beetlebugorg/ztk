@@ -125,6 +125,16 @@ pub const App = struct {
     wall: *const fn () i64 = wallNow,
     animations: bool = true,
     anims: std.ArrayListUnmanaged(anim.Anim) = .empty,
+    key_anims: std.ArrayListUnmanaged(anim.KeyAnim) = .empty,
+    /// The animations of `ztk::animate`.
+    opt_anims: @import("animate.zig").State = .{},
+    /// True: each animation shows its end state at once (`ztk::animate reduce`).
+    reduce_motion: bool = false,
+    /// While set, `anim.shown` gives this style for this widget. The paint uses it
+    /// to paint the start of a transition for the render thread.
+    /// The frame that the paint fills, for the transitions of the render thread.
+    anim_frame: ?*scene_mod.Frame = null,
+    paint_override: ?struct { widget: *const Widget, style: *const style_mod.Style } = null,
     anim_last_us: i64 = -1,
     anim_requested_us: i64 = -1,
     stats: stats_mod.Stats = .{},
@@ -211,6 +221,8 @@ pub const App = struct {
         app.styles.deinit();
         app.bindings.deinit();
         app.anims.deinit(app.gpa);
+        anim.deinit(app);
+        app.opt_anims.deinit(app.gpa);
         app.fonts.deinit();
         app.atlas.deinit();
         app.wm.deinit(app.gpa);
@@ -284,12 +296,15 @@ pub const App = struct {
     fn computeOne(app: *App, w: *widget.Widget) void {
         const parent_style: ?*const style_mod.Style = if (w.parent) |p| &p.style else null;
         const new = app.styles.compute(w, null, parent_style, app.env);
-        if (!new.eql(&w.style)) {
-            // A widget that has no style yet does not animate.
-            if (w.styled) anim.start(app, w, &w.style, &new, app.platform.nowUs()) catch {};
+        const now = app.platform.nowUs();
+        if (!new.eql(anim.target(app, w)) or !w.styled) {
+            const old = anim.target(app, w).*;
             w.style = new;
+            // A widget that has no style yet does not animate.
+            if (w.styled) anim.start(app, w, &old, &new, now) catch {};
             w.invalidate(.{ .style = false, .measure = true, .layout = true, .paint = true });
             for (w.children.items) |c| c.dirty.style = true;
+            anim.keyframes(app, w, now);
         }
         w.dirty.style = false;
         w.styled = true;
@@ -349,10 +364,55 @@ pub const App = struct {
         const ov = paint.overflow(&w.style);
         b.pushClip(.{ .x = -ov, .y = -ov, .w = w.geom.w + 2 * ov, .h = w.geom.h + 2 * ov });
         defer b.popClip();
-        if (w.class.paint) |f| try f(w, b);
+        if (w.class.paint) |f| try app.paintOwn(w, b, f);
         b.pushClip(.{ .x = 0, .y = 0, .w = w.geom.w, .h = w.geom.h });
         defer b.popClip();
         for (w.children.items) |c| try app.paintNode(c, b);
+    }
+
+    /// Paints the quads of one widget. A widget with a transition of the
+    /// paint is painted at the end and at the start of the transition, and
+    /// the frame gets both lists, so the render thread can move the quads
+    /// for the time that it draws. When the two lists differ in their
+    /// count, the widget is painted once with the shown style.
+    fn paintOwn(app: *App, w: *widget.Widget, b: *scene_mod.Builder, f: *const fn (w: *widget.Widget, b: *scene_mod.Builder) anyerror!void) anyerror!void {
+        const a = anim.transitionOf(app, w) orelse return f(w, b);
+        if (a.layout or app.anim_frame == null) return f(w, b);
+        const fr = app.anim_frame.?;
+        const quads = &b.scene.quads;
+        const first = quads.items.len;
+        app.paint_override = .{ .widget = w, .style = &a.to };
+        defer app.paint_override = null;
+        try f(w, b);
+        const n_to = quads.items.len - first;
+        const mark = fr.anim_quads.items.len;
+        try fr.anim_quads.appendSlice(app.gpa, quads.items[first..]);
+        quads.shrinkRetainingCapacity(first);
+        app.paint_override = .{ .widget = w, .style = &a.from };
+        try f(w, b);
+        const n_from = quads.items.len - first;
+        if (n_from != n_to or n_to == 0) {
+            fr.anim_quads.shrinkRetainingCapacity(mark);
+            quads.shrinkRetainingCapacity(first);
+            app.paint_override = null;
+            return f(w, b);
+        }
+        // The list holds the start quads, then the end quads.
+        try fr.anim_quads.insertSlice(app.gpa, mark, quads.items[first..]);
+        // One timing moves all quads: the property with the longest time.
+        var spec: style_mod.TransSpec = .{};
+        for (a.spec.props) |p| if (p.active() and p.totalUs() > spec.totalUs()) {
+            spec = p;
+        };
+        try fr.anims.append(app.gpa, .{
+            .first = @intCast(first),
+            .count = @intCast(n_to),
+            .from = @intCast(mark),
+            .start_us = a.start_us,
+            .delay_us = @as(i64, spec.delay_ms) * 1000,
+            .len_us = spec.totalUs() - @as(i64, spec.delay_ms) * 1000,
+            .timing = spec.timing,
+        });
     }
 
     /// Delivers Map, Unmap, and Configure events for each widget whose
@@ -393,7 +453,8 @@ pub const App = struct {
         defer app.leave();
         const win = app.window orelse return false;
         const now = app.platform.nowUs();
-        const animating = anim.tick(app, now);
+        const opt_running = @import("animate.zig").tick(app, now);
+        const animating = anim.tick(app, now) or opt_running;
         if (!top.dirty.any() and !app.style_pending and app.styles.generation == app.style_gen) return false;
         const wall = &app.wall;
         app.stats.begin(.style, wall.*());
@@ -435,6 +496,9 @@ pub const App = struct {
         fr.scene.reset(@max(dw, 1), @max(dh, 1));
         fr.scene.clear = colorF(top.style.background);
         var b = scene_mod.Builder.init(app.gpa, &fr.scene, scale);
+        fr.time_us = now;
+        app.anim_frame = fr;
+        defer app.anim_frame = null;
         try app.paintNode(top, &b);
         try app.atlas.takePatches(app.gpa, &fr.patches);
         app.stats.end(.paint, wall.*());

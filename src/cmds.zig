@@ -30,6 +30,8 @@ pub fn register(app: *App) !void {
     try loop.register(app);
     try it.register("ztk::style", style.cmdStyle);
     try it.register("ztk::class", style.cmdClass);
+    try it.register("ztk::animate", @import("animate.zig").cmdAnimate);
+    try it.register("ztk::clock", @import("animate.zig").cmdClock);
     try it.register("destroy", cmdDestroy);
     try it.register("exit", cmdExit);
     try it.register("winfo", cmdWinfo);
