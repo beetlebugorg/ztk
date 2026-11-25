@@ -49,9 +49,10 @@ pub const RenderThread = struct {
     cond: std.Io.Condition = .init,
     io: std.Io,
     thread: ?std.Thread = null,
-    drawn: std.atomic.Value(u64) = .init(0),
-    replaced: std.atomic.Value(u64) = .init(0),
-    errors: std.atomic.Value(u64) = .init(0),
+    // 32-bit counters: a wasm32 build has no 64-bit atomics.
+    drawn: std.atomic.Value(u32) = .init(0),
+    replaced: std.atomic.Value(u32) = .init(0),
+    errors: std.atomic.Value(u32) = .init(0),
 
     pub fn init(gpa: std.mem.Allocator, io: std.Io, mode: Mode, target: Target) !*RenderThread {
         const r = try gpa.create(RenderThread);
@@ -59,18 +60,25 @@ pub const RenderThread = struct {
         r.back_frame = &r.frames[0];
         r.free[0] = &r.frames[1];
         r.free[1] = &r.frames[2];
-        if (mode == .threaded) r.thread = try std.Thread.spawn(.{}, run, .{r});
+        if (mode == .threaded) {
+            // A build with one thread (the browser) draws inline.
+            if (@import("builtin").single_threaded) {
+                r.mode = .inline_draw;
+            } else r.thread = try std.Thread.spawn(.{}, run, .{r});
+        }
         return r;
     }
 
     /// Stops the thread after its current frame and joins it.
     pub fn deinit(r: *RenderThread) void {
-        if (r.thread) |t| {
-            r.mutex.lockUncancelable(r.io);
-            r.quit = true;
-            r.cond.broadcast(r.io);
-            r.mutex.unlock(r.io);
-            t.join();
+        if (!@import("builtin").single_threaded) {
+            if (r.thread) |t| {
+                r.mutex.lockUncancelable(r.io);
+                r.quit = true;
+                r.cond.broadcast(r.io);
+                r.mutex.unlock(r.io);
+                t.join();
+            }
         }
         for (&r.frames) |*f| f.deinit(r.gpa);
         const gpa = r.gpa;

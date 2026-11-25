@@ -41,7 +41,7 @@ pub const Stats = struct {
     pub fn end(s: *Stats, stage: Stage, now_us: i64) void {
         const i = @intFromEnum(stage);
         const d = @max(now_us - s.started[i], 0);
-        s.samples[i][s.counts[i] % ring_size] = d;
+        s.samples[i][@intCast(s.counts[i] % ring_size)] = d;
         s.counts[i] += 1;
         s.frame_stage[i] += d;
         s.frame_total += d;

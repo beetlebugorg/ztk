@@ -72,7 +72,7 @@ test "renderthread: submit does not block, and every frame is drawn or replaced"
     r.flush();
     std.debug.print("renderthread: worst submit {d:.3} ms, drawn {d}, replaced {d}\n", .{ @as(f64, @floatFromInt(worst)) / 1e6, r.drawn.load(.monotonic), r.replaced.load(.monotonic) });
     try t.expect(slow <= 5);
-    try t.expectEqual(@as(u64, 1000), r.drawn.load(.monotonic) + r.replaced.load(.monotonic));
+    try t.expectEqual(@as(u32, 1000), r.drawn.load(.monotonic) + r.replaced.load(.monotonic));
     try t.expectEqual(@as(u64, 1000), p.last_serial.load(.monotonic));
     try t.expect(p.order_ok);
 }

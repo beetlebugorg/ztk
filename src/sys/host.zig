@@ -1,7 +1,8 @@
 //! The few calls to the operating system that the core and the headless
 //! backend need: a monotonic clock, a sleep, and a write to stderr. Linux
-//! uses direct system calls, so the static build links no library. Each
-//! other system goes through `std.Io`.
+//! uses direct system calls, so the static build links no library. The
+//! browser build calls the functions of its page. Each other system goes
+//! through `std.Io`.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -9,9 +10,15 @@ const builtin = @import("builtin");
 const linux = std.os.linux;
 
 const is_linux = builtin.os.tag == .linux;
+/// The browser build: the page gives the clock and the text output.
+const is_web = builtin.os.tag == .freestanding;
+
+extern "env" fn ztk_now_ms() f64;
+extern "env" fn ztk_print(ptr: [*]const u8, len: usize) void;
 
 /// Microseconds on a clock that does not go back.
 pub fn nowUs() i64 {
+    if (is_web) return @intFromFloat(ztk_now_ms() * 1000);
     if (is_linux) {
         var ts: linux.timespec = undefined;
         _ = linux.clock_gettime(.MONOTONIC, &ts);
@@ -22,7 +29,7 @@ pub fn nowUs() i64 {
 
 /// Waits for a count of microseconds.
 pub fn sleepUs(us: i64) void {
-    if (us <= 0) return;
+    if (us <= 0 or is_web) return;
     if (is_linux) {
         const req: linux.timespec = .{ .sec = @intCast(@divFloor(us, 1_000_000)), .nsec = @intCast(@mod(us, 1_000_000) * 1000) };
         _ = linux.nanosleep(&req, null);
@@ -33,6 +40,7 @@ pub fn sleepUs(us: i64) void {
 
 /// Writes text to the standard error stream.
 pub fn writeStderr(text: []const u8) void {
+    if (is_web) return ztk_print(text.ptr, text.len);
     if (is_linux) {
         _ = linux.write(2, text.ptr, text.len);
         return;

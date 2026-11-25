@@ -165,6 +165,8 @@ pub const App = struct {
     grab: @import("grab.zig").State = .{},
     tip: @import("grab.zig").Tip = .{},
     tooltips: std.StringHashMapUnmanaged([]u8) = .empty,
+    /// The browser build: the text of a file of the page by its name, or null.
+    virtual_file: ?*const fn (name: []const u8) ?[]const u8 = null,
     /// The toplevels other than ".", oldest first.
     tops: std.ArrayListUnmanaged(*Widget) = .empty,
 
@@ -290,6 +292,12 @@ pub const App = struct {
     /// Reads a file for `ztk::style load`. The real path of the file, with each
     /// symbolic link resolved, must be inside the real path of the style folder.
     pub fn readFile(app: *App, path: []const u8, a: std.mem.Allocator) ![]u8 {
+        // The browser build has no files: the page gives each style sheet by its name.
+        if (comptime @import("builtin").os.tag == .freestanding) {
+            const f = app.virtual_file orelse return error.NoIo;
+            const text = f(std.fs.path.basename(path)) orelse return error.FileNotFound;
+            return a.dupe(u8, text);
+        }
         const io = app.io orelse return error.NoIo;
         const root = app.style_root orelse return error.NoIo;
         const dir = std.Io.Dir.cwd();

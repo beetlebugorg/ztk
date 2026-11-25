@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ztk playground</title>
+<style>
+  :root { color-scheme: light dark; --bg: #f5f5f7; --fg: #1d1d1f; --line: #d2d2d7; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #1e1e1e; --fg: #f2f2f2; --line: #3a3a3c; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px system-ui, sans-serif; }
+  header { display: flex; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; padding: 16px; }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; } }
+  textarea.code { width: 100%; height: 70vh; box-sizing: border-box; font: 12px ui-monospace, monospace; background: transparent; color: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+  .stage { position: relative; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; height: 70vh; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  #log { font: 12px ui-monospace, monospace; white-space: pre-wrap; padding: 0 16px 16px; }
+</style>
+</head>
+<body>
+<header>
+  <strong>ztk playground</strong>
+  <label>Example <select id="pick"></select></label>
+  <button id="run">Run</button>
+  <span>A Tcl script with Tk commands, drawn by ztk in WebAssembly and WebGL 2.</span>
+</header>
+<main>
+  <textarea class="code" id="code" spellcheck="false" aria-label="Tcl script"></textarea>
+  <div class="stage"><canvas id="screen" aria-label="The window of the script"></canvas></div>
+</main>
+<div id="log" role="log"></div>
+<script type="module">
+import { start } from "./ztk.js";
+const examples = ["gallery", "demo", "signin", "calculator", "settings", "dashboard"];
+const params = new URLSearchParams(location.search);
+const pick = document.getElementById("pick");
+for (const e of examples) pick.add(new Option(e, e));
+pick.value = params.get("example") || "gallery";
+const code = document.getElementById("code");
+const logEl = document.getElementById("log");
+// A test can fix the size of the window of the script: ?size=WxH.
+if (params.get("size")) {
+  const [w, h] = params.get("size").split("x").map(Number);
+  const st = document.querySelector(".stage");
+  st.style.cssText = `width:${w}px;height:${h}px;border:0;border-radius:0;`;
+  document.querySelector("main").style.gridTemplateColumns = "1fr";
+  document.querySelector("textarea.code").style.display = "none";
+}
+const log = (t) => { logEl.textContent += t + "\n"; };
+let ztk = null;
+async function load(name) {
+  const tcl = await (await fetch(`examples/${name}.tcl`)).text();
+  code.value = tcl;
+  return name;
+}
+async function run() {
+  // A new module for each run, so the window starts empty.
+  const old = document.getElementById("screen");
+  const canvas = old.cloneNode();
+  old.parentElement.replaceChildren(canvas);
+  logEl.textContent = "";
+  ztk = await start(canvas, { log, dark: params.has("dark") ? true : (params.has("light") ? false : undefined) });
+  for (const name of examples) {
+    const css = await fetch(`examples/${name}.css`);
+    if (css.ok) {
+      const enc = new TextEncoder();
+      const n = enc.encode(name + ".css"), t = enc.encode(await css.text());
+      const ex = ztk.exports;
+      const pn = ex.ztk_alloc(n.length), pt = ex.ztk_alloc(t.length);
+      new Uint8Array(ex.memory.buffer, pn, n.length).set(n);
+      new Uint8Array(ex.memory.buffer, pt, t.length).set(t);
+      ex.ztk_add_file(pn, n.length, pt, t.length);
+    }
+  }
+  const r = ztk.eval(code.value);
+  window.ztkResult = r;
+  document.title = r.ok ? "ztk: ok" : "ztk: error";
+}
+document.getElementById("run").addEventListener("click", run);
+pick.addEventListener("change", async () => { await load(pick.value); await run(); });
+await load(pick.value);
+await run();
+window.ztk = ztk;
+if (params.has("test")) {
+  // The browser test: the script of the page runs a check and writes the result into the page.
+  const out = document.createElement("pre");
+  out.id = "result";
+  const ex = ztk.exports;
+  const canvas = document.getElementById("screen");
+  ztk.frame(performance.now());
+  // Input through the DOM, as a person gives it: ?click=x,y and ?type=text.
+  if (params.get("click")) {
+    const [x, y] = params.get("click").split(",").map(Number);
+    const r = canvas.getBoundingClientRect();
+    const opt = { clientX: r.left + x, clientY: r.top + y, button: 0, pointerId: 1, bubbles: true };
+    canvas.dispatchEvent(new PointerEvent("pointermove", opt));
+    canvas.dispatchEvent(new PointerEvent("pointerdown", opt));
+    canvas.dispatchEvent(new PointerEvent("pointerup", opt));
+    ztk.frame(performance.now());
+  }
+  if (params.get("type")) {
+    const input = canvas.parentElement.querySelector("textarea");
+    input.value = params.get("type");
+    input.dispatchEvent(new InputEvent("input", { data: input.value }));
+    ztk.frame(performance.now());
+  }
+  ztk.frame(performance.now() + 1000);
+  const roles = [...ztk.tree.children].map((e) => e.getAttribute("role")).join(" ");
+  const check = ztk.eval(params.get("test") === "1" ? "winfo children ." : params.get("test"));
+  ztk.frame(performance.now() + 2000);
+  // The frame time: the pointer moves over the window for 120 frames, so the
+  // hover transitions run. The time is the work of ztk and the WebGL calls.
+  const times = [];
+  const rr = canvas.getBoundingClientRect();
+  const base = performance.now() + 5000;
+  for (let i = 0; i < 120; i++) {
+    const opt = { clientX: rr.left + (i * 37) % rr.width, clientY: rr.top + (i * 23) % rr.height, pointerId: 1, bubbles: true };
+    canvas.dispatchEvent(new PointerEvent("pointermove", opt));
+    const t0 = performance.now();
+    ztk.frame(base + i * 16.7);
+    times.push(performance.now() - t0);
+  }
+  times.sort((a, b) => a - b);
+  const perf = { median: times[60], p99: times[Math.floor(times.length * 0.99)] };
+  out.textContent = JSON.stringify({ perf, ok: window.ztkResult.ok, frames: Number(ex.ztk_frames()), roles, check: check.result, png: canvas.toDataURL("image/png") });
+  document.body.appendChild(out);
+}
+</script>
+</body>
+</html>
