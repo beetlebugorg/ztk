@@ -23,6 +23,10 @@ The classic `listbox` works with its selection modes, scrolling, and the sidebar
 
 The selection background moves between rows with an ease. The scroll is smooth. The fluid gate: `listbox-scroll-10000` (10 000 rows) is under 8 ms.
 
+## The apps of task 14
+
+Change the spreadsheet and the vector tool of [task 14](14-canvas.md#the-two-example-apps) to use the widgets of this task: the layer list of the vector tool. Their tests still pass.
+
 ## Acceptance
 
 - The tests of this file pass.
