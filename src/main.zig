@@ -70,10 +70,11 @@ pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(arena);
 
     var err_buf: [1024]u8 = undefined;
-    var err_w: Io.File.Writer = .init(.stderr(), io, &err_buf);
+    // Streaming writers: a positional write to a pipe fails on Windows.
+    var err_w: Io.File.Writer = .initStreaming(.stderr(), io, &err_buf);
     const err = &err_w.interface;
     var out_buf: [1 << 16]u8 = undefined;
-    var out_w: Io.File.Writer = .init(.stdout(), io, &out_buf);
+    var out_w: Io.File.Writer = .initStreaming(.stdout(), io, &out_buf);
     const out = &out_w.interface;
     defer out.flush() catch {};
     defer err.flush() catch {};

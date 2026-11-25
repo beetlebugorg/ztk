@@ -393,7 +393,7 @@ pub const App = struct {
         const dir = std.Io.Dir.cwd();
         const real_root = try dir.realPathFileAlloc(io, root, a);
         const real = try dir.realPathFileAlloc(io, path, a);
-        const inside = real.len > real_root.len and std.mem.startsWith(u8, real, real_root) and real[real_root.len] == '/';
+        const inside = real.len > real_root.len and std.mem.startsWith(u8, real, real_root) and std.fs.path.isSep(real[real_root.len]);
         if (!inside) return error.OutsideStyleFolder;
         return dir.readFileAlloc(io, real, a, .limited(1 << 20));
     }
