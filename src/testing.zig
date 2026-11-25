@@ -150,7 +150,7 @@ pub const Harness = struct {
 pub const Tolerance = struct { max_level: u8 = 0, max_fraction: f32 = 0 };
 
 fn updating() bool {
-    return std.testing.environ.getPosix("ZTK_UPDATE_GOLDEN") != null;
+    return std.testing.environ.contains(std.testing.allocator, "ZTK_UPDATE_GOLDEN") catch false;
 }
 
 fn goldenPath(buf: []u8, name: []const u8, suffix: []const u8) ![]const u8 {

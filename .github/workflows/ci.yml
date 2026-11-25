@@ -94,6 +94,29 @@ jobs:
           printf 'puts [expr {6 * 7}]\n' > "$RUNNER_TEMP/t.tcl"
           test "$(zig build run -- --headless "$RUNNER_TEMP/t.tcl" | tr -d '\r')" = 42
 
+  test-windows:
+    # The core and the headless backend on Windows, as on macOS.
+    name: Test (Windows)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # The golden files and the scripts keep their LF line ends.
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+      - name: Build and test
+        run: |
+          zig build
+          zig build test
+      - name: Run a script
+        run: |
+          printf 'puts [expr {6 * 7}]\n' > "$RUNNER_TEMP/t.tcl"
+          test "$(zig build run -- --headless "$RUNNER_TEMP/t.tcl" | tr -d '\r')" = 42
+
   cross:
     name: Build (${{ matrix.target }})
     runs-on: ubuntu-latest
