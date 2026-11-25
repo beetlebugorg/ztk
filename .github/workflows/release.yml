@@ -61,7 +61,7 @@ jobs:
           name="ztk-${TAG#v}-x86_64-linux-musl"
           tar -xzf "dist/$name.tar.gz" -C "$RUNNER_TEMP"
           printf 'puts [expr {6 * 7}]\n' > "$RUNNER_TEMP/t.tcl"
-          test "$("$RUNNER_TEMP/$name/ztk" "$RUNNER_TEMP/t.tcl")" = 42
+          test "$("$RUNNER_TEMP/$name/ztk" --headless "$RUNNER_TEMP/t.tcl")" = 42
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist
