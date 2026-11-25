@@ -94,6 +94,8 @@ pub const Widget = struct {
     req: geom.Size = .{},
     mapped: bool = false,
     state: State = .{},
+    /// The states `user1` to `user6` of a `ttk` widget, `user6` in the low bit.
+    ttk_user: u8 = 0,
     dirty: Dirty = .{},
     /// The state of the life of the widget. See the top of this file.
     life: Life = .alive,
@@ -127,6 +129,34 @@ pub const Widget = struct {
     /// The geometry and the mapped flag that the last Configure, Map, or Unmap event reported.
     cfg_geom: geom.Rect = .{},
     cfg_mapped: bool = false,
+
+    /// The `-style` of a `ttk` widget, or empty.
+    pub fn ttkStyle(w: *const Widget) []const u8 {
+        if (!w.class.ttk) return "";
+        const s = options.maybe(w, "-style") orelse return "";
+        return if (s.set) s.text else "";
+    }
+
+    /// The type of the widget for a selector: the last part of its `ttk`
+    /// style (`Accent.TButton` gives `TButton`), else its Tk class.
+    pub fn styleType(w: *const Widget) []const u8 {
+        const st = w.ttkStyle();
+        if (st.len == 0) return w.tk_class;
+        const i = std.mem.lastIndexOfScalar(u8, st, '.') orelse return st;
+        return st[i + 1 ..];
+    }
+
+    /// True when the widget has a style class. The parts of a `ttk`
+    /// style before its type count as classes, with no case, so
+    /// `Switch.TCheckbutton` has the class `switch`.
+    pub fn hasClass(w: *const Widget, cls: []const u8) bool {
+        for (w.classes.items) |c| if (std.mem.eql(u8, c, cls)) return true;
+        const st = w.ttkStyle();
+        const end = std.mem.lastIndexOfScalar(u8, st, '.') orelse return false;
+        var parts = std.mem.splitScalar(u8, st[0..end], '.');
+        while (parts.next()) |p| if (std.ascii.eqlIgnoreCase(p, cls)) return true;
+        return false;
+    }
 
     pub fn alive(w: *const Widget) bool {
         return w.life == .alive;
@@ -237,6 +267,11 @@ pub const Class = struct {
     extra_insets: ?*const fn (w: *Widget) geom.Insets = null,
     /// The accessibility role of the class (section 4.9 of the plan).
     role: []const u8 = "",
+    /// True for a `ttk` class: it has `-style`, `state`, and `instate`.
+    ttk: bool = false,
+    /// A second type that the selectors of the class match: the classic
+    /// class of a `ttk` class (`Button` for `TButton`).
+    css_base: []const u8 = "",
     /// The value of `-text` while a `-textvariable` supplies it, or null.
     variable_text: ?*const fn (w: *const Widget) ?[]const u8 = null,
     /// Runs one time after the options of the create command, also when it has none.

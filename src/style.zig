@@ -83,6 +83,18 @@ pub const Transition = struct {
     }
 };
 
+pub const Relief = enum { solid, raised, sunken, groove, ridge };
+
+/// The `border-style` of a keyword: the CSS names and the Tk names.
+pub fn reliefOf(n: []const u8) ?Relief {
+    const names = [_]struct { []const u8, Relief }{
+        .{ "solid", .solid }, .{ "outset", .raised }, .{ "inset", .sunken },  .{ "groove", .groove },
+        .{ "ridge", .ridge }, .{ "raised", .raised }, .{ "sunken", .sunken },
+    };
+    for (names) |e| if (std.ascii.eqlIgnoreCase(n, e[0])) return e[1];
+    return null;
+}
+
 pub const Direction = enum { normal, reverse, alternate, alternate_reverse };
 pub const Fill = enum { none, forwards, backwards, both };
 
@@ -105,6 +117,9 @@ pub const Style = struct {
     /// Top, right, bottom, left; logical pixels.
     border_width: [4]f32 = .{ 0, 0, 0, 0 },
     border_color: geom.Color = .{ .r = 0, .g = 0, .b = 0 },
+    /// The relief of the border (`border-style`). A relief other than
+    /// `solid` draws the border in two shades of the background.
+    relief: Relief = .solid,
     /// A negative number is a percentage: -50 means 50 %.
     radius: [4]f32 = .{ 0, 0, 0, 0 },
     padding: geom.Insets = .{},
@@ -259,8 +274,13 @@ pub const StyleSet = struct {
     fn describe(s: *const StyleSet, w: *const Widget, out: *std.ArrayListUnmanaged(u8), buf: std.mem.Allocator) !void {
         try out.appendSlice(buf, w.tk_class);
         try out.append(buf, 0);
+        try out.appendSlice(buf, w.ttkStyle());
+        try out.append(buf, 0);
+        try out.appendSlice(buf, w.class.css_base);
+        try out.append(buf, 0);
         const bits: u16 = @bitCast(w.state);
         try out.appendSlice(buf, std.mem.asBytes(&bits));
+        try out.append(buf, w.ttk_user);
         try out.append(buf, if (w.parent == null) 1 else 0);
         if (s.has_ids) try out.appendSlice(buf, w.name());
         try out.append(buf, 0);
@@ -529,6 +549,25 @@ pub const StyleSet = struct {
     }
 };
 
+/// The `-padding` of a `ttk` widget: one to four distances, left, top,
+/// right, and bottom, as in Tk.
+pub fn parsePadding(text: []const u8) ?geom.Insets {
+    var v: [4]i32 = undefined;
+    var n: usize = 0;
+    var words = std.mem.tokenizeAny(u8, text, " \t\n");
+    while (words.next()) |wd| {
+        if (n == 4) return null;
+        v[n] = @max(options.parsePixels(wd, 96.0 / 72.0) orelse return null, 0);
+        n += 1;
+    }
+    if (n == 0) return null;
+    const l = v[0];
+    const t = if (n > 1) v[1] else l;
+    const r = if (n > 2) v[2] else l;
+    const b = if (n > 3) v[3] else t;
+    return .{ .left = l, .top = t, .right = r, .bottom = b };
+}
+
 /// The options that the script set on the widget: the origin `widget`.
 pub fn applyOptions(w: *const Widget, st: *Style) void {
     for (w.class.specs, w.opts) |sp, slot| {
@@ -568,7 +607,15 @@ pub fn applyOptions(w: *const Widget, st: *Style) void {
         } else if (std.mem.eql(u8, n, "-font")) {
             if (font_mod.Fonts.parseTk(slot.text, st.font, w.app.scaling)) |d| st.font = d;
         } else if (std.mem.eql(u8, n, "-relief")) {
-            if (slot.value == .relief and slot.value.relief == .flat) st.border_width = .{ 0, 0, 0, 0 };
+            if (slot.value == .relief) switch (slot.value.relief) {
+                .flat => st.border_width = .{ 0, 0, 0, 0 },
+                else => |r| st.relief = reliefOf(@tagName(r)) orelse .solid,
+            } else if (slot.text.len > 0) {
+                if (reliefOf(slot.text)) |r| st.relief = r;
+                if (std.mem.eql(u8, slot.text, "flat")) st.border_width = .{ 0, 0, 0, 0 };
+            }
+        } else if (std.mem.eql(u8, n, "-padding")) {
+            if (parsePadding(slot.text)) |p| st.padding = p;
         }
     }
 }
@@ -716,6 +763,7 @@ const Ctx = struct {
                 },
                 .border_width => st.border_width = src.border_width,
                 .border_color => st.border_color = src.border_color,
+                .border_style => st.relief = src.relief,
                 .border_radius => st.radius = src.radius,
                 .padding => st.padding = src.padding,
                 .padding_top => st.padding.top = src.padding.top,
@@ -762,6 +810,9 @@ const Ctx = struct {
                 for (sides, 0..) |l, i| st.border_width[i] = @max(c.lengthPx(l, em), 0);
             },
             .border => c.applyBorder(st, v),
+            .border_style => if (v.len == 1 and v[0] == .ident) {
+                if (reliefOf(v[0].ident)) |r| st.relief = r;
+            },
             .border_radius => c.applyRadius(st, v),
             .padding => if (css_value.parseSides(v)) |sides| {
                 st.padding = .{
@@ -914,7 +965,8 @@ const Ctx = struct {
                     i += 1;
                 },
                 .ident => |n| {
-                    if (std.ascii.eqlIgnoreCase(n, "solid")) {
+                    if (reliefOf(n)) |r| {
+                        st.relief = r;
                         i += 1;
                     } else if (std.ascii.eqlIgnoreCase(n, "none")) {
                         none = true;
@@ -1219,7 +1271,17 @@ pub fn cmdStyle(it: *ztcl.Interp, argv: []const ztcl.Value, _: ?*ztcl.interp.Cmd
         }
         return ztcl.value.wrapList(a, items);
     }
-    if (std.mem.eql(u8, sub, "theme")) return stringResult(it, "modern");
+    if (std.mem.eql(u8, sub, "theme")) {
+        // `ztk::style theme ?modern|classic?`: the look. It selects the `ttk` theme `default` or `classic`.
+        if (argv.len > 3) return it.wrongArgs("ztk::style theme ?name?");
+        if (argv.len == 3) {
+            const name = try it.str(argv[2]);
+            const ttk_name = if (std.mem.eql(u8, name, "modern")) "default" else if (std.mem.eql(u8, name, "classic")) "classic" else return it.fail("bad theme \"{s}\": must be classic or modern", .{name});
+            _ = try @import("ttk/style.zig").useTheme(app, ttk_name);
+            return ztcl.Value.empty;
+        }
+        return stringResult(it, if (app.classic_look) "classic" else "modern");
+    }
     // The color scheme, for the colors of canvas items.
     if (std.mem.eql(u8, sub, "scheme")) return stringResult(it, if (app.env.dark) "dark" else "light");
     return it.fail("bad option \"{s}\": must be add, diagnostics, load, remove, scheme, or theme", .{sub});

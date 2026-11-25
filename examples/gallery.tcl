@@ -127,6 +127,25 @@ pack $sc -fill x -pady {10 4} -padx 6
 $sc.e xview moveto 0.3
 $sc.s set {*}[$sc.e xview]
 
+# The ttk widgets, with the switch style and a style of a script.
+set tk [card .cols.right.ttk "Themed widgets (ttk)"]
+set ttkopt(dark) 1
+set ttkopt(size) M
+ttk::style configure Accent.TButton -foreground white -background #2563eb
+ttk::style map Accent.TButton -background {active #1d4ed8}
+ttk::button $tk.ok -text "Apply" -style Accent.TButton
+ttk::button $tk.reset -text "Reset"
+ttk::checkbutton $tk.dark -text "Dark mode" -style Switch.TCheckbutton -variable ttkopt(dark)
+ttk::separator $tk.sep
+ttk::radiobutton $tk.s -text "Small" -variable ttkopt(size) -value S
+ttk::radiobutton $tk.m -text "Medium" -variable ttkopt(size) -value M
+ttk::entry $tk.e -width 14
+if {$ztk} { $tk.e configure -placeholder "ttk::entry" }
+grid $tk.ok $tk.reset $tk.dark -sticky w -padx 4 -pady 3
+grid $tk.sep -columnspan 3 -sticky ew -padx 4 -pady 4
+grid $tk.s $tk.m $tk.e -sticky w -padx 4 -pady 3
+pack .cols.right.ttk -fill x -pady 4
+
 # A labelframe with a message, and a tooltip on the Save button.
 labelframe .cols.left.notes -text "Labelframe and message" -padx 12 -pady 6
 message .cols.left.notes.m -width 300 -text "A message breaks its text into lines. A labelframe puts a title above a group of widgets."

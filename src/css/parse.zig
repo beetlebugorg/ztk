@@ -61,6 +61,7 @@ pub const Prop = enum {
     border_width,
     border_color,
     border_radius,
+    border_style,
     padding,
     padding_top,
     padding_right,
@@ -134,6 +135,7 @@ const prop_names = [_]struct { []const u8, Prop }{
     .{ "border-width", .border_width },
     .{ "border-color", .border_color },
     .{ "border-radius", .border_radius },
+    .{ "border-style", .border_style },
     .{ "padding", .padding },
     .{ "padding-top", .padding_top },
     .{ "padding-right", .padding_right },
@@ -499,14 +501,17 @@ const Parser = struct {
                             i += 2;
                         },
                         .function => |name| {
-                            if (!std.ascii.eqlIgnoreCase(name, "state") or i + 4 > t.len or t[i + 2] != .ident or t[i + 3] != .rparen) {
+                            // `:state(!name)` matches a widget without the state.
+                            const neg = i + 3 < t.len and t[i + 2] == .delim and t[i + 2].delim == '!';
+                            const k = i + 2 + @intFromBool(neg);
+                            if (!std.ascii.eqlIgnoreCase(name, "state") or k + 2 > t.len or t[k] != .ident or t[k + 1] != .rparen) {
                                 try p.diag(line, "unknown functional pseudo-class :{s}()", .{name});
                                 return null;
                             }
-                            try states.append(p.a, t[i + 2].ident);
+                            try states.append(p.a, if (neg) try std.fmt.allocPrint(p.a, "!{s}", .{t[k].ident}) else t[k].ident);
                             cls += 1;
                             have_any = true;
-                            i += 4;
+                            i = k + 2;
                         },
                         else => {
                             try p.diag(line, "bad pseudo-class", .{});

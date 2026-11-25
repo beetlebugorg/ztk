@@ -57,20 +57,77 @@ fn radii(w: *const Widget, style: *const Style) [4]f32 {
     return out;
 }
 
+/// The light and the dark shade of a 3D border on a background, as
+/// `TkpGetShadows` of Tk on X11 computes them.
+pub fn shades(bg: geom.Color) [2]geom.Color {
+    const r: u32 = bg.r;
+    const g: u32 = bg.g;
+    const bl: u32 = bg.b;
+    if (r * r / 2 + g * g + bl * bl * 28 / 100 < 255 * 255 / 20) {
+        // A very dark background: Tk mixes toward white for both shades.
+        return .{
+            .{ .r = @intCast((255 + 3 * r) / 4), .g = @intCast((255 + 3 * g) / 4), .b = @intCast((255 + 3 * bl) / 4), .a = 255 },
+            .{ .r = @intCast((255 + r) / 2), .g = @intCast((255 + g) / 2), .b = @intCast((255 + bl) / 2), .a = 255 },
+        };
+    }
+    const light = struct {
+        fn f(c: u32) u8 {
+            return @intCast(@min(255, @max(c * 14 / 10, (255 + c) / 2)));
+        }
+    }.f;
+    return .{
+        .{ .r = light(r), .g = light(g), .b = light(bl), .a = 255 },
+        .{ .r = @intCast(r * 60 / 100), .g = @intCast(g * 60 / 100), .b = @intCast(bl * 60 / 100), .a = 255 },
+    };
+}
+
+/// The fill and the border of a box. A relief other than `solid` with
+/// square corners draws the border as four strips in two shades.
+fn fillAndBorder(b: *scene.Builder, r: geom.Rect, style: *const Style, rad: [4]f32) !void {
+    const bw = style.border_width;
+    const square = rad[0] == 0 and rad[1] == 0 and rad[2] == 0 and rad[3] == 0;
+    if (style.relief == .solid or !square or (bw[0] <= 0 and bw[1] <= 0 and bw[2] <= 0 and bw[3] <= 0)) {
+        try b.box(r, .{ .fill = style.background, .fill2 = style.background2, .gradient_angle_deg = style.gradient_angle_deg, .border = bw, .border_color = style.border_color, .radii = rad, .opacity = style.opacity });
+        return;
+    }
+    try b.box(r, .{ .fill = style.background, .fill2 = style.background2, .gradient_angle_deg = style.gradient_angle_deg, .radii = rad, .opacity = style.opacity });
+    // The shades come from the border color, as Tk computes them from the color of the 3D border.
+    const base = if (style.border_color.a > 0) style.border_color else style.background;
+    const sh = shades(base);
+    const t = ceilPx(bw[0]);
+    const ri = ceilPx(bw[1]);
+    const bo = ceilPx(bw[2]);
+    const le = ceilPx(bw[3]);
+    switch (style.relief) {
+        .raised => try bevel(b, r, .{ t, ri, bo, le }, sh[0], sh[1], style.opacity),
+        .sunken => try bevel(b, r, .{ t, ri, bo, le }, sh[1], sh[0], style.opacity),
+        .groove, .ridge => {
+            const outer: [4]i32 = .{ @divTrunc(t + 1, 2), @divTrunc(ri + 1, 2), @divTrunc(bo + 1, 2), @divTrunc(le + 1, 2) };
+            const a = if (style.relief == .groove) sh[1] else sh[0];
+            const c = if (style.relief == .groove) sh[0] else sh[1];
+            try bevel(b, r, outer, a, c, style.opacity);
+            const inner: geom.Rect = .{ .x = r.x + outer[3], .y = r.y + outer[0], .w = r.w - outer[1] - outer[3], .h = r.h - outer[0] - outer[2] };
+            try bevel(b, inner, .{ t - outer[0], ri - outer[1], bo - outer[2], le - outer[3] }, c, a, style.opacity);
+        },
+        .solid => {},
+    }
+}
+
+/// Four strips: the top and the left in `tl`, the bottom and the right in `br`.
+fn bevel(b: *scene.Builder, r: geom.Rect, w: [4]i32, tl: geom.Color, br: geom.Color, opacity: f32) !void {
+    const o = opacity;
+    if (w[0] > 0) try b.box(.{ .x = r.x, .y = r.y, .w = r.w, .h = w[0] }, .{ .fill = tl, .opacity = o });
+    if (w[3] > 0) try b.box(.{ .x = r.x, .y = r.y + w[0], .w = w[3], .h = r.h - w[0] }, .{ .fill = tl, .opacity = o });
+    if (w[2] > 0) try b.box(.{ .x = r.x + w[3], .y = r.y + r.h - w[2], .w = r.w - w[3], .h = w[2] }, .{ .fill = br, .opacity = o });
+    if (w[1] > 0) try b.box(.{ .x = r.x + r.w - w[1], .y = r.y + w[0], .w = w[1], .h = r.h - w[0] - w[2] }, .{ .fill = br, .opacity = o });
+}
+
 /// Adds the shadow, the background, the border, and the focus outline.
 pub fn box(w: *const Widget, b: *scene.Builder, style: *const Style) !void {
     const r: geom.Rect = .{ .x = 0, .y = 0, .w = w.geom.w, .h = w.geom.h };
     const rad = radii(w, style);
     if (style.shadow) |sh| try b.shadow(r, rad, sh);
-    try b.box(r, .{
-        .fill = style.background,
-        .fill2 = style.background2,
-        .gradient_angle_deg = style.gradient_angle_deg,
-        .border = style.border_width,
-        .border_color = style.border_color,
-        .radii = rad,
-        .opacity = style.opacity,
-    });
+    try fillAndBorder(b, r, style, rad);
     if (style.outline_width > 0 and style.outline_color.a > 0) {
         const grow: i32 = ceilPx(style.outline_offset + style.outline_width);
         const orad = @as(f32, @floatFromInt(grow));
@@ -180,7 +237,7 @@ pub fn styledBox(b: *scene.Builder, r: geom.Rect, style: *const Style) !void {
     const side: f32 = @floatFromInt(@min(r.w, r.h));
     for (style.radius, 0..) |v, i| rad[i] = if (v < 0) side * (-v) / 100 else v;
     if (style.shadow) |sh| try b.shadow(r, rad, sh);
-    try b.box(r, .{ .fill = style.background, .fill2 = style.background2, .gradient_angle_deg = style.gradient_angle_deg, .border = style.border_width, .border_color = style.border_color, .radii = rad, .opacity = style.opacity });
+    try fillAndBorder(b, r, style, rad);
     if (style.outline_width > 0 and style.outline_color.a > 0) {
         const grow: i32 = ceilPx(style.outline_offset + style.outline_width);
         var rr: [4]f32 = undefined;

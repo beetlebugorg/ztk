@@ -140,7 +140,7 @@ fn ext(w: *const Widget) *Ext {
 }
 
 fn isRadio(w: *const Widget) bool {
-    return w.class.specs.ptr == radio_specs.ptr;
+    return std.mem.endsWith(u8, w.class.command, "radiobutton");
 }
 
 fn selVar(w: *const Widget) []const u8 {
@@ -194,7 +194,8 @@ fn sync(w: *Widget) void {
     const v = varlink.read(w, e.var_name);
     const sel = if (v) |x| std.mem.eql(u8, x, onValue(w)) else false;
     const tri = blk: {
-        const x = v orelse break :blk false;
+        // A `ttk` widget shows `alternate` when the variable does not exist.
+        const x = v orelse break :blk w.class.ttk;
         if (sel) break :blk false;
         if (!isRadio(w) and std.mem.eql(u8, x, optText(w, "-offvalue"))) break :blk false;
         break :blk std.mem.eql(u8, x, optText(w, "-tristatevalue"));
@@ -226,7 +227,7 @@ fn configured(w: *Widget, changed: []const usize) ztcl.Error!void {
 fn created(w: *Widget) ztcl.Error!void {
     if (ext(w).var_name.len > 0 or options.get(w, "-variable").set) return;
     // `cget -variable` gives the name, as in `wish`.
-    const pair = [_]Value{ .{ .str = "-variable" }, .{ .str = if (isRadio(w)) "selectedButton" else try w.app.it.alloc().dupe(u8, w.name()) } };
+    const pair = [_]Value{ .{ .str = "-variable" }, .{ .str = if (isRadio(w)) (if (w.class.ttk) "::selectedButton" else "selectedButton") else try w.app.it.alloc().dupe(u8, if (w.class.ttk) w.path else w.name()) } };
     try options.apply(w, w.app.it, &pair);
 }
 
@@ -236,7 +237,8 @@ fn linkVariable(w: *Widget, name: []const u8) ztcl.Error!void {
     try varlink.rename(w, &e.var_name, owned, trace_command);
     if (w.life == .dead or e.var_name.len == 0) return;
     // A variable that does not exist gets the off value: `-offvalue`, or empty for a radiobutton.
-    if (varlink.read(w, e.var_name) == null) try varlink.write(w, e.var_name, if (isRadio(w)) "" else optText(w, "-offvalue"));
+    // A `ttk` widget leaves the variable as it is.
+    if (!w.class.ttk and varlink.read(w, e.var_name) == null) try varlink.write(w, e.var_name, if (isRadio(w)) "" else optText(w, "-offvalue"));
     if (w.life == .dead) return;
     sync(w);
 }
@@ -287,8 +289,7 @@ fn indicatorOn(w: *const Widget) bool {
 }
 
 fn hasClass(w: *const Widget, name: []const u8) bool {
-    for (w.classes.items) |c| if (std.mem.eql(u8, c, name)) return true;
-    return false;
+    return w.hasClass(name);
 }
 
 /// The size of the indicator in logical pixels: a square of about 1.25 em, or a switch track.

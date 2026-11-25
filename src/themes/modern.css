@@ -392,3 +392,13 @@ Scrollbar:active::thumb {
   opacity: 1;
   transition: opacity 120ms ease;
 }
+
+/* The ttk widgets match the rules of their classic classes (TButton
+   matches Button). The separator and the size grip have no classic class. */
+TSeparator {
+  background-color: var(--border);
+}
+TSizegrip {
+  color: var(--muted);
+  background-color: transparent;
+}

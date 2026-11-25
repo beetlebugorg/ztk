@@ -439,6 +439,35 @@ pub fn main(init: std.process.Init) !void {
         report("idle-1000", buf[0..runs]);
     }
 
+    // ttk-hover-1000: as anim-hover-1000, with 1 000 ttk::label and ttk::button widgets and a
+    // map of ttk::style that gives the hover color.
+    {
+        var aw: World = undefined;
+        try aw.it.init(gpa);
+        aw.head = try ztk.headless.Headless.init(gpa);
+        aw.app = try ztk.App.init(gpa, &aw.it, .{ .platform = aw.head.platform(), .io = io, .animations = true });
+        defer aw.deinit();
+        aw.head.skip_draw = true;
+        aw.eval("ztk::style add {Button { transition: background-color 200ms ease }}; ttk::style map TButton -background {active #ff0000}");
+        aw.eval("for {set i 0} {$i < 1000} {incr i} {" ++
+            " if {$i % 2} { ttk::label .w$i -text w$i -width 4 } else { ttk::button .w$i -text b$i -width 4 };" ++
+            " grid .w$i -row [expr {$i / 40}] -column [expr {$i % 40}] }; update");
+        const runs = 200;
+        const a = aw.app.find(".w0").?;
+        const b2 = aw.app.find(".w2").?;
+        for (buf[0..runs], 0..) |*slot, i| {
+            if (i % 10 == 0) {
+                const tg = if ((i / 10) % 2 == 0) b2 else a;
+                aw.head.pointerMove(aw.app.window.?, @floatFromInt(tg.geom.x + 2), @floatFromInt(tg.geom.y + 2));
+            }
+            aw.head.advance(16);
+            const t0 = nowNs();
+            aw.eval("update");
+            slot.* = nowNs() - t0;
+        }
+        report("ttk-hover-1000", buf[0..runs]);
+    }
+
     // type-entry: one key in an entry.
     {
         var e: World = undefined;

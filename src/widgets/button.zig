@@ -108,7 +108,7 @@ fn cmdButton(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.E
     if (argv.len != 3) return it.wrongArgs("::ztk::priv::button action window");
     const act = std.meta.stringToEnum(Action, try it.str(argv[1])) orelse return it.fail("bad action \"{s}\"", .{try it.str(argv[1])});
     const w = app.find(try it.str(argv[2])) orelse return Value.empty;
-    if (w.class.measure != label.measure) return Value.empty;
+    if (w.class.init != label.init) return Value.empty;
     const d = label.dataOf(w);
     switch (act) {
         // A button that was armed by a press and left by the pointer arms again when the pointer comes back.
