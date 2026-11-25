@@ -16,7 +16,7 @@ The `tests/*.test` and `tests/ttk/*.test` files of the Tk source. https://github
 
 **License:** Tcl/Tk License (BSD style)
 
-**How ztk uses it:** the test files measure compatibility. The repository has no copy of them. `tools/fetch-tk.sh` downloads a release into an ignored folder. `tools/tk-count.py`, `tools/tk-introspect.tcl`, and `tools/tk-run.sh` made the counts in [The size of Tk](../tk-size.md).
+**How ztk uses it:** the test files measure compatibility. The repository has no copy of them. `tools/fetch-tk.sh` downloads a release into an ignored folder. `tools/tk-count.py`, `tools/tk-introspect.tcl`, and `tools/tk-run.sh` made the counts in [The size of Tk](../dev/tk-size.md).
 
 ## Tables of names
 

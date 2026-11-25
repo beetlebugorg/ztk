@@ -1,10 +1,12 @@
-# ztk on the web
+# On the web
+
+ztk runs the same Tk scripts in a browser. Each example on the [landing page](https://beetlebug.org/ztk/) runs live, and the [playground](https://beetlebug.org/ztk/play/index.html) lets you edit a script.
 
 `zig build wasm` builds ztk for the browser into `zig-out/web`. The build has `ztk.wasm`, the page module `ztk.js`, the playground `index.html`, and the examples. `ztk.wasm` has the interpreter (ztcl), the widgets, the layout, the style sheets, the Inter font, and the CPU renderer. `ztk.js` gives the module the clock, the size, the scale, the color scheme, and the input, and draws each frame with WebGPU (`webgpu.js`), WebGL 2, or the CPU renderer.
 
 ## Install from npm
 
-The package [`@beetlebug/ztk`](https://www.npmjs.com/package/@beetlebug/ztk) has `ztk.wasm`, `ztk.js`, and the TypeScript types. See [the npm package](npm.md) for the build, the tests, and the publish steps.
+The package [`@beetlebug/ztk`](https://www.npmjs.com/package/@beetlebug/ztk) has `ztk.wasm`, `ztk.js`, and the TypeScript types. It works with a bundler, in a plain page from a CDN, and with Vite.
 
 ```sh
 npm install @beetlebug/ztk
@@ -51,6 +53,7 @@ The backing store of the canvas is the scene in device pixels, and the CSS size 
 
 | Renderer | How it draws |
 |---|---|
+| `webgpu` | WGSL shaders with the formulas of the CPU renderer. The canvas is `display-p3` on a wide-gamut screen. After a device loss, the renderer makes its pipeline again. |
 | `webgl2` | One instanced draw of the quads of the scene. The shaders have the formulas of the CPU renderer. |
 | `cpu` | `ztk.wasm` draws each frame to an RGBA image with `src/render/cpu.zig` (`ztk_cpu`, `ztk_image`), and a 2D context shows the image. |
 
@@ -60,7 +63,7 @@ The backing store of the canvas is the scene in device pixels, and the CSS size 
 
 `ztk.wasm` builds in ReleaseFast: 3.0 MB, or 1.0 MB with `gzip -9`. A ReleaseSmall build is 2.2 MB, or 0.82 MB with gzip. In Node.js, the median time of a frame of the gallery at scale 2 was 5.1 ms with ReleaseFast and 6.6 ms with ReleaseSmall. The build stays in ReleaseFast for the frame time.
 
-## Try it
+## Build it yourself
 
 ```sh
 zig build wasm

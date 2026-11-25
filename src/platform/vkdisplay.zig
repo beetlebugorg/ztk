@@ -2,7 +2,7 @@
 //! the listing of displays and modes. `list` changes no state. The
 //! swapchain on a display plane is not part of this stage, and the test
 //! on the development machine never makes a display surface, because the
-//! compositor of the user owns the displays there. See docs/tasks/BLOCKED.md.
+//! compositor of the user owns the displays there. See docs/dev/tasks/BLOCKED.md.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");

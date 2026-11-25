@@ -1,6 +1,6 @@
 name: release
 
-# Makes a GitHub release for a version tag. See docs/release.md.
+# Makes a GitHub release for a version tag. See docs/dev/release.md.
 #
 # The files of a release (VERSION is the tag with no v):
 #   ztk-VERSION-{x86_64,aarch64}-linux-musl.tar.gz
