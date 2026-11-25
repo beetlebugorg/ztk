@@ -167,3 +167,111 @@ test "headless: the app calls the backend only through Platform" {
     const src = @embedFile("../app.zig");
     try t.expect(std.mem.indexOf(u8, src, "headless") == null);
 }
+
+test "headless: the native menu calls go in the menu log" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    const plat = @import("../platform/platform.zig");
+    h.head.native_menus = true;
+    const p = h.head.platform();
+    try t.expect(p.hasNativeMenus());
+    const entries = [_]plat.MenuEntry{
+        .{ .label = "Open", .accelerator = "Ctrl+O", .underline = 0 },
+        .{ .kind = .separator },
+        .{ .kind = .checkbutton, .label = "Bold", .selected = true, .enabled = false },
+        .{ .kind = .cascade, .label = "More", .submenu = 4 },
+    };
+    p.menuSet(&.{ .id = 3, .title = "File", .role = .help, .entries = &entries });
+    p.menuEntrySet(3, 2, &.{ .kind = .checkbutton, .label = "Bold" });
+    p.setMenuBar(h.win, 3);
+    p.postMenu(h.win, 3, .{ .x = 10, .y = 20 }, 1);
+    p.unpostMenu(3);
+    p.menuDrop(3);
+    try t.expectEqualStrings(
+        \\set 3 "File" role=help [command Open Ctrl+O u0] [separator] [checkbutton Bold disabled on] [cascade More ->4]
+        \\entry 3 2 [checkbutton Bold]
+        \\bar 0 3
+        \\post 0 3 10 20 1
+        \\unpost 3
+        \\drop 3
+        \\
+    , h.head.menu_log.items);
+}
+
+test "headless: native menus are off by default, and a menu event passes" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    try t.expect(!h.head.platform().hasNativeMenus());
+    h.head.menuEvent(h.win, 3, 0, .invoke);
+    try h.update();
+}
+
+test "headless: a popup window keeps its popup options" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    const p = h.head.platform();
+    try t.expect(p.popups);
+    const pw = try p.createWindow(.{ .size = .{ .w = 80, .h = 40 }, .popup = .{ .parent = h.win, .anchor = .{ .x = 5, .y = 6, .w = 30, .h = 20 }, .side = .right } });
+    defer p.destroyWindow(pw);
+    const pop = h.head.popupOf(pw).?;
+    try t.expect(pop.parent == h.win);
+    try t.expectEqual(plat_side.right, pop.side);
+    try t.expect(h.head.popupOf(h.win) == null);
+}
+
+const plat_side = @import("../platform/platform.zig").Popup.Side;
+
+const HandlerLog = struct {
+    calls: u32 = 0,
+    last: event.MenuAction = .closed,
+    fn call(ctx: ?*anyopaque, id: u32, entry: i32, action: event.MenuAction) void {
+        const l: *HandlerLog = @ptrCast(@alignCast(ctx.?));
+        l.calls += 1;
+        l.last = action;
+        _ = id;
+        _ = entry;
+    }
+};
+
+test "headless: opening and select go to the menu handler at once" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    var log: HandlerLog = .{};
+    h.head.platform().setMenuHandler(.{ .ctx = &log, .call = HandlerLog.call });
+    h.head.menuAction(h.win, 3, -1, .opening);
+    h.head.menuAction(h.win, 3, 1, .select);
+    try t.expectEqual(@as(u32, 2), log.calls);
+    try t.expectEqual(event.MenuAction.select, log.last);
+    h.head.menuAction(h.win, 3, 1, .invoke);
+    try t.expectEqual(@as(u32, 2), log.calls);
+    var out = try drain(&h);
+    defer out.deinit(t.allocator);
+    try t.expectEqual(@as(usize, 1), out.items.len);
+    try t.expectEqual(event.MenuAction.invoke, out.items[0].menu.action);
+}
+
+test "headless: the application commands call the procs of Tk on macOS" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval("set log {}; proc tkAboutDialog {} {lappend ::log about}; proc ::tk::mac::Quit {} {lappend ::log quit}");
+    h.head.appCommand(.about);
+    h.head.appCommand(.settings);
+    h.head.appCommand(.quit);
+    try h.update();
+    try t.expectEqualStrings("about quit", try h.eval("set log"));
+    try t.expect(h.app.root != null);
+}
+
+test "headless: quit with no ::tk::mac::Quit closes ." {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    h.head.appCommand(.quit);
+    try h.app.run();
+    try t.expect(h.app.root == null);
+}

@@ -11,7 +11,95 @@ const Event = event.Event;
 const Target = @import("../render/thread.zig").Target;
 const RenderThread = @import("../render/thread.zig").RenderThread;
 
-pub const WindowOptions = struct { title: []const u8 = "", size: geom.Size = .{ .w = 200, .h = 200 } };
+pub const WindowOptions = struct {
+    title: []const u8 = "",
+    size: geom.Size = .{ .w = 200, .h = 200 },
+    /// Null: a toplevel window. Else a popup surface next to an anchor
+    /// in a parent window. Only a backend with `Platform.popups` reads it.
+    popup: ?Popup = null,
+};
+
+/// A popup surface: a drawn menu or a drop-down list. On Wayland it is an
+/// `xdg_popup`, and on the web it is a canvas in a layer above the page.
+/// The popup can extend past the edges of its parent. The backend sends
+/// `close` for the popup when the system dismissed it, for example after
+/// a press outside it.
+pub const Popup = struct {
+    parent: *Window,
+    /// The rectangle in the parent, in logical pixels, that the popup goes next to.
+    anchor: geom.Rect,
+    /// The side of the anchor for the popup. When the screen has no room
+    /// on that side, the backend flips the popup to the other side or
+    /// slides it along the edge.
+    side: Side = .below,
+    /// True: the popup gets the pointer and the keys of the program until it closes.
+    grab: bool = true,
+
+    pub const Side = enum { below, above, right, left };
+};
+
+/// The id of one native menu. The core gives each `menu` widget one id.
+/// 0 is no menu.
+pub const MenuId = u32;
+
+/// One entry of a native menu. The strings are valid only during the call
+/// that gives them: the backend copies what it keeps.
+pub const MenuEntry = struct {
+    kind: Kind = .command,
+    /// UTF-8. Empty for a separator.
+    label: []const u8 = "",
+    /// The text of `-accelerator`, for example "Ctrl+O". The backend shows
+    /// it at the right of the label. In Tk an accelerator only shows: a
+    /// binding of the script handles the key. So the backend gives the key
+    /// to the core as a `key` event and does not invoke the entry from it.
+    accelerator: []const u8 = "",
+    /// The character index in `label` of the underlined letter (`-underline`), or -1.
+    underline: i32 = -1,
+    enabled: bool = true,
+    /// The indicator of a check or radio entry is on.
+    selected: bool = false,
+    /// The submenu of a cascade, or 0.
+    submenu: MenuId = 0,
+    /// The entry starts a new column (`-columnbreak`).
+    column_break: bool = false,
+
+    pub const Kind = enum { command, cascade, checkbutton, radiobutton, separator };
+};
+
+/// The entries of one native menu. The tearoff entry of Tk is not in the list.
+pub const Menu = struct {
+    id: MenuId,
+    /// The title of the menu: the label of its cascade in a menu bar.
+    title: []const u8 = "",
+    /// The special place of the menu in a menu bar. The core sets it from
+    /// the path name, as Tk on macOS does: a cascade `.apple` of the bar
+    /// is `app`, `.help` is `help`, and `.window` is `window`. A backend
+    /// without such menus ignores it.
+    role: Role = .none,
+    entries: []const MenuEntry,
+
+    pub const Role = enum {
+        none,
+        /// The entries go at the top of the application menu (macOS).
+        app,
+        /// The Help menu of the system.
+        help,
+        /// The Window menu of the system.
+        window,
+    };
+};
+
+/// A function of the core that a backend calls on the UI thread, inside
+/// its menu loop, for the actions `opening` and `select` of a native menu.
+/// For `opening` the core runs `-postcommand` and calls `menuSet` before
+/// the call returns, so the menu shows its new entries. For `select` the
+/// core sends `<<MenuSelect>>` before the call returns. `entry` has the
+/// meaning of the `menu` event. The backend queues `invoke` and `closed`
+/// as `menu` events.
+pub const MenuHandler = struct {
+    ctx: ?*anyopaque,
+    call: *const fn (ctx: ?*anyopaque, id: MenuId, entry: i32, action: event.MenuAction) void,
+};
 
 /// The appearance of the system.
 pub const Appearance = struct {
@@ -90,6 +178,12 @@ pub const Platform = struct {
     live: bool = false,
     /// True when the target can draw on a thread other than the UI thread.
     thread_safe_draw: bool = false,
+    /// True when the backend shows native menus: the menu functions of
+    /// the table. Else the core draws each menu as Tk does on X11.
+    native_menus: bool = false,
+    /// True when `createWindow` makes a popup surface for `WindowOptions.popup`.
+    /// Else the core draws a popup inside its parent window.
+    popups: bool = false,
 
     pub const VTable = struct {
         deinit: *const fn (ptr: *anyopaque) void,
@@ -128,7 +222,61 @@ pub const Platform = struct {
         /// The dark mode and the accent color of the system. A backend
         /// gives an `appearance` event when they change.
         appearance: ?*const fn (ptr: *anyopaque) Appearance = null,
+
+        // The native menus. A backend with `native_menus` has each of these
+        // functions. The core calls them on the UI thread. The backend
+        // answers with `menu` events. `docs/dev/menus.md` has the design.
+
+        /// Defines a menu or replaces each of its entries. The core calls it
+        /// for each menu before the menu is in a menu bar, in a cascade, or
+        /// posted, and again after each change of the menu.
+        menuSet: ?*const fn (ptr: *anyopaque, menu: *const Menu) void = null,
+        /// Changes one entry of a menu and keeps the count of entries, for
+        /// example the indicator of a check entry.
+        menuEntrySet: ?*const fn (ptr: *anyopaque, id: MenuId, index: u32, entry: *const MenuEntry) void = null,
+        /// Removes a menu. The core removes it from each bar and each cascade first.
+        menuDrop: ?*const fn (ptr: *anyopaque, id: MenuId) void = null,
+        /// Sets the menu bar of a window (`toplevel -menu`). The cascades of
+        /// the menu are the menus of the bar. 0 removes the bar. On macOS
+        /// the system menu bar shows the bar of the key window.
+        setMenuBar: ?*const fn (ptr: *anyopaque, w: *Window, id: MenuId) void = null,
+        /// Shows a menu as a popup at a point of a window, in logical pixels
+        /// (`post` and `tk_popup`). When `entry` is 0 or more, that entry
+        /// goes at the point. A backend with a modal menu loop returns after
+        /// the menu closes and queues the events of the menu.
+        postMenu: ?*const fn (ptr: *anyopaque, w: *Window, id: MenuId, at: geom.Point, entry: i32) void = null,
+        /// Closes a posted menu and its open cascades (`unpost`).
+        unpostMenu: ?*const fn (ptr: *anyopaque, id: MenuId) void = null,
+        /// Gives the backend the handler for `opening` and `select`. The
+        /// core calls it one time, before the first menu call. A backend
+        /// without it queues `opening` and `select` as `menu` events.
+        setMenuHandler: ?*const fn (ptr: *anyopaque, h: MenuHandler) void = null,
     };
+
+    pub fn hasNativeMenus(p: Platform) bool {
+        return p.native_menus and p.vtable.menuSet != null and p.vtable.postMenu != null;
+    }
+    pub fn menuSet(p: Platform, menu: *const Menu) void {
+        if (p.vtable.menuSet) |f| f(p.ptr, menu);
+    }
+    pub fn menuEntrySet(p: Platform, id: MenuId, index: u32, entry: *const MenuEntry) void {
+        if (p.vtable.menuEntrySet) |f| f(p.ptr, id, index, entry);
+    }
+    pub fn menuDrop(p: Platform, id: MenuId) void {
+        if (p.vtable.menuDrop) |f| f(p.ptr, id);
+    }
+    pub fn setMenuBar(p: Platform, w: *Window, id: MenuId) void {
+        if (p.vtable.setMenuBar) |f| f(p.ptr, w, id);
+    }
+    pub fn postMenu(p: Platform, w: *Window, id: MenuId, at: geom.Point, entry: i32) void {
+        if (p.vtable.postMenu) |f| f(p.ptr, w, id, at, entry);
+    }
+    pub fn unpostMenu(p: Platform, id: MenuId) void {
+        if (p.vtable.unpostMenu) |f| f(p.ptr, id);
+    }
+    pub fn setMenuHandler(p: Platform, h: MenuHandler) void {
+        if (p.vtable.setMenuHandler) |f| f(p.ptr, h);
+    }
 
     /// Null: the backend has no appearance of the system.
     pub fn appearance(p: Platform) ?Appearance {

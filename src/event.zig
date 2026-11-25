@@ -24,6 +24,32 @@ pub const Mods = packed struct(u16) {
     _pad: u3 = 0,
 };
 
+/// The kinds of the `menu` event.
+pub const MenuAction = enum {
+    /// The user chose the entry. The core invokes it, as `invoke` does.
+    invoke,
+    /// The highlighted entry changed. The core sends `<<MenuSelect>>`. The entry is -1 for none.
+    select,
+    /// The menu is about to open from a bar or a cascade. The core runs
+    /// `-postcommand` and calls `menuSet` when the entries changed. A
+    /// backend with the menu handler of the platform calls the handler and
+    /// shows the new entries. A queued event can arrive after the menu showed.
+    opening,
+    /// The menu closed.
+    closed,
+};
+
+/// The commands of the application menu of the system (macOS) that go to the script.
+pub const AppCommand = enum {
+    /// About: the core calls `tkAboutDialog` when the script has it.
+    about,
+    /// Settings: the core calls `::tk::mac::ShowPreferences` when the script has it.
+    settings,
+    /// Quit: the core calls `::tk::mac::Quit` when the script has it, or
+    /// else closes `.` as a `close` event does.
+    quit,
+};
+
 pub const Event = union(enum) {
     motion: struct { window: *Window, x: f32, y: f32, mods: Mods, time_ms: u32 },
     button: struct { window: *Window, button: u8, pressed: bool, x: f32, y: f32, mods: Mods, time_ms: u32 },
@@ -56,10 +82,17 @@ pub const Event = union(enum) {
     /// The dark mode or the accent color of the system changed. The core
     /// reads them again with `Platform.appearance`.
     appearance: struct { window: *Window },
+    /// An action of the user in a native menu. `window` is the window of
+    /// the menu bar or of the post. `entry` is an index into the entries of
+    /// the last `menuSet` of the menu, or -1.
+    menu: struct { window: *Window, menu: u32, entry: i32, action: MenuAction },
+    /// A command of the application menu. It can come with no window open.
+    app_command: struct { window: ?*Window = null, command: AppCommand },
 
-    /// The window of the event. The pointer is never dereferenced by the
-    /// caller when the window may be gone.
-    pub fn window(e: Event) *Window {
+    /// The window of the event, or null for an `app_command` with no
+    /// window. The pointer is never dereferenced by the caller when the
+    /// window may be gone.
+    pub fn window(e: Event) ?*Window {
         return switch (e) {
             inline else => |v| v.window,
         };
