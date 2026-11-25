@@ -84,6 +84,10 @@ test {
         _ = @import("sys/linux.zig");
         _ = @import("tests/direct.zig");
     }
+    if (@import("builtin").os.tag == .windows) {
+        _ = @import("platform/win32.zig");
+        _ = @import("tests/win32.zig");
+    }
     _ = anim;
     _ = checks;
     _ = @import("tests/demo.zig");
