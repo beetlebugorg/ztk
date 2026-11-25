@@ -88,6 +88,9 @@ pub fn build(b: *std.Build) void {
         ztk.linkSystemLibrary("objc", .{});
         ztk.linkFramework("Foundation", .{});
         ztk.linkFramework("Metal", .{});
+        ztk.linkFramework("QuartzCore", .{});
+        ztk.linkFramework("CoreGraphics", .{});
+        ztk.linkFramework("AppKit", .{});
     }
     ztk.addAnonymousImport("inter_regular", .{ .root_source_file = b.path("assets/fonts/Inter-Regular.ttf") });
     ztk.addAnonymousImport("inter_bold", .{ .root_source_file = b.path("assets/fonts/Inter-Bold.ttf") });

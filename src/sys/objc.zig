@@ -3,8 +3,9 @@
 //! to a function pointer of the type that the caller gives, with the
 //! receiver and the selector as the first two arguments. On arm64 the same
 //! entry point returns each type, a structure too. On x86-64 a structure
-//! that is larger than 16 bytes needs `objc_msgSend_stret`, and `call`
-//! stops the build for that case. A class that the backend defines at run
+//! that is larger than 16 bytes needs `objc_msgSend_stret`: `call` stops
+//! the build for that case, and `callStruct` sends a message with no
+//! arguments that gives such a structure, such as an `NSRect`. A class that the backend defines at run
 //! time is a subclass with methods that are Zig functions of the C calling
 //! convention, made with `objc_allocateClassPair`, `class_addMethod`, and
 //! `objc_registerClassPair`. An instance keeps a pointer to Zig data in an
@@ -24,6 +25,7 @@ pub const BOOL = bool;
 extern "objc" fn objc_getClass(name: [*:0]const u8) ?Class;
 extern "objc" fn sel_registerName(name: [*:0]const u8) Sel;
 extern "objc" fn objc_msgSend() void;
+extern "objc" fn objc_msgSend_stret() void;
 extern "objc" fn objc_allocateClassPair(super: Class, name: [*:0]const u8, extra: usize) ?Class;
 extern "objc" fn objc_registerClassPair(cls: Class) void;
 extern "objc" fn objc_disposeClassPair(cls: Class) void;
@@ -60,6 +62,20 @@ pub fn call(comptime Fn: type, target: anytype, selector: [*:0]const u8, args: a
     }
     const receiver: Receiver = @ptrCast(target);
     return @call(.auto, f, .{ receiver, sel_registerName(selector) } ++ args);
+}
+
+/// Sends `selector` with no arguments to `target` and gives the structure
+/// of type `Ret` that it returns, on arm64 and on x86-64.
+pub fn callStruct(comptime Ret: type, target: Id, selector: [*:0]const u8) Ret {
+    if (builtin.cpu.arch == .x86_64 and @sizeOf(Ret) > 16) {
+        // The caller gives the memory of the result as a hidden first argument.
+        const f: *const fn (*Ret, Id, Sel) callconv(.c) void = @ptrCast(&objc_msgSend_stret);
+        var out: Ret = undefined;
+        f(&out, target, sel_registerName(selector));
+        return out;
+    }
+    const f: *const fn (Id, Sel) callconv(.c) Ret = @ptrCast(&objc_msgSend);
+    return f(target, sel_registerName(selector));
 }
 
 /// `[[cls alloc] init]`.
