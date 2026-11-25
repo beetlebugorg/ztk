@@ -63,6 +63,8 @@ pub const Headless = struct {
     ime_on: bool = false,
     ime_rect: geom.Rect = .{},
     ime_calls: u32 = 0,
+    /// The appearance of the system that a test sets. Null: light, with no accent.
+    system: ?plat.Appearance = null,
     /// The texts of the input method events in the queue, freed at the next `poll`.
     ime_texts: std.ArrayListUnmanaged([]u8) = .empty,
     ime_texts_old: std.ArrayListUnmanaged([]u8) = .empty,
@@ -109,7 +111,18 @@ pub const Headless = struct {
         .clipboardSet = vClipboardSet,
         .clipboardGet = vClipboardGet,
         .textInput = vTextInput,
+        .appearance = vAppearance,
     };
+
+    fn vAppearance(ptr: *anyopaque) plat.Appearance {
+        return self(ptr).system orelse .{ .dark = false };
+    }
+
+    /// Sets the appearance of the system and queues the event of the change.
+    pub fn setAppearance(h: *Headless, w: *Window, a: plat.Appearance) void {
+        h.system = a;
+        h.push(.{ .appearance = .{ .window = w } });
+    }
 
     fn vTextInput(ptr: *anyopaque, _: *Window, on: bool, rect: geom.Rect) void {
         const h = self(ptr);

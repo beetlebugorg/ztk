@@ -165,6 +165,7 @@ pub const Win32 = struct {
         .clipboardSet = vClipboardSet,
         .clipboardGet = vClipboardGet,
         .textInput = vTextInput,
+        .appearance = vAppearance,
     };
 
     fn self(ptr: *anyopaque) *Win32 {
@@ -389,6 +390,30 @@ pub const Win32 = struct {
             .nwse_resize => w32.IDC_SIZENWSE,
             .nesw_resize => w32.IDC_SIZENESW,
         };
+    }
+
+    // ---- Appearance ----
+
+    /// The dark mode from `AppsUseLightTheme` of the user (0 is dark), and
+    /// the accent from `DwmGetColorizationColor`, the color of the window frames.
+    fn vAppearance(_: *anyopaque) plat.Appearance {
+        var light: u32 = 1;
+        var size: u32 = @sizeOf(u32);
+        const path = std.unicode.utf8ToUtf16LeStringLiteral("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize");
+        const value = std.unicode.utf8ToUtf16LeStringLiteral("AppsUseLightTheme");
+        if (w32.RegGetValueW(w32.HKEY_CURRENT_USER, path, value, w32.RRF_RT_REG_DWORD, null, &light, &size) != 0) light = 1;
+        var argb: u32 = 0;
+        var opaque_blend: w32.BOOL = 0;
+        const accent: ?geom.Color = if (w32.DwmGetColorizationColor(&argb, &opaque_blend) >= 0)
+            .{ .r = @truncate(argb >> 16), .g = @truncate(argb >> 8), .b = @truncate(argb) }
+        else
+            null;
+        return .{ .dark = light == 0, .accent = accent };
+    }
+
+    /// The appearance of the system, for the tests.
+    pub fn appearanceNow(b: *Win32) plat.Appearance {
+        return vAppearance(b);
     }
 
     // ---- Input method ----
@@ -757,6 +782,18 @@ pub const Win32 = struct {
                     return 1;
                 }
                 return w32.DefWindowProcW(rec.hwnd, msg, wp, lp);
+            },
+            w32.WM_SETTINGCHANGE => {
+                // The dark mode of the apps changes with the setting "ImmersiveColorSet".
+                if (lp != 0) {
+                    const name: [*:0]const u16 = @ptrFromInt(@as(usize, @bitCast(lp)));
+                    if (std.mem.eql(u16, std.mem.span(name), std.unicode.utf8ToUtf16LeStringLiteral("ImmersiveColorSet"))) b.push(.{ .appearance = .{ .window = w } });
+                }
+                return w32.DefWindowProcW(rec.hwnd, msg, wp, lp);
+            },
+            w32.WM_DWMCOLORIZATIONCOLORCHANGED => {
+                b.push(.{ .appearance = .{ .window = w } });
+                return 0;
             },
             w32.WM_ERASEBKGND => return 1,
             w32.WM_PAINT => {

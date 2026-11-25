@@ -80,6 +80,7 @@ Rule 12 of `AGENTS.md` forbids windows on the live desktop session of the develo
 - The entry does not draw the composition text yet. The `preedit` event keeps it in `app.text_input` for the widget code, and the candidate window of the input method shows the choices.
 - The candidate window shows at the box of the text widget. The caret position is known only to the paint code of the entry.
 - The clipboard code of PR 6 has not run with success: the development machine and the CI runner give the test process no clipboard access.
+- The themes do not use the accent color of the system yet. `app.accent` has it.
 - The fonts of the system (DirectWrite) and the accessibility tree (UI Automation) are not part of this plan.
 
 ## Decisions
