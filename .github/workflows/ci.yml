@@ -101,6 +101,8 @@ jobs:
     env:
       # The tests of the Win32 backend make hidden windows.
       ZTK_TEST_WINDOWS: "1"
+      # The clipboard of the runner has no data of a person, so the clipboard test can change it.
+      ZTK_TEST_CLIPBOARD: "1"
     defaults:
       run:
         shell: bash

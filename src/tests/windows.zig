@@ -270,3 +270,45 @@ test "windows: setCursor loads the shape of the system" {
     o.b.platform().setCursor(o.w, .ew_resize);
     try t.expectEqual(w32.LoadCursorW(null, w32.IDC_SIZEWE), o.b.cursorHandle(o.w));
 }
+
+test "windows: the clipboard of the system round-trips text with CRLF line ends" {
+    if (!enabled()) return;
+    // The test changes the clipboard of the machine, so it has its own
+    // variable. It puts the text that was there back at the end.
+    if (!(t.environ.contains(t.allocator, "ZTK_TEST_CLIPBOARD") catch false)) {
+        std.debug.print("SKIP: set ZTK_TEST_CLIPBOARD=1 to run the clipboard test\n", .{});
+        return;
+    }
+    // A process with no clipboard access to its window station (a service,
+    // or a session with no desktop) gets 0 here, and OpenClipboard fails.
+    if (w32.GetClipboardSequenceNumber() == 0) {
+        std.debug.print("SKIP: this process has no access to the clipboard\n", .{});
+        return;
+    }
+    var events: std.ArrayListUnmanaged(Event) = .empty;
+    defer events.deinit(t.allocator);
+    const a = try openHidden(&events);
+    defer a.b.deinit();
+    const other = try openHidden(&events);
+    defer other.b.deinit();
+    const pa = a.b.platform();
+    const po = other.b.platform();
+
+    const saved = pa.clipboardGet(t.allocator, "STRING");
+    defer if (saved) |s| t.allocator.free(s);
+    defer pa.clipboardSet("STRING", saved orelse "");
+
+    const text = "line one\nzwei \u{FC} \u{1F600}";
+    pa.clipboardSet("STRING", text);
+    // The text of the App is the latest, so the store of the App answers.
+    try t.expect(pa.clipboardGet(t.allocator, "STRING") == null);
+    // A second backend reads it in the place of another program.
+    const read = po.clipboardGet(t.allocator, "STRING") orelse return error.NoText;
+    defer t.allocator.free(read);
+    try t.expectEqualStrings(text, read);
+
+    po.clipboardSet("STRING", "from the other one");
+    const back = pa.clipboardGet(t.allocator, "STRING") orelse return error.NoText;
+    defer t.allocator.free(back);
+    try t.expectEqualStrings("from the other one", back);
+}

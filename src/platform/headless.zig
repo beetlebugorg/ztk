@@ -55,6 +55,10 @@ pub const Headless = struct {
     /// The last pointer shape that the core set, and the count of the calls.
     cursor: ?plat.Cursor = null,
     cursor_calls: u32 = 0,
+    /// The text of the last `clipboardSet`, and a text that a test puts on the
+    /// clipboard in the place of another program. A set clears `clip_foreign`.
+    clip_set: std.ArrayListUnmanaged(u8) = .empty,
+    clip_foreign: ?[]const u8 = null,
 
     pub fn init(gpa: std.mem.Allocator) !*Headless {
         const h = try gpa.create(Headless);
@@ -73,6 +77,7 @@ pub const Headless = struct {
         }
         h.windows.deinit(h.gpa);
         h.queue.deinit(h.gpa);
+        h.clip_set.deinit(h.gpa);
         h.gpa.destroy(h);
     }
 
@@ -90,7 +95,21 @@ pub const Headless = struct {
         .target = vTarget,
         .setTimeUs = vSetTime,
         .setCursor = vSetCursor,
+        .clipboardSet = vClipboardSet,
+        .clipboardGet = vClipboardGet,
     };
+
+    fn vClipboardSet(ptr: *anyopaque, _: []const u8, data: []const u8) void {
+        const h = self(ptr);
+        h.clip_set.clearRetainingCapacity();
+        h.clip_set.appendSlice(h.gpa, data) catch {};
+        h.clip_foreign = null;
+    }
+
+    fn vClipboardGet(ptr: *anyopaque, gpa: std.mem.Allocator, _: []const u8) ?[]u8 {
+        const text = self(ptr).clip_foreign orelse return null;
+        return gpa.dupe(u8, text) catch null;
+    }
 
     fn vSetCursor(ptr: *anyopaque, _: *Window, shape: plat.Cursor) void {
         const h = self(ptr);
