@@ -64,8 +64,8 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
 
 <section class="stats" aria-label="Key numbers">
   <div class="wrap">
-    <div class="stat"><b>0.85 ms</b><span>CPU time of a frame with 1 000 widgets, 99th percentile</span></div>
-    <div class="stat"><b>1.52 ms</b><span>CPU time of a scroll frame of a canvas with 10 000 items, 99th percentile</span></div>
+    <div class="stat"><b>0.85 ms</b><span>CPU time of a frame with 1,000 widgets, 99th percentile</span></div>
+    <div class="stat"><b>1.52 ms</b><span>CPU time of a scroll frame of a canvas with 10,000 items, 99th percentile</span></div>
     <div class="stat"><b>1.6 ms</b><span>from start to the first frame, headless</span></div>
     <div class="stat"><b>1.0 MB</b><span>the WebAssembly build with gzip, with the fonts</span></div>
   </div>
@@ -128,7 +128,7 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
             <img src="assets/shots/spreadsheet-light.png" width="720" height="470" alt="A spreadsheet with a formula bar, Undo, Copy, and Paste buttons, number formats, and a grid of costs by quarter with totals, averages, percent shares, and the errors #DIV/0 and #REF in red." loading="lazy">
           </picture>
         </a>
-        <figcaption><a href="https://github.com/beetlebugorg/ztk/blob/main/examples/spreadsheet.tcl"><code>examples/spreadsheet.tcl</code></a><b>A spreadsheet</b>10 000 rows on a <code>canvas</code>, with items only for the cells in view and a header row and column that stay in place. Formulas such as <code>=sum(B2:B7)</code> are Tcl expressions, with recalculation and cycle errors. Arrows, Tab, Enter, and Shift select; typing edits in an <code>entry</code> over the cell. Columns resize by a drag, and ranges copy and paste as text with tabs.</figcaption>
+        <figcaption><a href="https://github.com/beetlebugorg/ztk/blob/main/examples/spreadsheet.tcl"><code>examples/spreadsheet.tcl</code></a><b>A spreadsheet</b>10,000 rows on a <code>canvas</code>, with items only for the cells in view and a header row and column that stay in place. Formulas such as <code>=sum(B2:B7)</code> are Tcl expressions, with recalculation and cycle errors. Arrows, Tab, Enter, and Shift select; typing edits in an <code>entry</code> over the cell. Columns resize by a drag, and ranges copy and paste as text with tabs.</figcaption>
       </figure>
       <figure class="shot full" data-example="vector">
         <a class="frame" href="https://github.com/beetlebugorg/ztk/blob/main/examples/vector.tcl">
@@ -208,12 +208,12 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
         <h3>CPU time of one frame, 99th percentile</h3>
         <p class="how">Milliseconds, <code>zig build bench</code>, <code>ReleaseFast</code>, on an Intel Core i7-6700K with other load, 2026-11-23 to 2026-11-25. The dashed line is the budget of 8 ms. A shorter bar is faster.</p>
         <dl class="bars">
-          <dt>Hover, 1 000 widgets</dt><dd><span class="track budget"><span class="fill" style="width:10.6%" title="0.85 ms"></span></span><span class="val">0.85 <small>ms</small></span></dd>
-          <dt>ttk hover, 1 000 widgets</dt><dd><span class="track budget"><span class="fill" style="width:13%" title="1.04 ms"></span></span><span class="val">1.04 <small>ms</small></span></dd>
-          <dt>Transition, 1 000 widgets</dt><dd><span class="track budget"><span class="fill" style="width:17%" title="1.36 ms"></span></span><span class="val">1.36 <small>ms</small></span></dd>
-          <dt>Canvas scroll, 10 000 items</dt><dd><span class="track budget"><span class="fill" style="width:19%" title="1.52 ms"></span></span><span class="val">1.52 <small>ms</small></span></dd>
-          <dt>Vector pan, 10 000 shapes</dt><dd><span class="track budget"><span class="fill" style="width:48.3%" title="3.86 ms"></span></span><span class="val">3.86 <small>ms</small></span></dd>
-          <dt>Spreadsheet scroll, 10 000 rows</dt><dd><span class="track budget"><span class="fill" style="width:65%" title="5.20 ms"></span></span><span class="val">5.20 <small>ms</small></span></dd>
+          <dt>Hover, 1,000 widgets</dt><dd><span class="track budget"><span class="fill" style="width:10.6%" title="0.85 ms"></span></span><span class="val">0.85 <small>ms</small></span></dd>
+          <dt>ttk hover, 1,000 widgets</dt><dd><span class="track budget"><span class="fill" style="width:13%" title="1.04 ms"></span></span><span class="val">1.04 <small>ms</small></span></dd>
+          <dt>Transition, 1,000 widgets</dt><dd><span class="track budget"><span class="fill" style="width:17%" title="1.36 ms"></span></span><span class="val">1.36 <small>ms</small></span></dd>
+          <dt>Canvas scroll, 10,000 items</dt><dd><span class="track budget"><span class="fill" style="width:19%" title="1.52 ms"></span></span><span class="val">1.52 <small>ms</small></span></dd>
+          <dt>Vector pan, 10,000 shapes</dt><dd><span class="track budget"><span class="fill" style="width:48.3%" title="3.86 ms"></span></span><span class="val">3.86 <small>ms</small></span></dd>
+          <dt>Spreadsheet scroll, 10,000 rows</dt><dd><span class="track budget"><span class="fill" style="width:65%" title="5.20 ms"></span></span><span class="val">5.20 <small>ms</small></span></dd>
         </dl>
       </figure>
       <div>

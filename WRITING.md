@@ -54,4 +54,4 @@ Do what the task asks. Ask before you fix an adjacent problem.
 
 ## Claims
 
-Write only facts that you checked. If you cannot check a fact, say so in the sentence. Give each number with the command that measured it.
+Write only facts that you checked. If you cannot check a fact, say so in the sentence. Give each number with the command that measured it. A number of five or more digits, and a round number such as 1,000, uses commas between groups of three digits (37,413), never spaces.

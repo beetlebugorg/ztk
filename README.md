@@ -8,7 +8,7 @@ Tk, rebuilt in Zig. ztk runs Tk scripts on the [ztcl](https://github.com/beetleb
 
 - **Tk scripts.** `frame`, `label`, `button`, `entry`, `spinbox`, `scale`, `scrollbar`, `canvas`, the simple `ttk` widgets, `pack`, `grid`, `place`, and `bind`. Each example also runs in `wish` 8.6.
 - **A modern look.** A stylesheet in a subset of CSS styles each widget, with a dark scheme, transitions, and a classic theme with the look of Tk.
-- **Fluid.** A frame with 1 000 widgets uses 0.85 ms of CPU time at the 99th percentile, and a render thread draws animations while the script is busy.
+- **Fluid.** A frame with 1,000 widgets uses 0.85 ms of CPU time at the 99th percentile, and a render thread draws animations while the script is busy.
 - **On the web.** The same scripts run in the browser with WebGPU, WebGL 2, or a 2D canvas.
 - **No third-party library.** ztk uses the platform, ztcl, and the Zig standard library.
 

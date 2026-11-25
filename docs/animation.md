@@ -55,4 +55,4 @@ ztk::animate reduce ?bool?
 
 ## How smooth
 
-On the development machine, a hover transition beside 1 000 widgets uses 1.36 ms of CPU time for a frame at the 99th percentile, and 1 000 `ztk::animate` moves at once use 7.20 ms. [Performance](performance.md) has the method.
+On the development machine, a hover transition beside 1,000 widgets uses 1.36 ms of CPU time for a frame at the 99th percentile, and 1,000 `ztk::animate` moves at once use 7.20 ms. [Performance](performance.md) has the method.
