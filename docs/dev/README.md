@@ -12,6 +12,7 @@ These files are the plan, the task lists, the reviews, and the reports of ztk. T
 | [review.md](review.md) | The checklist of a reviewer. |
 | [tk-size.md](tk-size.md) | The measured size of Tk. |
 | [release.md](release.md), [npm.md](npm.md) | The release process and the npm package. |
+| [windows.md](windows.md) | The plan of the Windows backend and the platform interface that it shares with macOS. |
 
 The user page [Differences from Tk](../differences.md) has the short form of the limits.
 
@@ -19,7 +20,7 @@ The user page [Differences from Tk](../differences.md) has the short form of the
 
 Stage 1 is built. Four independent reviews said "do not merge" or "not yet". The fixes for the fourth review are in this code, and no review has checked them. Stage 1 has `frame`, `label`, `button`, `entry`, `grid`, `bind`, `event generate`, `focus`, `wm`, and `winfo` for `.`, a CSS subset with a modern theme, a font engine with no library, a CPU renderer, a Vulkan renderer (offscreen, checked against the CPU renderer on two GPUs), a render thread, and three backends: headless, Wayland (CPU renderer into shared memory), and direct (framebuffer and evdev). `examples/demo.tcl` runs in ztk and in `wish` 8.6.16. [The report](stage1-report.md) has the test counts.
 
-What does not work: the Vulkan swapchain on a window and on a display, a window on the live desktop (not tried), the direct backend on a real device (not tried, and `--direct` needs the flag `--direct-unsafe-test-device`, because ztk does not own the VT), the other widgets and commands of Tk, and two rules of the `grid` solver (the oracle shows 11 differences in 600 random layouts). The tests run on Linux only. The headless program compiles for macOS and Windows, and no run on these systems has checked it. [The report](stage1-report.md) has the numbers, and [the limits](stage1-limits.md) list what each widget lacks.
+What does not work: the Vulkan swapchain on a window and on a display, a window on the live desktop (not tried), the direct backend on a real device (not tried, and `--direct` needs the flag `--direct-unsafe-test-device`, because ztk does not own the VT), the other widgets and commands of Tk, and two rules of the `grid` solver (the oracle shows 11 differences in 600 random layouts). The unit tests run on Linux and Windows. The headless program compiles for macOS and Windows, and no run on these systems has checked it. [The report](stage1-report.md) has the numbers, and [the limits](stage1-limits.md) list what each widget lacks.
 
 - [The plan](plan.md) has the goal, the architecture, the decisions, the performance targets, the verification strategy, and the stages.
 - [The Stage 1 tasks](tasks/README.md) are the 22 small tasks of the first demo.
