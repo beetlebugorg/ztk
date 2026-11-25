@@ -49,7 +49,7 @@ Win32 gives the messages of a window only to the thread that made it. The UI thr
 - `WM_MOUSEWHEEL` and `WM_MOUSEHWHEEL` give `scroll` events, with 120 units for one step of the wheel. A touchpad gives smaller units.
 - The pointer messages call `Window.feedPointer` too.
 - The scale is `GetDpiForWindow / 96`. `WM_DPICHANGED` gives a `scale` event, and the backend moves the window to the rectangle that the message suggests.
-- The frame clock is the waitable object of the swapchain (`GetFrameLatencyWaitableObject`), with a latency of one frame. It gives one `frame` event for each `requestFrame`. With the CPU output, the clock is a waitable timer at the refresh rate of `DwmGetCompositionTimingInfo`.
+- The frame clock is a high-resolution waitable timer with a manual reset. `requestFrame` arms it for one frame time (16,667 microseconds) after the last tick, and the tick gives one `frame` event for each window that asked for one. The render thread presents with a sync interval of 1, so the swapchain follows the refresh of the display. The waitable object of the swapchain (`GetFrameLatencyWaitableObject`) and the refresh rate of the monitor can replace the fixed time in a later PR.
 
 ## The Direct3D 12 renderer
 
@@ -75,6 +75,7 @@ Rule 12 of `AGENTS.md` forbids windows on the live desktop session of the develo
 ## Limits
 
 - `DefWindowProc` runs its own message loop while a person moves or sizes a window. The UI thread does not return to the loop of the App in that time, so the window shows its last frame until the move ends. A timer during `WM_ENTERSIZEMOVE` can run the loop of the App, in a later PR.
+- The frame clock has 60 ticks in each second on each monitor, also on a monitor with a higher refresh rate.
 - The pointer positions reach the render thread from the UI thread only, so a drag that the render thread moves stops while the UI thread is busy.
 - The fonts of the system (DirectWrite) and the accessibility tree (UI Automation) are not part of this plan.
 

@@ -172,6 +172,7 @@ pub fn main(init: std.process.Init) !void {
     var wl: if (ztk.wayland_enabled) ?*ztk.wayland.Wayland else void = if (ztk.wayland_enabled) null else {};
     var platform: ztk.platform.Platform = undefined;
     var direct_be: ?*ztk.direct.Direct = null;
+    var win_be: if (ztk.windows_enabled) ?*ztk.windows.Win32 else void = if (ztk.windows_enabled) null else {};
     if (direct_on) {
         if (!direct_opts.unsafe_test_device) {
             fail(err, "ztk: --direct does not own the VT yet: no keyboard mode, no termios, and no VT switch. Add --direct-unsafe-test-device only on a device that is free to lose its console.\n", .{});
@@ -195,11 +196,25 @@ pub fn main(init: std.process.Init) !void {
         }
         wl = ztk.wayland.Wayland.init(init.gpa) catch |e| fail(err, "ztk: cannot use the Wayland display: {s}\n", .{@errorName(e)});
         platform = wl.?.platform();
+    } else if (ztk.windows_enabled) {
+        // ZTK_RENDERER=cpu, d3d12, or warp picks the output. The default is Direct3D 12, and the CPU without a device.
+        var wopts: ztk.windows.Options = .{};
+        if (init.environ_map.get("ZTK_RENDERER")) |v| {
+            if (std.mem.eql(u8, v, "warp")) {
+                wopts.renderer = .d3d12;
+                wopts.warp = true;
+            } else wopts.renderer = std.meta.stringToEnum(ztk.windows.Renderer, v) orelse fail(err, "ztk: ZTK_RENDERER is cpu, d3d12, or warp\n", .{});
+        }
+        win_be = ztk.windows.Win32.init(init.gpa, wopts) catch |e| fail(err, "ztk: cannot use the Win32 backend: {s}\n", .{@errorName(e)});
+        platform = win_be.?.platform();
     } else {
         fail(err, "ztk: this build has no Wayland backend. Use --headless.\n", .{});
     }
     defer if (head) |h| h.deinit();
     defer if (direct_be) |dbe| dbe.deinit();
+    defer if (ztk.windows_enabled) {
+        if (win_be) |b| b.deinit();
+    };
     defer if (ztk.wayland_enabled) {
         if (wl) |w| w.deinit();
     };
