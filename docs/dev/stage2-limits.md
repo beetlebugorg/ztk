@@ -147,6 +147,20 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - The Tk test files of these widgets do not run in ztk: the interpreter has no `package` command, so `tcltest` does not load. `wish` 8.6.16 under `xvfb-run` passes `ttk/ttk.test` 97 of 97, `ttk/checkbutton.test` 8 of 8, `ttk/radiobutton.test` 8 of 8, `ttk/labelframe.test` 19 of 19, `ttk/entry.test` 37 of 37, `ttk/validate.test` 26 of 32 (6 skipped), `ttk/layout.test` 2 of 2, and `ttk/image.test` 5 of 5, with the wrapper of `tools/tk-run.sh`.
 - `zig build bench`, ReleaseFast, 2026-11-25, development machine with a load average of 1.6 to 3.6: `ttk-hover-1000` (1 000 `ttk::label` and `ttk::button` widgets, a hover color from `ttk::style map`, the pointer moves to another button each 10 frames) median 0.87 ms and 99th percentile 1.04 ms, under the gate of 8 ms.
 
+## ttk range widgets (task 10)
+
+- `ttk::combobox`, `ttk::spinbox`, `ttk::scale`, `ttk::scrollbar`, and `ttk::progressbar` have the options of `wish` 8.6.16 in its order, with its defaults and messages. The combobox builds on the entry, and the spin box, the scale, and the scrollbar on their classic classes, with the options of the classic class hidden. A double option of a `ttk` widget keeps the text of the script (`-value 120` gives `120`), as in `wish`.
+- The class bindings are those of the classic classes and of the entry, with the keys and the pointer of the list of a combobox. The lists of `bind TCombobox` and the others differ from `wish`. The combobox has no `ComboboxListbox` and `ComboboxPopdown` bind tags, and the wheel on a closed combobox scrolls the text where `wish` steps the value.
+- The list of a combobox is a popover that the toplevel draws over its widgets, with the grab on the combobox while it is open. `wish` makes a toplevel `$cb.popdown` with a listbox. The list starts on the current value, or on no row. A combobox with an empty `-values` does not open its list. `-height` of 0 or less shows 10 rows.
+- `ttk::scale set` runs `-command` and gives an empty result. `wish` gives the result of `-command`. `identify` gives `slider` or `trough`, where `wish` gives the element of its layout.
+- `ttk::scrollbar identify` gives `thumb` or `trough`: the modern scrollbar has no arrows. `delta` and `fraction` count from the ends of the trough.
+- `ttk::spinbox -command` runs with no `%` substitution, as in `wish`. A change of `-values`, `-from`, or `-to` keeps the text. `identify` gives `uparrow`, `downarrow`, or `textarea`.
+- `ttk::progressbar` draws the indeterminate bar from the value when `start` does not run, and moves it back and forth in 1.2 s on the render thread while `start` runs. `-phase` is stored with no effect. `identify` gives `pbar` inside the widget.
+- A `ttk::entry`, `ttk::combobox`, or `ttk::spinbox` does not create a `-textvariable` that does not exist, as in `wish`.
+- The requested sizes come from the font and the theme. `wish` gives 100 by 19 for a horizontal progress bar and 177 for the width of a combobox. ztk gives 100 by 14 and 213.
+- The Tk test files of these widgets (`ttk/combobox.test`, `ttk/spinbox.test`, `ttk/scale.test`, `ttk/progressbar.test`) do not run in ztk: the interpreter has no `package` command. The counts of `wish` were not measured for this task.
+- `zig build bench`, ReleaseFast, 2026-11-25, development machine, load not measured: `progress-indeterminate` (an indeterminate bar with `start` beside 1,000 widgets, one frame each 16 ms) median 0.005 ms and 99th percentile 0.022 ms; `combobox-open` (the list of 40 values opens beside 1,000 widgets) median 1.12 ms and 99th percentile 2.22 ms. Both are under the gate of 8 ms.
+
 ## Additions
 
 - `ztk::animate`, `ztk::clock`, the timing function `spring()`, and the flag `--time` of the `ztk` program.
@@ -162,3 +176,4 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - The parts `::buttonup` and `::buttondown` of a spinbox.
 - `ztk::style theme ?modern|classic?`, the CSS property `border-style` with `outset`, `inset`, `groove`, and `ridge` (and the Tk names `raised` and `sunken`), and `:state(!name)` with the states `hover` and `user1` to `user6`.
 - `-placeholder` and `-placeholderforeground` for `ttk::entry`.
+- `-placeholder` and `-placeholderforeground` for `ttk::combobox` and `ttk::spinbox`. The parts `::arrow`, `::popdown`, `::item`, and `::item-active` of a combobox, and `::trough` and `::bar` of a progress bar.

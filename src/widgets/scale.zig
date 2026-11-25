@@ -11,6 +11,11 @@
 //! (`::fill`), a round slider (`::slider`), the value (`::value`), and
 //! the ticks. A move of the slider by a press or a key eases from the
 //! shown position.
+//!
+//! `ttk::scale` (in `ttk/range.zig`) uses this code with the flag `ttk`
+//! of its class. Its value has no resolution and shows as a Tcl double.
+//! Its option `-value` holds the value, and `get` gives the text of it.
+//! `set` runs `-command`, and `-variable` does not create the variable.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -190,6 +195,7 @@ fn decimals(w: *const Widget) usize {
 
 /// The value as text, with the digits of the scale.
 fn format(w: *const Widget, a: std.mem.Allocator, v: f64) ![]const u8 {
+    if (w.class.ttk) return options.formatDouble(a, v);
     const n = decimals(w);
     var buf: [64]u8 = undefined;
     const t = std.fmt.bufPrint(&buf, "{d:.[1]}", .{ v, n }) catch return a.dupe(u8, "0");
@@ -210,6 +216,7 @@ fn setValue(w: *Widget, v_in: f64, user: bool, animate: bool) ztcl.Error!void {
     d.value = v;
     w.invalidate(.{ .style = false, .measure = false, .layout = false, .paint = true });
     const text = try format(w, app.it.alloc(), v);
+    if (w.class.ttk) try options.store(w, options.index(w, "-value"), text, .{ .double = v });
     if (d.var_name.len > 0) {
         try varlink.write(w, d.var_name, text);
         if (!w.alive()) return;
@@ -249,9 +256,11 @@ fn linkVariable(w: *Widget, name: []const u8) ztcl.Error!void {
     if (varlink.read(w, d.var_name)) |t| {
         if (std.fmt.parseFloat(f64, std.mem.trim(u8, t, " "))) |v| {
             d.value = round(w, v);
+            if (w.class.ttk) try options.store(w, options.index(w, "-value"), t, .{ .double = v });
             return;
         } else |_| {}
     }
+    if (w.class.ttk) return;
     try varlink.write(w, d.var_name, try format(w, w.app.it.alloc(), d.value));
 }
 
@@ -264,6 +273,11 @@ fn configured(w: *Widget, changed: []const usize) ztcl.Error!void {
             try linkVariable(w, w.opts[i].text);
         } else if (std.mem.eql(u8, name, "-state")) {
             w.state.disabled = w.opts[i].value == .word and w.opts[i].value.word == 1;
+        } else if (std.mem.eql(u8, name, "-value")) {
+            const v = w.opts[i].value;
+            d.value = round(w, if (v == .double) v.double else 0);
+            d.moving = false;
+            if (d.var_name.len > 0) try varlink.write(w, d.var_name, w.opts[i].text);
         }
     }
     if (w.alive()) d.value = round(w, d.value);
@@ -436,6 +450,7 @@ fn subcommand(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!?Val
             const y = try it.int(argv[3]);
             return .{ .str = try format(w, a, round(w, valueAt(w, geo(w), @intCast(std.math.clamp(x, -1 << 24, 1 << 24)), @intCast(std.math.clamp(y, -1 << 24, 1 << 24))))) };
         }
+        if (w.class.ttk) return .{ .str = try a.dupe(u8, try options.textOf(w, it, options.index(w, "-value"))) };
         return .{ .str = try format(w, a, d.value) };
     }
     if (std.mem.eql(u8, sub, "set")) {
@@ -443,7 +458,7 @@ fn subcommand(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!?Val
         const t = try it.str(argv[2]);
         const v = std.fmt.parseFloat(f64, std.mem.trim(u8, t, " ")) catch return it.fail("expected floating-point number but got \"{s}\"", .{t});
         if (w.state.disabled) return Value.empty;
-        try setValue(w, v, false, false);
+        try setValue(w, v, w.class.ttk, false);
         return Value.empty;
     }
     if (std.mem.eql(u8, sub, "coords")) {
@@ -473,6 +488,7 @@ fn identify(w: *Widget, x: i32, y: i32) []const u8 {
     const across = if (horizontal(w)) y - g.y0 else x - g.x0;
     if (@abs(across) > @divTrunc(g.knob, 2)) return "";
     if (@abs(along - p) <= @divTrunc(g.knob, 2)) return "slider";
+    if (w.class.ttk) return "trough";
     return if (along < p) "trough1" else "trough2";
 }
 
@@ -486,7 +502,7 @@ fn cmdScale(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
     if (argv.len < 3) return it.wrongArgs("::ztk::priv::scale action window ?x y?");
     const act = std.meta.stringToEnum(Action, try it.str(argv[1])) orelse return it.fail("bad action", .{});
     const w = app.find(try it.str(argv[2])) orelse return Value.empty;
-    if (w.class != &class or w.state.disabled) return Value.empty;
+    if (!isScale(w) or w.state.disabled) return Value.empty;
     const d = data(w);
     const g = geo(w);
     const res = blk: {
@@ -509,7 +525,8 @@ fn cmdScale(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
                         d.drag_off = (if (horizontal(w)) x - g.x0 else y - g.y0) - p;
                         w.state.pressed = true;
                     } else if (part.len > 0) {
-                        const dir: f64 = if (std.mem.eql(u8, part, "trough1")) -1 else 1;
+                        const along = if (horizontal(w)) x - g.x0 else y - g.y0;
+                        const dir: f64 = if (along < posOf(w, g, d.value)) -1 else 1;
                         try setValue(w, d.value + dir * res * sign, true, true);
                     }
                 },
@@ -521,8 +538,10 @@ fn cmdScale(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
                 },
                 .jump => {
                     const part = identify(w, x, y);
-                    if (std.mem.eql(u8, part, "trough1")) try setValue(w, dbl(w, "-from"), true, true);
-                    if (std.mem.eql(u8, part, "trough2")) try setValue(w, dbl(w, "-to"), true, true);
+                    if (part.len > 0 and !std.mem.eql(u8, part, "slider")) {
+                        const along = if (horizontal(w)) x - g.x0 else y - g.y0;
+                        try setValue(w, if (along < posOf(w, g, d.value)) dbl(w, "-from") else dbl(w, "-to"), true, true);
+                    }
                 },
                 .set => try setValue(w, valueAt(w, g, x, y), true, true),
                 else => unreachable,
@@ -556,10 +575,11 @@ fn cmdScalevar(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl
     defer app.leave();
     if (argv.len < 2) return Value.empty;
     const w = app.find(try it.str(argv[1])) orelse return Value.empty;
-    if (w.class != &class) return Value.empty;
+    if (!isScale(w)) return Value.empty;
     const d = data(w);
     const t = varlink.read(w, d.var_name) orelse return Value.empty;
     const v = std.fmt.parseFloat(f64, std.mem.trim(u8, t, " ")) catch return Value.empty;
+    if (w.class.ttk) try options.store(w, options.index(w, "-value"), t, .{ .double = v });
     const r = round(w, v);
     if (r != d.value) {
         d.value = r;
@@ -567,6 +587,11 @@ fn cmdScalevar(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl
         w.invalidate(.{ .style = false, .measure = false, .layout = false, .paint = true });
     }
     return Value.empty;
+}
+
+/// True for a `scale` and a `ttk::scale`.
+fn isScale(w: *const Widget) bool {
+    return w.class.paint == paintScale;
 }
 
 pub fn register(app: *App) !void {

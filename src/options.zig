@@ -255,7 +255,8 @@ pub fn parseValue(w: *const Widget, it: *ztcl.Interp, spec: Spec, text: []const 
             const v = std.fmt.parseFloat(f64, std.mem.trim(u8, text, " ")) catch
                 return it.fail("expected floating-point number but got \"{s}\"", .{text});
             if (std.math.isNan(v) or std.math.isInf(v)) return it.fail("expected floating-point number but got \"{s}\"", .{text});
-            norm.* = try formatDouble(it.alloc(), v);
+            // A `ttk` widget keeps the text of a double as the script gave it.
+            if (!w.class.ttk) norm.* = try formatDouble(it.alloc(), v);
             return .{ .double = v };
         },
         .image => {
@@ -312,7 +313,7 @@ pub fn textOf(w: *Widget, it: *ztcl.Interp, i: usize) ztcl.Error![]const u8 {
     const s = w.opts[i];
     if (s.set) return s.text;
     const sp = w.class.specs[i];
-    if (sp.type == .double and s.value == .double) return formatDouble(it.alloc(), s.value.double);
+    if (sp.type == .double and s.value == .double and !w.class.ttk) return formatDouble(it.alloc(), s.value.double);
     if (sp.from_style and sp.style_prop != .none) {
         w.app.ensureStyle(w);
         switch (sp.style_prop) {
@@ -422,6 +423,23 @@ pub fn setOne(w: *Widget, it: *ztcl.Interp, i: usize, text: []const u8, d: widge
     try w.afterConfigure(&changed);
     if (w.life == .dead) return;
     w.invalidate(d);
+}
+
+/// Sets the text and the value of one option with no `configured` call,
+/// for a class that keeps an option equal to its own state (the `-value`
+/// of a `ttk` range widget).
+pub fn store(w: *Widget, i: usize, text: []const u8, parsed: Parsed) !void {
+    const gpa = w.app.gpa;
+    const owned = try gpa.dupe(u8, text);
+    const slot = &w.opts[i];
+    if (slot.set) gpa.free(slot.text);
+    slot.* = .{ .set = true, .text = owned, .value = if (parsed == .text) .{ .text = owned } else parsed };
+}
+
+/// The index of an option of the class. The name is a real option.
+pub fn index(w: *const Widget, comptime name: []const u8) usize {
+    for (w.class.specs, 0..) |s, i| if (std.mem.eql(u8, s.name, name)) return i;
+    @panic("no option " ++ name);
 }
 
 /// A typed reader for the class code. The name is a real option.

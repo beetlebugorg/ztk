@@ -248,6 +248,40 @@ pub fn main(init: std.process.Init) !void {
         report("scale-drag", buf[0..runs]);
     }
 
+    // progress-indeterminate: an indeterminate progress bar runs `start` beside 1 000 widgets,
+    // with transitions on. The render thread moves the bar, and the UI thread runs the step timer.
+    // combobox-open: the list of a combobox beside 1 000 widgets opens, one open for each frame.
+    {
+        var pw: World = undefined;
+        try pw.it.init(gpa);
+        pw.head = try ztk.headless.Headless.init(gpa);
+        pw.app = try ztk.App.init(gpa, &pw.it, .{ .platform = pw.head.platform(), .io = io, .animations = true });
+        defer pw.deinit();
+        pw.head.skip_draw = true;
+        pw.eval(thousand);
+        pw.eval("ttk::progressbar .pi -mode indeterminate -length 300; grid .pi -row 101 -column 0 -columnspan 20; update; .pi start");
+        const runs = 200;
+        for (buf[0..runs]) |*slot| {
+            pw.head.advance(16);
+            const t0 = nowNs();
+            pw.eval("update");
+            slot.* = nowNs() - t0;
+        }
+        pw.eval(".pi stop; destroy .pi; update");
+        report("progress-indeterminate", buf[0..runs]);
+        pw.eval("set v {}; for {set i 0} {$i < 40} {incr i} {lappend v \"Item $i\"}; ttk::combobox .cbx -values $v; grid .cbx -row 101 -column 0 -columnspan 20; focus .cbx; update");
+        for (buf[0..runs]) |*slot| {
+            pw.head.advance(16);
+            const t0 = nowNs();
+            pw.eval("event generate .cbx <Key-Down>; update");
+            slot.* = nowNs() - t0;
+            pw.eval("event generate .cbx <Key-Escape>");
+            pw.head.advance(400);
+            pw.eval("update");
+        }
+        report("combobox-open", buf[0..runs]);
+    }
+
     // scroll-wheel: fine wheel steps (a touchpad) scroll an entry and its scrollbar beside 1 000 widgets,
     // one step for each frame, on an App with transitions on, so the view eases and glides.
     {

@@ -13,6 +13,10 @@
 //! delay. The modern theme draws no arrows. A move of the thumb by `set`
 //! eases from the shown place, and a drag of the thumb follows the
 //! pointer on the render thread, with the view that it scrolls.
+//!
+//! `ttk::scrollbar` (in `ttk/range.zig`) uses this code with the flag
+//! `ttk` of its class. It has the two-fraction `set` only, and the
+//! element names of `ttk` (`thumb`, `trough`, and the arrows).
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -132,8 +136,14 @@ fn pixels(w: *const Widget, comptime name: []const u8) i32 {
 }
 
 fn horizontal(w: *const Widget) bool {
-    const v = options.get(w, "-orient").value;
-    return v == .word and v.word == 1;
+    const i = options.index(w, "-orient");
+    const v = w.opts[i].value;
+    return v == .word and std.mem.eql(u8, w.class.specs[i].words[v.word], "horizontal");
+}
+
+/// True for a `scrollbar` and a `ttk::scrollbar`.
+fn isScrollbar(w: *const Widget) bool {
+    return w.class.paint == paintScrollbar;
 }
 
 fn inset(w: *const Widget) i32 {
@@ -362,7 +372,7 @@ fn subcommand(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!?Val
     const d = data(w);
     const a = it.alloc();
     if (std.mem.eql(u8, sub, "get")) {
-        if (argv.len != 2) return it.fail("wrong # args: should be \"{s} get\"", .{w.path});
+        if (argv.len != 2) return it.fail("wrong # args: should be \"{s} get{s}\"", .{ w.path, if (w.class.ttk) " " else "" });
         if (d.old) |o| return .{ .str = try std.fmt.allocPrint(a, "{d} {d} {d} {d}", .{ o[0], o[1], o[2], o[3] }) };
         return try scroll.fractionsValue(a, .{ d.first, d.last });
     }
@@ -377,6 +387,7 @@ fn subcommand(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!?Val
             setFractions(w, f[0], f[1], true);
             return Value.empty;
         }
+        if (w.class.ttk) return it.fail("wrong # args: should be \"{s} set first last\"", .{w.path});
         if (argv.len == 6) {
             var o: [4]i64 = undefined;
             for (0..4) |k| o[k] = try it.int(argv[2 + k]);
@@ -405,7 +416,7 @@ fn subcommand(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!?Val
         return .{ .str = try options.formatDouble(a, fractionAt(w, x, y)) };
     }
     if (std.mem.eql(u8, sub, "delta")) {
-        if (argv.len != 4) return it.fail("wrong # args: should be \"{s} delta xDelta yDelta\"", .{w.path});
+        if (argv.len != 4) return it.fail("wrong # args: should be \"{s} delta {s}\"", .{ w.path, if (w.class.ttk) "dx dy" else "xDelta yDelta" });
         const dx = try coord(it, argv[2]);
         const dy = try coord(it, argv[3]);
         const g = geo(w);
@@ -415,6 +426,13 @@ fn subcommand(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!?Val
     if (std.mem.eql(u8, sub, "identify")) {
         if (argv.len != 4) return it.fail("wrong # args: should be \"{s} identify x y\"", .{w.path});
         const e = identify(w, try coord(it, argv[2]), try coord(it, argv[3]));
+        if (w.class.ttk) return .{ .str = switch (e) {
+            .none => "",
+            .arrow1 => if (horizontal(w)) "leftarrow" else "uparrow",
+            .arrow2 => if (horizontal(w)) "rightarrow" else "downarrow",
+            .slider => "thumb",
+            .trough1, .trough2 => "trough",
+        } };
         return .{ .str = if (e == .none) "" else @tagName(e) };
     }
     return null;
@@ -434,7 +452,7 @@ fn cmdScrollbar(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztc
     if (argv.len < 3) return it.wrongArgs("::ztk::priv::scrollbar action window ?arg ...?");
     const act = std.meta.stringToEnum(Action, try it.str(argv[1])) orelse return it.fail("bad action", .{});
     const w = app.find(try it.str(argv[2])) orelse return Value.empty;
-    if (w.class != &class) return Value.empty;
+    if (!isScrollbar(w)) return Value.empty;
     const d = data(w);
     const hz = horizontal(w);
     switch (act) {

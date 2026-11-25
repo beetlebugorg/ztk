@@ -32,6 +32,7 @@ const scroll = @import("../scroll.zig");
 const path = @import("../path.zig");
 const style_mod = @import("../style.zig");
 const spinbox = @import("spinbox.zig");
+const combobox = @import("../ttk/combobox.zig");
 const App = @import("../app.zig").App;
 const Spec = options.Spec;
 const Widget = widget.Widget;
@@ -150,6 +151,9 @@ pub const Data = struct {
     hover_clear: bool = false,
     /// The spinbox fields.
     spin: bool = false,
+    /// A `ttk::combobox`: the entry has a drop-down arrow on the right.
+    combo: bool = false,
+    arrow: paint.PartAnim = .{},
     /// The index in `-values` of the shown value.
     e_index: usize = 0,
     /// `selection element`: the button that shows as pressed.
@@ -350,7 +354,8 @@ pub fn configured(w: *Widget, changed_list: []const usize) ztcl.Error!void {
                 // Each step below can run a trace that deletes the widget.
                 const missing = (try app.it.getVarOpt(new_name)) == null;
                 if (w.life == .dead) return;
-                if (missing) writeVar(w) else readVar(w);
+                // A `ttk` entry does not create a missing variable, as in `wish`.
+                if (!missing) readVar(w) else if (!w.class.ttk) writeVar(w);
                 if (w.life == .dead) return;
                 const words = traceWords(w, d, "add");
                 _ = try app.callTrace(&words);
@@ -371,6 +376,7 @@ pub const Areas = struct {
     clear: ?geom.Rect = null,
     up: ?geom.Rect = null,
     down: ?geom.Rect = null,
+    arrow: ?geom.Rect = null,
 };
 
 fn ceilPx(v: f32) i32 {
@@ -389,6 +395,13 @@ pub fn areas(w: *Widget, st: *const style_mod.Style) Areas {
         const half = @divTrunc(h, 2);
         out.up = .{ .x = x, .y = top, .w = bw, .h = half };
         out.down = .{ .x = x, .y = top + half, .w = bw, .h = h - half };
+        out.content.w = @max(@min(out.content.w, x - out.content.x), 0);
+    }
+    if (dataOf(w).combo) {
+        const bw = spinbox.buttonWidth(w.app, st);
+        const top = ceilPx(st.border_width[0]);
+        const x = w.geom.w - ceilPx(st.border_width[1]) - bw;
+        out.arrow = .{ .x = x, .y = top, .w = bw, .h = @max(w.geom.h - top - ceilPx(st.border_width[2]), 0) };
         out.content.w = @max(@min(out.content.w, x - out.content.x), 0);
     }
     if (hasClass(w, "search")) {
@@ -411,7 +424,7 @@ pub fn measure(w: *Widget) geom.Size {
     if (wd == .int and wd.int > 0) chars = @intCast(@min(wd.int, 10000));
     const ins = paint.insets(st);
     var extra: i32 = 0;
-    if (dataOf(w).spin) extra += spinbox.buttonWidth(app, st);
+    if (dataOf(w).spin or dataOf(w).combo) extra += spinbox.buttonWidth(app, st);
     if (hasClass(w, "search")) extra += 2 * (paint.lineHeight(app, st.font) + icon_gap);
     return .{
         .w = @max(num.add(num.add(num.px(@as(i64, chars) * paint.zeroWidth(app, st.font)), ins.horizontal()), extra), st.min_width),
@@ -490,6 +503,7 @@ fn paintEntry(w: *Widget, b: *scene.Builder) anyerror!void {
     const a = app.gpa;
     const ar = areas(w, st);
     if (d.spin) try spinbox.paintButtons(w, b, ar);
+    if (ar.arrow) |r| try combobox.paintArrow(w, b, r, &d.arrow);
     if (ar.icon != null) try paintSearch(w, b, ar);
     const content = ar.content;
     if (content.w <= 0 or content.h <= 0) return;
@@ -1275,7 +1289,7 @@ fn cmdEntry(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
         const ar = areas(w, &w.style);
         if (act == .motion) {
             const hc = e.len() > 0 and inside(ar.clear, x, y);
-            const he: Elem = if (inside(ar.up, x, y)) .buttonup else if (inside(ar.down, x, y)) .buttondown else .none;
+            const he: Elem = if (inside(ar.up, x, y)) .buttonup else if (inside(ar.down, x, y) or inside(ar.arrow, x, y)) .buttondown else .none;
             if (hc != d.hover_clear or he != d.hover) {
                 d.hover_clear = hc;
                 d.hover = he;

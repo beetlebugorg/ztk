@@ -33,13 +33,13 @@ const compound_words = [_][]const u8{ "none", "text", "image", "center", "top", 
 const default_words = [_][]const u8{ "normal", "active", "disabled" };
 const orient_words = [_][]const u8{ "horizontal", "vertical" };
 
-fn s(comptime name: []const u8, comptime db: []const u8, comptime cls: []const u8, comptime ty: options.Type, comptime def: []const u8) Spec {
+pub fn s(comptime name: []const u8, comptime db: []const u8, comptime cls: []const u8, comptime ty: options.Type, comptime def: []const u8) Spec {
     return .{ .name = name, .db_name = db, .db_class = cls, .type = ty, .default = def, .allow_empty = true };
 }
 
-const takefocus = s("-takefocus", "takeFocus", "TakeFocus", .string, "ttk::takefocus");
-const takefocus_none = s("-takefocus", "takeFocus", "TakeFocus", .string, "");
-const tail = [_]Spec{
+pub const takefocus = s("-takefocus", "takeFocus", "TakeFocus", .string, "ttk::takefocus");
+pub const takefocus_none = s("-takefocus", "takeFocus", "TakeFocus", .string, "");
+pub const tail = [_]Spec{
     s("-cursor", "cursor", "Cursor", .string, ""),
     s("-style", "style", "Style", .string, ""),
     .{ .name = "-class", .type = .string, .allow_empty = true, .create_only = true },
@@ -106,7 +106,7 @@ const labelframe_specs = options.withHidden(&([_]Spec{
     s("-labelwidget", "labelWidget", "LabelWidget", .string, ""),
 } ++ frame_common), &labelframe.specs);
 
-fn pickFrom(comptime list: []const Spec, comptime name: []const u8) Spec {
+pub fn pickFrom(comptime list: []const Spec, comptime name: []const u8) Spec {
     for (list) |e| if (std.mem.eql(u8, e.name, name)) return e;
     @compileError("no option " ++ name);
 }
@@ -115,13 +115,16 @@ fn pick(comptime name: []const u8) Spec {
     return pickFrom(&entry.specs, name);
 }
 
-const entry_specs = options.withHidden(&([_]Spec{
+/// The options of `ttk::entry` that `ttk::combobox` and `ttk::spinbox` have too.
+pub const entry_common = [_]Spec{
     pick("-exportselection"),          pick("-font"),                 pick("-invalidcommand"),
     pick("-justify"),                  pick("-show"),                 s("-state", "state", "State", .string, "normal"),
     pick("-textvariable"),             pick("-validate"),             pick("-validatecommand"),
     pick("-width"),                    pick("-xscrollcommand"),       s("-foreground", "textColor", "TextColor", .color, ""),
     s("-background", "windowColor", "WindowColor", .color, ""), takefocus,
-} ++ tail ++ entry.addition_specs), &entry.specs);
+} ++ tail;
+
+const entry_specs = options.withHidden(&(entry_common ++ entry.addition_specs), &entry.specs);
 
 const separator_specs = [_]Spec{
     .{ .name = "-orient", .db_name = "orient", .db_class = "Orient", .type = .word, .default = "horizontal", .words = &orient_words },
@@ -135,8 +138,9 @@ const label_subs = [_][]const u8{ "configure", "cget", "instate", "state", "iden
 const plain_subs = [_][]const u8{ "configure", "cget", "identify", "instate", "state" };
 const entry_subs = [_][]const u8{ "bbox", "cget", "configure", "delete", "get", "icursor", "identify", "index", "insert", "instate", "selection", "state", "validate", "xview" };
 
-/// A `ttk` class from a classic class.
-fn derive(comptime base: widget.Class, comptime cmd: []const u8, comptime tk: []const u8, comptime specs: []const Spec, comptime subs: []const []const u8, comptime elem: []const u8) widget.Class {
+/// A `ttk` class from a classic class. With an empty `elem`, `identify`
+/// goes to the subcommand of the classic class, with no `element` word.
+pub fn derive(comptime base: widget.Class, comptime cmd: []const u8, comptime tk: []const u8, comptime specs: []const Spec, comptime subs: []const []const u8, comptime elem: []const u8) widget.Class {
     var c = base;
     c.command = cmd;
     c.tk_class = tk;
@@ -283,7 +287,13 @@ fn Subs(comptime base: ?*const fn (w: *Widget, it: *ztcl.Interp, argv: []const V
             const name = subs[i];
             if (std.mem.eql(u8, name, "state")) return try stateCmd(w, it, argv, false);
             if (std.mem.eql(u8, name, "instate")) return try stateCmd(w, it, argv, true);
-            if (std.mem.eql(u8, name, "identify")) return try identify(w, it, argv, elem);
+            if (std.mem.eql(u8, name, "identify")) {
+                if (elem.len > 0) return try identify(w, it, argv, elem);
+                if (argv.len != 4 and argv.len != 5) return it.fail("wrong # args: should be \"{s} identify ?what? x y\"", .{w.path});
+                if (argv.len == 5 and !std.mem.eql(u8, try it.str(argv[2]), "element")) return it.fail("bad option \"{s}\": must be element", .{try it.str(argv[2])});
+                const f = base orelse return Value.empty;
+                return try f(w, it, &.{ argv[0], .{ .str = "identify" }, argv[argv.len - 2], argv[argv.len - 1] });
+            }
             if (std.mem.eql(u8, name, "configure")) return try options.configure(w, it, argv[2..]);
             if (std.mem.eql(u8, name, "cget")) {
                 if (argv.len != 3) return it.fail("wrong # args: should be \"{s} cget option\"", .{w.path});
