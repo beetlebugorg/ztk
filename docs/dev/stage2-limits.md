@@ -161,6 +161,19 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - The Tk test files of these widgets (`ttk/combobox.test`, `ttk/spinbox.test`, `ttk/scale.test`, `ttk/progressbar.test`) do not run in ztk: the interpreter has no `package` command. The counts of `wish` were not measured for this task.
 - `zig build bench`, ReleaseFast, 2026-11-25, development machine, load not measured: `progress-indeterminate` (an indeterminate bar with `start` beside 1,000 widgets, one frame each 16 ms) median 0.005 ms and 99th percentile 0.022 ms; `combobox-open` (the list of 40 values opens beside 1,000 widgets) median 1.12 ms and 99th percentile 2.22 ms. Both are under the gate of 8 ms.
 
+## listbox (task 11)
+
+- `listbox` has the options of `wish` 8.6.16 in its order, with its defaults and messages, then `-emptytext`. Each subcommand of `listbox.n` gives the results and the messages of `wish` for the cases of `src/tests/listbox.zig`, which were checked against `wish` 8.6.16 under `xvfb-run`.
+- An index is `active`, `anchor`, `end`, `@x,y`, or an integer, as in `wish` 8.6.16. `end-1` is a bad index there too.
+- A disabled listbox ignores `insert`, `delete`, `activate`, and `selection set`, `clear`, and `anchor`, as in `wish`.
+- The class bindings do the selection of the four modes with the steps of the manual page. ztk has no `event add`, so the keys bind to `event generate` of the virtual events, and `bind Listbox` lists more patterns than `wish`. `<B1-Leave>` scrolls one row for each motion event above or below the rows, where `wish` repeats a scroll with a timer. `<<Copy>>` copies the selected rows, one on each line, to the clipboard of the app.
+- `-exportselection`, `-setgrid`, `-highlightcolor`, `-highlightbackground`, and `-highlightthickness` are stored with no effect. The theme draws the focus ring.
+- The rows have one height: the line of the font, the padding of `::item`, and two times `-selectborderwidth`. `scan dragto` scrolls by pixels. The `-listvariable` link has a write trace only: an `unset` of the variable leaves the rows.
+- The selection background of a single selected row eases to the next single selected row in 180 ms, on the render thread when the view does not scroll.
+- The listbox has no built-in overlay scrollbar. A script packs a `scrollbar` beside it, as in Tk.
+- The Tk test file `listbox.test` does not run in ztk: the interpreter has no `package` command. Its counts in `wish` were not measured for this task.
+- `zig build bench`, ReleaseFast, 2026-11-25, development machine with a load average of 1.5: `listbox-scroll-10000` (fine wheel steps scroll a listbox of 10,000 rows, one step each 16 ms, and a press selects a row each 20 frames) median 0.056 ms and 99th percentile 0.081 ms, under the gate of 8 ms.
+
 ## Additions
 
 - `ztk::animate`, `ztk::clock`, the timing function `spring()`, and the flag `--time` of the `ztk` program.
@@ -177,3 +190,4 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - `ztk::style theme ?modern|classic?`, the CSS property `border-style` with `outset`, `inset`, `groove`, and `ridge` (and the Tk names `raised` and `sunken`), and `:state(!name)` with the states `hover` and `user1` to `user6`.
 - `-placeholder` and `-placeholderforeground` for `ttk::entry`.
 - `-placeholder` and `-placeholderforeground` for `ttk::combobox` and `ttk::spinbox`. The parts `::arrow`, `::popdown`, `::item`, and `::item-active` of a combobox, and `::trough` and `::bar` of a progress bar.
+- `-emptytext` and the style class `sidebar` of a listbox, and its parts `::item`, `::selection`, `::active`, and `::empty`.

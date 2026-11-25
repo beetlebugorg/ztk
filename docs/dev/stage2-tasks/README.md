@@ -31,6 +31,8 @@ Do the tasks in order. One task is one branch, one PR, and one review. A task st
 | 17 | [The dialogs](17-dialogs.md) | 16 |
 | 18 | [The gallery and the site](18-gallery.md) | 17 |
 
+The state on 2026-11-25: the tasks of the table up to task 11 are merged.
+
 Task 14 has two PRs (a decision for the user, 2026-11-25). PR 14a has the canvas widget, its scrolling, the stand-in `image` command, and `ztk::animate` on items. PR 14b has the two apps of the task, `examples/spreadsheet.tcl` and `examples/vector.tcl` with its script console, and their tests, gates, and gallery cards.
 
 The order puts the simple widgets first, so that they show in the screenshots early. Then come scrolling and the canvas, the entry additions, the `ttk` widgets, the list, the menus, the panes, the text widget, and the tree. The user moved the canvas to the place after scrolling on 2026-11-24, so the task numbers are not in order: do the tasks in the order of the table. Each task adds its widgets to `examples/gallery.tcl` (task 03 makes it) and draws the shots again, so the site shows each widget when its task is merged. Task 18 adds the other example programs, the site text, and a link from each shot to the same example in the browser.

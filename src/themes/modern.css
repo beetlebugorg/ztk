@@ -357,6 +357,64 @@ Canvas::selection {
   color: var(--accent-fg);
 }
 
+/* A list of rows in a field. The selection background eases from row to
+   row. The sidebar style has no field, and its selection is a round
+   accent row. */
+Listbox {
+  color: var(--fg);
+  background-color: var(--field-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px;
+}
+
+Listbox:focus {
+  border-color: var(--accent);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 0px;
+}
+
+Listbox:disabled {
+  color: var(--muted);
+}
+
+Listbox::item {
+  padding: 3px 8px;
+}
+
+Listbox::selection {
+  background-color: var(--accent);
+  color: var(--accent-fg);
+  border-radius: 4px;
+}
+
+Listbox::active {
+  border: 1px solid var(--focus-ring);
+  border-radius: 4px;
+}
+
+Listbox::empty {
+  color: var(--muted);
+}
+
+Listbox.sidebar {
+  background-color: transparent;
+  border-width: 0px;
+  padding: 6px;
+}
+
+Listbox.sidebar:focus {
+  outline: 0px solid transparent;
+}
+
+Listbox.sidebar::item {
+  padding: 5px 10px;
+}
+
+Listbox.sidebar::selection {
+  border-radius: 6px;
+}
+
 /* An overlay scrollbar: a thin thumb on a clear trough. The thumb shows
    while the view scrolls and on hover, and fades out after a delay. */
 Scrollbar {

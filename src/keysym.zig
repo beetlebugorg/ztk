@@ -119,6 +119,7 @@ const table = [_]Entry{
     .{ "End", 0xff57 },
     .{ "Prior", 0xff55 },
     .{ "Next", 0xff56 },
+    .{ "Select", 0xff60 },
     .{ "Shift_L", 0xffe1 },
     .{ "Shift_R", 0xffe2 },
     .{ "Control_L", 0xffe3 },
