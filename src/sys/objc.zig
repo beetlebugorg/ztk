@@ -51,15 +51,15 @@ pub fn call(comptime Fn: type, target: anytype, selector: [*:0]const u8, args: a
     if (builtin.cpu.arch == .x86_64 and @typeInfo(Ret) == .@"struct" and @sizeOf(Ret) > 16)
         @compileError("a structure result larger than 16 bytes needs objc_msgSend_stret on x86-64");
     const f: *const Fn = @ptrCast(&objc_msgSend);
-    return @call(.auto, f, .{ asId(target), sel_registerName(selector) } ++ args);
-}
-
-fn asId(target: anytype) Id {
-    return switch (@TypeOf(target)) {
-        Id => target,
-        Class => @ptrCast(target),
+    // The receiver has the type of the first parameter of `Fn`: an Id for
+    // an instance method, a Class for a class method.
+    const Receiver = @typeInfo(Fn).@"fn".params[0].type.?;
+    switch (@TypeOf(target)) {
+        Id, Class => {},
         else => @compileError("the receiver must be an Id or a Class"),
-    };
+    }
+    const receiver: Receiver = @ptrCast(target);
+    return @call(.auto, f, .{ receiver, sel_registerName(selector) } ++ args);
 }
 
 /// `[[cls alloc] init]`.
