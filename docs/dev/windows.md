@@ -10,19 +10,20 @@ Measured on 2026-11-25 on an x64 PC with Windows 11 (build 26200) and Zig 0.16.0
 - `zig build test` did not compile, for two reasons. `tests/vulkan.zig` was imported in each build (the macOS PR 2 fixes it), and `std.testing.environ.getPosix` does not exist on Windows. `src/testing.zig` and `src/tests/scene.zig` call it.
 - `ztk::style load` failed for each file with `OutsideStyleFolder`. `App.readFile` checks for a `/` after the real path of the style folder, and a real path on Windows has `\`. 16 tests failed for this reason.
 - `ztk --headless t.tcl | cat` did not print the output of `puts`. The writer of the standard output is positional, and a positional write to a pipe fails on Windows. With a file as the output, `puts` worked.
-- With the three fixes of PR 1, `zig build test --summary all` passes 451 of 451 tests in 1 minute on the base of the macOS PR 2 (Debug, in a Job Object with a limit of 4 GB).
+- The test `host: the clock moves forward across a sleep` failed in 1 of 3 full runs. A sleep on Windows can end before `nowUs` moved by the time of the sleep, so `sleepUs` now sleeps again for the rest.
+- With the fixes of PR 1, `zig build test --summary all` passes 451 of 451 tests in 1 minute on the base of the macOS PR 2 (Debug, in a Job Object with a limit of 4 GB).
 
 ## The PRs
 
 | # | PR | Tests |
 |---|---|---|
-| 1 | This plan, the three fixes above, and a CI job on `windows-latest` | `zig build test` and the headless script on Windows in CI |
+| 1 | This plan, the fixes above, and a CI job on `windows-latest` | `zig build test` and the headless script on Windows in CI |
 | 2 | `src/platform/win32.zig` and `src/render/d3d12_api.zig`: the Win32 functions and the COM interfaces that ztk calls | Unit tests that make a window class and a hidden window |
 | 3 | The Direct3D 12 renderer, offscreen | Each golden scene drawn by Direct3D 12 equals the CPU image within the tolerance of the Vulkan tests |
 | 4 | The Win32 backend: windows, the event loop, the frame clock, the scale, and a swapchain target. The CPU output with `SetDIBitsToDevice` when no Direct3D 12 device exists. | Window tests that run only with `ZTK_TEST_WINDOWS=1` |
 | 5 | Keyboard, pointer, wheel, and cursors (`setCursor`) | Unit tests of the key and modifier maps from recorded messages |
 | 6 | The clipboard of the system (`clipboardGet`, `clipboardSet`) | `clipboard` tests against the clipboard of the CI machine |
-| 7 | Input methods (`textInput`, `preedit`, `commit`) | Unit tests of the composition messages |
+| 7 | Input methods with the Text Services Framework (`textInput`, `preedit`, `commit`) | Unit tests that call the text store with the calls of an input method, and check the events |
 | 8 | The dark mode and the accent color (`appearance`) | Unit tests of the registry values and of `WM_SETTINGCHANGE` |
 
 PR 6 and PR 7 use the entries and the events that the macOS PRs 7 and 8 add. Whichever backend is first adds them to `src/platform/platform.zig` and `src/event.zig`.
@@ -33,10 +34,10 @@ PR 6 and PR 7 use the entries and the events that the macOS PRs 7 and 8 add. Whi
 |---|---|
 | `setCursor(window, shape)` | `LoadCursorW` with the `IDC_` shapes, and `SetCursor` on `WM_SETCURSOR` in the client area |
 | `clipboardGet(type)`, `clipboardSet(type, data)` | `OpenClipboard` with `CF_UNICODETEXT`, and the UTF-16 conversion of the standard library |
-| `textInput(window, on, rect)` | `ImmAssociateContextEx` for `on`, and `ImmSetCompositionWindow` and `ImmSetCandidateWindow` for `rect` |
+| `textInput(window, on, rect)` | `ITfThreadMgr::AssociateFocus` with the document of the window for `on`, and the rectangle that `ITextStoreACP2::GetTextExt` gives for `rect` |
 | `appearance()` | `AppsUseLightTheme` under `HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`, and `DwmGetColorizationColor` |
 
-The input method uses the IMM32 messages: `WM_IME_STARTCOMPOSITION`, then `WM_IME_COMPOSITION` with `GCS_COMPSTR` (gives `preedit`) and `GCS_RESULTSTR` (gives `commit`). Windows 10 and 11 send these messages for each input method through the compatibility code of the Text Services Framework. The macOS plan names TSF for Windows. A TSF text store (`ITextStoreACP`) is a COM object with about 20 methods. It can replace IMM32 later with no change to the interface.
+Input methods use the Text Services Framework (TSF), by the decision of the user (2026-11-25). At start, the UI thread calls `CoInitializeEx` for a single-threaded apartment, makes the thread manager (`CLSID_TF_ThreadMgr`), and calls `Activate`. Each window has a document manager with one context. The context gets a text store of ztk, a COM object in Zig that implements `ITextStoreACP2` and `ITfContextOwnerCompositionSink`. The store has the text of the current composition only. `OnStartComposition` and `OnUpdateComposition` give `preedit` with the text of the composition range and the caret in it. `OnEndComposition` gives `commit` with the text that the input method left, and the store then empties. `GetTextExt` and `GetScreenExt` give the caret rectangle of `textInput`, in screen pixels, so the candidate window shows at the caret. The DLLs are `ole32` and `msctf`, both parts of Windows.
 
 ## The event loop
 
@@ -77,7 +78,10 @@ Rule 12 of `AGENTS.md` forbids windows on the live desktop session of the develo
 - The pointer positions reach the render thread from the UI thread only, so a drag that the render thread moves stops while the UI thread is busy.
 - The fonts of the system (DirectWrite) and the accessibility tree (UI Automation) are not part of this plan.
 
+## Decisions
+
+- The input method is TSF from its first PR. The user decided this on 2026-11-25.
+
 ## Decisions for the user
 
-1. The input method: IMM32 now, and TSF when a need for it shows. The recommendation is IMM32.
-2. The default backend of `ztk` on Windows. The recommendation is Win32, and the headless backend with `--headless` and in CI, as on Linux and macOS.
+1. The default backend of `ztk` on Windows. The recommendation is Win32, and the headless backend with `--headless` and in CI, as on Linux and macOS.

@@ -35,7 +35,14 @@ pub fn sleepUs(us: i64) void {
         _ = linux.nanosleep(&req, null);
         return;
     }
-    std.Options.debug_io.sleep(.fromMicroseconds(us), .awake) catch {};
+    // A sleep on Windows can end before the clock of `nowUs` moved by
+    // `us`, so the loop sleeps again for the rest.
+    const end = nowUs() + us;
+    while (true) {
+        const left = end - nowUs();
+        if (left <= 0) return;
+        std.Options.debug_io.sleep(.fromMicroseconds(left), .awake) catch return;
+    }
 }
 
 /// Writes text to the standard error stream.
