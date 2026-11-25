@@ -40,6 +40,7 @@ pkg.version = version;
 // [file in the package, file in the repository]
 const copies = [
   ["ztk.js", "web/ztk.js"],
+  ["webgpu.js", "web/webgpu.js"],
   ["ztk.wasm", "zig-out/web/ztk.wasm"],
   ["ztk.d.ts", "npm/ztk.d.ts"],
   ["NOTICE", "npm/NOTICE"],

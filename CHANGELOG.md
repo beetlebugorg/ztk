@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Adds the WebGPU renderer of the web build (`webgpu.js`). `"auto"` selects WebGPU, then WebGL 2, then the CPU renderer. The web canvas has the size of its window at each pixel ratio.
+
 ## v0.2.0-beta (2026-11-25)
 
 - Adds the plan, the Stage 1 tasks, the review checklist, and the references.

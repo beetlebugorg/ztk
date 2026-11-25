@@ -74,7 +74,7 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
   <div class="wrap">
     <p class="eyebrow">What it draws</p>
     <h2>Tk scripts, drawn by ztk.</h2>
-    <p class="lede">Each image is one frame of an example script, drawn by the CPU renderer on the headless backend at scale 2. When a card scrolls into view, the same script runs live in its place: ztk in WebAssembly, drawn with WebGL 2. Click, type, and toggle in it. The images follow the color scheme of your system. Each script also runs in <code>wish</code> 8.6.</p>
+    <p class="lede">Each image is one frame of an example script, drawn by the CPU renderer on the headless backend at scale 2. When a card scrolls into view, the same script runs live in its place: ztk in WebAssembly, drawn with WebGPU where the browser has it and WebGL 2 elsewhere. Click, type, and toggle in it. The images follow the color scheme of your system. Each script also runs in <code>wish</code> 8.6.</p>
     <div class="shots">
       <figure class="shot wide" data-example="dashboard">
         <a class="frame" href="https://github.com/beetlebugorg/ztk/blob/main/examples/dashboard.tcl">
@@ -178,7 +178,7 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
       <div class="card"><span class="tag">Works offscreen</span><h3>Vulkan on Linux</h3><p class="muted">The Vulkan renderer matches the CPU renderer on two GPUs, within 2 levels. The swapchain on a window is not written yet.</p></div>
       <div class="card"><span class="tag plan">Planned · Stage 3</span><h3>Metal on macOS</h3><p class="muted">With AppKit, Metal, and Core Text from the system.</p></div>
       <div class="card"><span class="tag plan">Planned · Stage 3</span><h3>Direct3D 12 on Windows</h3><p class="muted">With <code>user32</code>, <code>d3d12</code>, <code>dxgi</code>, and <code>dwrite</code> from the system.</p></div>
-      <div class="card"><span class="tag plan">Planned · Stage 3</span><h3>WebGL 2 on the web</h3><p class="muted">A canvas and WebGL 2, with no library in the WebAssembly file.</p></div>
+      <div class="card"><span class="tag">Works</span><h3>WebGPU and WebGL 2 on the web</h3><p class="muted">WebGPU with WGSL shaders where the browser gives an adapter, else WebGL 2, else the CPU renderer into a 2D canvas. No library is in the WebAssembly file.</p></div>
       <div class="card"><span class="tag plan">Planned · Stage 2</span><h3>X11 on Linux</h3><p class="muted">With <code>libxcb</code> and Vulkan.</p></div>
     </div>
   </div>
@@ -275,7 +275,7 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
         <h3>Planned</h3>
         <ul class="status" style="margin-top:16px">
           <li><span class="st plan">Stage 2</span><span>X11, <code>pack</code> and <code>place</code>, <code>grab</code>, and the fonts of the system.</span></li>
-          <li><span class="st plan">Stage 3</span><span>macOS with Metal, Windows with Direct3D 12, and the web with WebGL 2.</span></li>
+          <li><span class="st plan">Stage 3</span><span>macOS with Metal and Windows with Direct3D 12.</span></li>
           <li><span class="st plan">Stage 4</span><span>CFF outlines, variable fonts, color glyphs, ligatures, and marks.</span></li>
           <li><span class="st plan">Later</span><span>The canvas, drag and drop, accessibility, and the commands of Tk 9.</span></li>
         </ul>
@@ -311,7 +311,7 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
 </div></footer>
 <script type="module">
 // The live demos: each card of "What it draws" runs its script in ztk
-// (WebAssembly and WebGL 2) when it scrolls into view, or at the first tap
+// (WebAssembly, with WebGPU or WebGL 2) when it scrolls into view, or at the first tap
 // on a touch screen. The screenshot is the poster until the first frame.
 // The page compiles the module one time; each card has its own instance.
 const cards = [...document.querySelectorAll(".shot[data-example]")];
@@ -391,7 +391,7 @@ if (params.has("livetest")) {
     const out = { live: cards.map((c) => c.dataset.example + ":" + c.dataset.live), png: {}, checks: {} };
     out.geom = {};
     for (const [name, h] of Object.entries(handles)) {
-      out.png[name] = h.canvas.toDataURL("image/png");
+      out.png[name] = h.snapshot();
       const r = h.canvas.getBoundingClientRect();
       const poster = document.querySelector(`.shot[data-example="${name}"]`).dataset.poster.split("x").map(Number);
       out.geom[name] = { css: [r.width, r.height], store: [h.canvas.width, h.canvas.height], dpr: devicePixelRatio, poster };

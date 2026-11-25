@@ -1,6 +1,6 @@
 # ztk on the web
 
-`zig build wasm` builds ztk for the browser into `zig-out/web`. The build has `ztk.wasm`, the page module `ztk.js`, the playground `index.html`, and the examples. `ztk.wasm` has the interpreter (ztcl), the widgets, the layout, the style sheets, the Inter font, and the CPU renderer. `ztk.js` gives the module the clock, the size, the scale, the color scheme, and the input, and draws each frame with WebGL 2 or with the CPU renderer.
+`zig build wasm` builds ztk for the browser into `zig-out/web`. The build has `ztk.wasm`, the page module `ztk.js`, the playground `index.html`, and the examples. `ztk.wasm` has the interpreter (ztcl), the widgets, the layout, the style sheets, the Inter font, and the CPU renderer. `ztk.js` gives the module the clock, the size, the scale, the color scheme, and the input, and draws each frame with WebGPU (`webgpu.js`), WebGL 2, or the CPU renderer.
 
 ## Install from npm
 
@@ -34,7 +34,7 @@ With no build step, import `https://cdn.jsdelivr.net/npm/@beetlebug/ztk@VERSION/
 | `files` | Files by name for `ztk::style load`. |
 | `theme` | `"auto"` (the color scheme of the page), `"light"`, or `"dark"`. |
 | `size` | `"auto"`: the size of the element at the start, and then the size that the toplevel computes. `"fill"`: the window follows the size of the element through a `ResizeObserver`. `[width, height]`: a fixed logical size. |
-| `renderer` | `"auto"`, `"webgl2"`, `"cpu"`, or `"webgpu"`. `"auto"` selects WebGL 2, and the CPU renderer when the browser has no WebGL 2. This version has no WebGPU renderer, so `"webgpu"` rejects. |
+| `renderer` | `"auto"`, `"webgl2"`, `"cpu"`, or `"webgpu"`. `"auto"` selects WebGPU when the browser gives an adapter, else WebGL 2, else the CPU renderer. A forced renderer that the browser does not have rejects. |
 | `scale` | The device pixels in one logical pixel. The default is `devicePixelRatio`. |
 | `module`, `wasm` | A compiled module, or the URL of `ztk.wasm`. |
 | `log` | Gets the text of `puts` and the error messages. |
@@ -54,7 +54,7 @@ The backing store of the canvas is the scene in device pixels, and the CSS size 
 | `webgl2` | One instanced draw of the quads of the scene. The shaders have the formulas of the CPU renderer. |
 | `cpu` | `ztk.wasm` draws each frame to an RGBA image with `src/render/cpu.zig` (`ztk_cpu`, `ztk_image`), and a 2D context shows the image. |
 
-`tests/web.sh` compares the WebGL 2 image with the CPU image of the same script.
+`tests/web.sh` compares the WebGPU, WebGL 2, and 2D canvas images with the CPU image of the same script.
 
 ## The size of the build
 

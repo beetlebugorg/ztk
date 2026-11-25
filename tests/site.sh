@@ -24,6 +24,7 @@ for b in chromium chromium-browser google-chrome; do
 done
 [ -n "$browser" ] || { echo "SKIP: no headless browser (chromium) on the path"; exit 77; }
 [ -f "$root/zig-out/web/ztk.wasm" ] || { echo "SKIP: build the web files first: zig build wasm"; exit 77; }
+command -v node >/dev/null 2>&1 || { echo "SKIP: node is not on the path (tests/browser.mjs needs it)"; exit 77; }
 py="${PYTHON:-python3}"
 "$py" -c 'import PIL, markdown_it' 2>/dev/null || { echo "SKIP: python needs PIL and markdown-it-py (PYTHON=...)"; exit 77; }
 work="$(mktemp -d)"
@@ -36,10 +37,11 @@ sleep 1
 for scheme in light dark; do
     flag=""
     [ "$scheme" = dark ] && flag="--force-dark-mode --blink-settings=preferredColorScheme=0"
-    timeout 120 "$browser" --headless=new --no-sandbox --use-angle=swiftshader --enable-unsafe-swiftshader \
-        --force-device-scale-factor=1 --window-size=1400,3000 --virtual-time-budget=15000 $flag \
-        --user-data-dir="$work/profile-$scheme" --dump-dom "http://127.0.0.1:$port/index.html?livetest&livescale=2" 2>/dev/null \
-        | "$py" -c 'import sys,re,html; m=re.search(r"<pre id=\"result\">(.*?)</pre>", sys.stdin.read(), re.S); print(html.unescape(m.group(1)) if m else "{}")' > "$work/$scheme.json"
+    # $flag has two flags or none.
+    # shellcheck disable=SC2086
+    ZTK_BROWSER_VIEWPORT=1400x3000x1 ZTK_BROWSER_TIMEOUT_MS=170000 timeout 180 node "$root/tests/browser.mjs" "$browser" "$work/profile-$scheme" \
+        "http://127.0.0.1:$port/index.html?livetest&livescale=2" --use-angle=swiftshader --enable-unsafe-swiftshader $flag \
+        > "$work/$scheme.json"
     "$py" - "$work/$scheme.json" "$root/docs/site/shots" "$scheme" <<'PY' || exit 1
 import json, sys, base64, io
 from PIL import Image
@@ -77,8 +79,7 @@ for key, want in (("count", "1"), ("name", None), ("notify", "1")):
 sys.exit(fail)
 PY
 done
-# The size check, with real time (tests/browser.mjs), so it needs node.
-command -v node >/dev/null 2>&1 || { echo "SKIP: node is not on the path, so the size check did not run"; exit 0; }
+# The size check.
 cp "$root/tests/aspect.html" "$work/site/aspect.html"
 fail=0
 for scheme in light dark; do
@@ -88,7 +89,7 @@ for scheme in light dark; do
         for dpr in 1 2 3; do
             # The flags stay unquoted on purpose: $flag has two flags or none.
             # shellcheck disable=SC2086
-            ZTK_BROWSER_VIEWPORT="$(echo "$win" | tr , x)x$dpr" timeout 300 node "$root/tests/browser.mjs" "$browser" "$work/profile-$scheme-$win-$dpr" "http://127.0.0.1:$port/aspect.html" \
+            ZTK_BROWSER_VIEWPORT="$(echo "$win" | tr , x)x$dpr" ZTK_BROWSER_TIMEOUT_MS=290000 timeout 300 node "$root/tests/browser.mjs" "$browser" "$work/profile-$scheme-$win-$dpr" "http://127.0.0.1:$port/aspect.html" \
                 --use-angle=swiftshader --enable-unsafe-swiftshader --window-size="$win" $flag \
                 > "$work/size.json"
             "$py" - "$work/size.json" "$root/docs/site/shots" "$scheme" "$win" "$dpr" <<'PY' || fail=1

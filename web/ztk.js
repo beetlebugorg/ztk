@@ -2,13 +2,16 @@
 // The page side of ztk in a browser. It loads ztk.wasm, gives it the
 // clock, the size, the scale (devicePixelRatio), the color scheme, the
 // reduced motion setting, and the input of the canvas, and draws each
-// scene with WebGL 2, or with the CPU renderer of ztk.wasm and a 2D
-// context. mount() is the API for a page, and start() is the API under
-// it. The shaders have the formulas of the CPU renderer
+// scene with WebGPU (web/webgpu.js), WebGL 2, or the CPU renderer of
+// ztk.wasm and a 2D context. mount() is the API for a page, and start()
+// is the API under it. The query parameter `?renderer=` with "webgpu",
+// "webgl2", or "cpu" forces a renderer, as the option does. The shaders have the formulas of the CPU renderer
 // (src/render/renderer.zig) and of src/render/shaders/quad.frag. A
 // hidden text area gets the keyboard, so that text input and input
 // methods work. A list of hidden elements with ARIA roles follows the
 // widgets, from ztk_a11y.
+
+import { createWebGPU } from "./webgpu.js";
 
 const VS = `#version 300 es
 layout(location=0) in vec4 a_rect;
@@ -153,8 +156,10 @@ export function compileModule(url) {
   return compiled.get(u);
 }
 
+let logged = false;
+
 /// The renderers that this file has, in the order of "auto".
-export const renderers = ["webgl2", "cpu"];
+export const renderers = ["webgpu", "webgl2", "cpu"];
 
 // The WebGL 2 renderer: the quads of the scene in one instanced draw.
 function webgl2(canvas, ex) {
@@ -246,7 +251,8 @@ function cpu(canvas, ex) {
 
 /// Starts ztk.wasm on a canvas. `mount` is the API for a page. Options:
 /// module or wasm (the module, or the URL of ztk.wasm), renderer ("auto",
-/// "webgl2", "cpu", or "webgpu"), dark (true, false, or undefined for the
+/// "webgpu", "webgl2", or "cpu"), colorSpace ("srgb" or "display-p3" for
+/// WebGPU), loop (false: the page calls frame()), dark (true, false, or undefined for the
 /// color scheme of the page), width and height (a fixed logical size),
 /// scale (in place of devicePixelRatio), and log (gets the text of puts
 /// and the errors).
@@ -313,19 +319,38 @@ export async function start(canvas, options = {}) {
     return { ok: code === 0, result: r };
   };
 
-  // The renderer. "auto" selects the first one that the browser has.
-  const want = options.renderer || "auto";
-  if (want === "webgpu") throw new Error("ztk: this version has no WebGPU renderer. Use \"auto\", \"webgl2\", or \"cpu\".");
-  const makers = { webgl2, cpu };
+  // The renderer. "auto" selects the first one that the browser has. A
+  // canvas has one context type, so WebGPU asks for its device before it
+  // gets the context of the canvas. A forced renderer that the browser
+  // does not have rejects.
+  const query = globalThis.location ? new URLSearchParams(location.search).get("renderer") : null;
+  const want = options.renderer || query || "auto";
+  let lastN = 0;
+  const makers = {
+    webgpu: () => createWebGPU(canvas, ex, { colorSpace: options.colorSpace, restored: () => draw(lastN) }),
+    webgl2: () => webgl2(canvas, ex),
+    cpu: () => cpu(canvas, ex),
+  };
   if (want !== "auto" && !makers[want]) throw new Error(`ztk: no renderer "${want}"`);
   let renderer = null;
   for (const name of want === "auto" ? renderers : [want]) {
-    renderer = makers[name](canvas, ex);
+    try {
+      renderer = await makers[name]();
+    } catch (e) {
+      if (want !== "auto") throw e;
+      console.warn(`ztk: the renderer ${name} failed: ${e}`);
+    }
     if (renderer || want !== "auto") break;
   }
-  if (!renderer) throw new Error(want === "webgl2" ? "WebGL 2 is not available" : `ztk: the renderer "${want}" is not available`);
+  const names = { webgpu: "WebGPU", webgl2: "WebGL 2", cpu: "a 2D canvas" };
+  if (!renderer) throw new Error(want === "auto" ? "ztk: WebGPU, WebGL 2, and a 2D canvas are not available" : `ztk: ${names[want]} is not available`);
+  if (!logged) {
+    logged = true;
+    console.info(`ztk: the renderer is ${renderer.name}`);
+  }
 
   const draw = (n) => {
+    lastN = n;
     const w = ex.ztk_scene_width(), h = ex.ztk_scene_height();
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
     const sc = scaleNow();
@@ -413,7 +438,8 @@ export async function start(canvas, options = {}) {
     if (n >= 0) draw(n);
     raf = requestAnimationFrame(loop);
   };
-  raf = requestAnimationFrame(loop);
+  // options.loop false leaves the frames to the page, for a test.
+  if (options.loop !== false) raf = requestAnimationFrame(loop);
   const addFile = (name, text) => withBytes(name, (pn, nn) => withBytes(text, (pt, nt) => ex.ztk_add_file(pn, nn, pt, nt)));
   const frame = (t) => {
     if (signal.aborted) return -1;
@@ -436,7 +462,13 @@ export async function start(canvas, options = {}) {
     input.remove();
     tree.remove();
   };
-  return { eval: evalScript, exports: ex, frame, tree, addFile, canvas, resize, setTheme, destroy, renderer: renderer.name, signal };
+  // A WebGPU canvas keeps its image only until the frame is shown, so a
+  // snapshot draws the last scene again and reads the canvas at once.
+  const redraw = () => draw(lastN);
+  const snapshot = (type = "image/png") => { redraw(); return canvas.toDataURL(type); };
+  // A test: the GPU device is lost, and the renderer draws on a new one.
+  const loseDevice = async () => (renderer.lose ? renderer.lose() : false);
+  return { eval: evalScript, exports: ex, frame, tree, addFile, canvas, resize, setTheme, destroy, renderer: renderer.name, redraw, snapshot, loseDevice, signal };
 }
 
 /// Mounts a ztk app on an element. `el` is a canvas, or an element that
@@ -448,7 +480,7 @@ export async function start(canvas, options = {}) {
 ///             and then the size the window computes), "fill" (the window
 ///             follows the size of the element), or [width, height] in
 ///             logical pixels (the canvas shows the window at its CSS size).
-///   renderer  "auto" (the default), "webgl2", "cpu", or "webgpu".
+///   renderer  "auto" (the default), "webgpu", "webgl2", or "cpu".
 ///   scale     The device pixels in one logical pixel. The default is devicePixelRatio.
 ///   module, wasm, log  As for start().
 /// A script error destroys the app and rejects with the error text.

@@ -31,6 +31,10 @@ fromBrowser.on("data", (chunk) => {
     if (process.env.ZTK_BROWSER_CONSOLE && msg.method === "Runtime.consoleAPICalled") {
       process.stderr.write(`console.${msg.params.type}: ${msg.params.args.map((a) => a.value ?? a.description).join(" ")}\n`);
     }
+    if (process.env.ZTK_BROWSER_CONSOLE && msg.method === "Runtime.exceptionThrown") {
+      const d = msg.params.exceptionDetails;
+      process.stderr.write(`exception: ${d.exception?.description ?? d.text}\n`);
+    }
     if (process.env.ZTK_BROWSER_CONSOLE && msg.method === "Log.entryAdded") process.stderr.write(`log: ${msg.params.entry.text}\n`);
     if (msg.id && waiting.has(msg.id)) {
       waiting.get(msg.id)(msg);

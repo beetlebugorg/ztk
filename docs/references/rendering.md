@@ -71,3 +71,19 @@ The Vulkan specification, version 1.0 core: the render pass, the graphics pipeli
 **License:** Specification
 
 **How ztk uses it:** `src/render/vulkan.zig` uses only Vulkan 1.0 core functions and the extension `VK_EXT_debug_utils` when validation is on. The blend is `ONE` and `ONE_MINUS_SRC_ALPHA` with a premultiplied output color, so that a box with a fill and a border blends in one step. The result equals "source over" of the CPU renderer. The CPU renderer blends the fill and the border in two steps. The two differ by at most 2 levels in a channel in the tests.
+
+## WebGPU and WGSL
+
+W3C, "WebGPU" and "WebGPU Shading Language" (Candidate Recommendations). https://www.w3.org/TR/webgpu/ and https://www.w3.org/TR/WGSL/
+
+**License:** Specifications
+
+**How ztk uses it:** `web/webgpu.js` draws the quads of a scene with one instanced draw, the quads in a storage buffer, and the formulas of `src/render/renderer.zig` in WGSL.
+
+## sRGB to Display P3
+
+The matrix from linear sRGB to linear Display P3 comes from the primaries and the D65 white point of the two color spaces, as CSS Color Module Level 4 gives them. https://www.w3.org/TR/css-color-4/
+
+**License:** Specification
+
+**How ztk uses it:** the WebGPU renderer converts each color of the scene to P3 on a `display-p3` canvas.
