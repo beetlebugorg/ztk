@@ -10,6 +10,14 @@
 //! commits no buffer. Key repeat runs inside the backend: `wait` and
 //! `poll` use the time of the next repeat. The Vulkan swapchain is not
 //! part of this file (see docs/tasks/BLOCKED.md).
+//!
+//! The pointer has its own event queue and an input thread that reads
+//! it, so the pointer positions reach the render thread while the UI
+//! thread is busy (a drag that the render thread moves). The input
+//! thread puts the pointer events in the same list as the other events,
+//! under a lock. Each thread that reads the socket wakes the other one
+//! through a pipe, because the events that one thread reads can belong to
+//! the queue of the other.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -99,6 +107,14 @@ pub const Wayland = struct {
     frames_committed: u32 = 0,
     /// The atlas page that the draw reads. Patches fill it.
     atlas: Atlas,
+    /// The lock of `events`, `mods`, and `buttons`, which the input thread also uses.
+    lock: SpinLock = .{},
+    ptr_queue: ?*c.wl_event_queue = null,
+    input_thread: ?std.Thread = null,
+    input_quit: std.atomic.Value(bool) = .init(false),
+    /// Pipes that wake the UI thread and the input thread: read end, write end.
+    wake_ui: [2]i32 = .{ -1, -1 },
+    wake_input: [2]i32 = .{ -1, -1 },
 
     pub fn init(gpa: std.mem.Allocator) !*Wayland {
         const display = c.wl_display_connect(null) orelse return error.NoWaylandDisplay;
@@ -116,6 +132,15 @@ pub const Wayland = struct {
     }
 
     pub fn deinit(w: *Wayland) void {
+        if (w.input_thread) |t| {
+            w.input_quit.store(true, .release);
+            wakeFd(w.wake_input[1]);
+            t.join();
+            w.input_thread = null;
+        }
+        for ([_]i32{ w.wake_ui[0], w.wake_ui[1], w.wake_input[0], w.wake_input[1] }) |fd| if (fd >= 0) {
+            _ = std.os.linux.close(fd);
+        };
         for (w.bufs) |b| if (b) |buf| freeBuf(w, buf);
         w.atlas.deinit();
         if (w.prev) |p| w.gpa.free(p.pixels);
@@ -127,6 +152,8 @@ pub const Wayland = struct {
         if (w.cursor_device) |d| c.wp_cursor_shape_device_v1_destroy(d);
         if (w.keyboard) |k| c.wl_keyboard_release(k);
         if (w.pointer) |p| c.wl_pointer_release(p);
+        w.pointer = null;
+        if (w.ptr_queue) |q| c.wl_event_queue_destroy(q);
         if (w.fractional) |f| c.wp_fractional_scale_v1_destroy(f);
         if (w.viewport) |v| c.wp_viewport_destroy(v);
         if (w.toplevel) |t| c.xdg_toplevel_destroy(t);
@@ -162,7 +189,95 @@ pub const Wayland = struct {
     }
 
     fn push(w: *Wayland, e: Event) void {
+        w.lock.lock();
         w.events.append(w.gpa, e) catch {};
+        w.lock.unlock();
+        if (on_input_thread) wakeFd(w.wake_ui[1]);
+    }
+
+    // ---- The input thread ----
+
+    threadlocal var on_input_thread: bool = false;
+
+    const SpinLock = struct {
+        held: std.atomic.Value(bool) = .init(false),
+        fn lock(l: *SpinLock) void {
+            while (l.held.swap(true, .acquire)) std.atomic.spinLoopHint();
+        }
+        fn unlock(l: *SpinLock) void {
+            l.held.store(false, .release);
+        }
+    };
+
+    fn wakeFd(fd: i32) void {
+        if (fd < 0) return;
+        const one = [1]u8{1};
+        _ = std.os.linux.write(fd, &one, 1);
+    }
+
+    fn drainFd(fd: i32) void {
+        if (fd < 0) return;
+        var buf: [64]u8 = undefined;
+        while (true) {
+            const rc = std.os.linux.read(fd, &buf, buf.len);
+            if (@as(isize, @bitCast(rc)) <= 0) return;
+        }
+    }
+
+    fn makePipe() [2]i32 {
+        var fds: [2]i32 = .{ -1, -1 };
+        const rc = std.os.linux.pipe2(&fds, .{ .NONBLOCK = true, .CLOEXEC = true });
+        if (@as(isize, @bitCast(rc)) < 0) return .{ -1, -1 };
+        return fds;
+    }
+
+    /// Moves the pointer to its own queue and starts the input thread. With
+    /// no pipe, no thread, or ZTK_NO_INPUT_THREAD=1, the pointer stays on the queue of the UI thread.
+    fn startInput(w: *Wayland) void {
+        // ZTK_NO_INPUT_THREAD=1 keeps the pointer on the queue of the UI thread.
+        if (std.c.getenv("ZTK_NO_INPUT_THREAD")) |v| if (v[0] == '1') return;
+        const q = c.wl_display_create_queue(w.display) orelse return;
+        w.wake_ui = makePipe();
+        w.wake_input = makePipe();
+        if (w.wake_ui[0] < 0 or w.wake_input[0] < 0) {
+            c.wl_event_queue_destroy(q);
+            return;
+        }
+        c.wl_proxy_set_queue(@ptrCast(w.pointer), q);
+        w.ptr_queue = q;
+        w.input_thread = std.Thread.spawn(.{}, inputLoop, .{w}) catch blk: {
+            c.wl_proxy_set_queue(@ptrCast(w.pointer), null);
+            c.wl_event_queue_destroy(q);
+            w.ptr_queue = null;
+            break :blk null;
+        };
+    }
+
+    fn inputLoop(w: *Wayland) void {
+        on_input_thread = true;
+        const q = w.ptr_queue.?;
+        const fd = c.wl_display_get_fd(w.display);
+        while (!w.input_quit.load(.acquire)) {
+            while (c.wl_display_prepare_read_queue(w.display, q) != 0) _ = c.wl_display_dispatch_queue_pending(w.display, q);
+            _ = c.wl_display_flush(w.display);
+            var pfd = [_]std.posix.pollfd{
+                .{ .fd = fd, .events = std.posix.POLL.IN, .revents = 0 },
+                .{ .fd = w.wake_input[0], .events = std.posix.POLL.IN, .revents = 0 },
+            };
+            const r = std.posix.poll(&pfd, -1) catch 0;
+            if (r > 0 and pfd[0].revents & std.posix.POLL.IN != 0) {
+                _ = c.wl_display_read_events(w.display);
+                // The events of the UI queue that this thread read.
+                wakeFd(w.wake_ui[1]);
+            } else c.wl_display_cancel_read(w.display);
+            drainFd(w.wake_input[0]);
+            _ = c.wl_display_dispatch_queue_pending(w.display, q);
+        }
+    }
+
+    /// After a read by the UI thread: the pointer events that it read wait in the queue of the input thread.
+    fn wakeInput(w: *Wayland) void {
+        if (w.input_thread != null) wakeFd(w.wake_input[1]);
     }
 
     // ---- The registry ----
@@ -299,7 +414,9 @@ pub const Wayland = struct {
 
     fn vDestroyWindow(ptr: *anyopaque, win: *Window) void {
         const w = self(ptr);
+        w.lock.lock();
         if (w.window == win) w.window = null;
+        w.lock.unlock();
         w.gpa.destroy(win);
     }
 
@@ -364,7 +481,10 @@ pub const Wayland = struct {
 
     fn vWait(ptr: *anyopaque, timeout_us: ?i64) void {
         const w = self(ptr);
-        if (w.events.items.len > 0) return;
+        w.lock.lock();
+        const pending = w.events.items.len > 0;
+        w.lock.unlock();
+        if (pending) return;
         var limit = timeout_us;
         if (w.repeat_key != null) {
             const left = @max(w.repeat_at_us - nowUs(), 0);
@@ -373,13 +493,20 @@ pub const Wayland = struct {
         // The prepare_read protocol: dispatch what is queued, flush, poll, read.
         while (c.wl_display_prepare_read(w.display) != 0) _ = c.wl_display_dispatch_pending(w.display);
         _ = c.wl_display_flush(w.display);
-        var pfd = [_]std.posix.pollfd{.{ .fd = c.wl_display_get_fd(w.display), .events = std.posix.POLL.IN, .revents = 0 }};
+        var pfd = [_]std.posix.pollfd{
+            .{ .fd = c.wl_display_get_fd(w.display), .events = std.posix.POLL.IN, .revents = 0 },
+            .{ .fd = w.wake_ui[0], .events = std.posix.POLL.IN, .revents = 0 },
+        };
         const ms: i32 = if (limit) |l| @intCast(@min(@divFloor(l +| 999, 1000), std.math.maxInt(i32))) else -1;
-        const r = std.posix.poll(&pfd, ms) catch 0;
-        if (r > 0) {
+        // A pipe of -1 is left out of the poll.
+        const n: usize = if (w.wake_ui[0] >= 0) 2 else 1;
+        const r = std.posix.poll(pfd[0..n], ms) catch 0;
+        if (r > 0 and pfd[0].revents & std.posix.POLL.IN != 0) {
             _ = c.wl_display_read_events(w.display);
-            _ = c.wl_display_dispatch_pending(w.display);
+            w.wakeInput();
         } else c.wl_display_cancel_read(w.display);
+        drainFd(w.wake_ui[0]);
+        _ = c.wl_display_dispatch_pending(w.display);
     }
 
     fn vPoll(ptr: *anyopaque, gpa: std.mem.Allocator, out: *std.ArrayListUnmanaged(Event)) anyerror!void {
@@ -391,10 +518,13 @@ pub const Wayland = struct {
             var pfd = [_]std.posix.pollfd{.{ .fd = c.wl_display_get_fd(w.display), .events = std.posix.POLL.IN, .revents = 0 }};
             if ((std.posix.poll(&pfd, 0) catch 0) > 0) {
                 _ = c.wl_display_read_events(w.display);
+                w.wakeInput();
                 _ = c.wl_display_dispatch_pending(w.display);
             } else c.wl_display_cancel_read(w.display);
         }
         w.runRepeat();
+        w.lock.lock();
+        defer w.lock.unlock();
         try out.appendSlice(gpa, w.events.items);
         w.events.clearRetainingCapacity();
     }
@@ -441,6 +571,7 @@ pub const Wayland = struct {
             w.pointer = c.wl_seat_get_pointer(seat);
             _ = c.wl_pointer_add_listener(w.pointer, &pointer_listener, w);
             if (w.cursor_mgr) |cm| w.cursor_device = c.wp_cursor_shape_manager_v1_get_pointer(cm, w.pointer);
+            w.startInput();
         }
         if (caps & c.WL_SEAT_CAPABILITY_KEYBOARD != 0 and w.keyboard == null) {
             w.keyboard = c.wl_seat_get_keyboard(seat);
@@ -456,7 +587,9 @@ pub const Wayland = struct {
         return @floatCast(c.wl_fixed_to_double(v));
     }
 
-    fn currentMods(w: *const Wayland) Mods {
+    fn currentMods(w: *Wayland) Mods {
+        w.lock.lock();
+        defer w.lock.unlock();
         var m = w.mods;
         m.button1 = w.buttons & 1 != 0;
         m.button2 = w.buttons & 2 != 0;
@@ -471,7 +604,18 @@ pub const Wayland = struct {
         w.pointer_serial = serial;
         _ = ptr;
         if (w.cursor_device) |d| c.wp_cursor_shape_device_v1_set_shape(d, serial, c.WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT);
-        if (w.window) |win| w.push(.{ .motion = .{ .window = win, .x = w.px, .y = w.py, .mods = w.currentMods(), .time_ms = timeMs() } });
+        w.motion();
+    }
+
+    /// A motion event, and the position for the render thread. The lock keeps
+    /// the window alive while the render thread gets the position.
+    fn motion(w: *Wayland) void {
+        const m = w.currentMods();
+        w.lock.lock();
+        const win = w.window;
+        if (win) |x| x.feedPointer(w.px, w.py);
+        w.lock.unlock();
+        if (win) |x| w.push(.{ .motion = .{ .window = x, .x = w.px, .y = w.py, .mods = m, .time_ms = timeMs() } });
     }
 
     fn onPointerLeave(data: ?*anyopaque, _: ?*c.wl_pointer, _: u32, _: ?*c.wl_surface) callconv(.c) void {
@@ -483,7 +627,7 @@ pub const Wayland = struct {
         const w: *Wayland = @ptrCast(@alignCast(data.?));
         w.px = fixed(sx);
         w.py = fixed(sy);
-        if (w.window) |win| w.push(.{ .motion = .{ .window = win, .x = w.px, .y = w.py, .mods = w.currentMods(), .time_ms = timeMs() } });
+        w.motion();
     }
 
     fn onPointerButton(data: ?*anyopaque, _: ?*c.wl_pointer, _: u32, _: u32, code: u32, state: u32) callconv(.c) void {
@@ -498,7 +642,9 @@ pub const Wayland = struct {
         const before = w.currentMods();
         if (w.window) |win| w.push(.{ .button = .{ .window = win, .button = button, .pressed = pressed, .x = w.px, .y = w.py, .mods = before, .time_ms = timeMs() } });
         const bit: u8 = @as(u8, 1) << @intCast(button - 1);
+        w.lock.lock();
         if (pressed) w.buttons |= bit else w.buttons &= ~bit;
+        w.lock.unlock();
     }
 
     fn onPointerAxis(data: ?*anyopaque, _: ?*c.wl_pointer, _: u32, axis: u32, value: c.wl_fixed_t) callconv(.c) void {
@@ -602,6 +748,8 @@ pub const Wayland = struct {
         const w: *Wayland = @ptrCast(@alignCast(data.?));
         const st = w.xkb_state orelse return;
         _ = c.xkb_state_update_mask(st, depressed, latched, locked, 0, 0, group);
+        w.lock.lock();
+        defer w.lock.unlock();
         w.mods = .{
             .shift = modActive(st, "Shift"),
             .lock = modActive(st, "Lock"),

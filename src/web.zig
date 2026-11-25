@@ -2,7 +2,10 @@
 //! (`web/ztk.js`) owns the canvas, the input, and the GPU. This file
 //! keeps an interpreter, an App, and a headless backend whose clock and
 //! input come from the page through the exported functions. The page
-//! calls `ztk_frame` from `requestAnimationFrame`. A frame leaves its
+//! calls `ztk_frame` from `requestAnimationFrame`. When the App makes no
+//! new frame, `ztk_frame` moves the animations and the drags of the last
+//! frame for the new time, as the render thread of the native build
+//! does. A frame leaves its
 //! scene and the atlas page in the memory of the module, and the page
 //! draws the quads with WebGL 2 and the same formulas as the CPU
 //! renderer. The build has no thread, no file, and no clock of its own.
@@ -84,7 +87,10 @@ export fn ztk_frame(time_ms: f64) i32 {
     const before = app.frames;
     _ = app.doOneEvent(false) catch {};
     app.flush() catch {};
-    if (app.frames == before) return -1;
+    if (app.frames == before) {
+        // No new frame: the animations and the drags of the last frame move for the new time.
+        if (!app.render.advance(head.now_us)) return -1;
+    }
     return @intCast(app.lastScene().quads.items.len);
 }
 

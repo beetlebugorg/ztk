@@ -530,7 +530,7 @@ pub const StyleSet = struct {
 };
 
 /// The options that the script set on the widget: the origin `widget`.
-fn applyOptions(w: *const Widget, st: *Style) void {
+pub fn applyOptions(w: *const Widget, st: *Style) void {
     for (w.class.specs, w.opts) |sp, slot| {
         if (!slot.set or sp.type == .synonym) continue;
         const n = sp.name;

@@ -330,6 +330,7 @@ pub const Input = struct {
                 d.rel_x = 0;
                 d.rel_y = 0;
                 try out.append(i.gpa, .{ .motion = .{ .window = window, .x = i.px, .y = i.py, .mods = i.mods(), .time_ms = @truncate(now_ms) } });
+                window.feedPointer(i.px, i.py);
             },
             .touch => {
                 const x = norm(d.x, d.ax);

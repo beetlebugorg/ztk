@@ -11,6 +11,14 @@
 //! condition, the frame pointers, and two atomic counters. In
 //! `inline_draw` mode `submit` draws on the calling thread. The thread
 //! touches no widget, no style, and no interpreter value.
+//!
+//! The render thread keeps the frame that it drew last while an animation
+//! of the frame runs or while the frame has a drag. It draws that frame
+//! again for the time that passed, at 120 frames in each second at most,
+//! and for each new pointer position that `pointer` gives. So an
+//! animation and a drag move while the UI thread is busy. A backend can
+//! call `pointer` from any thread. In `inline_draw` mode `advance` draws
+//! the last frame again for a new time on the calling thread.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -53,6 +61,18 @@ pub const RenderThread = struct {
     drawn: std.atomic.Value(u32) = .init(0),
     replaced: std.atomic.Value(u32) = .init(0),
     errors: std.atomic.Value(u32) = .init(0),
+    /// The pointer position from the backend, in logical pixels of the
+    /// window, and a count of its changes. Under the mutex.
+    ptr_x: f32 = 0,
+    ptr_y: f32 = 0,
+    ptr_serial: u32 = 0,
+    /// The pointer count that the held frame shows, and true while an
+    /// animation of the held frame runs. Under the mutex.
+    held_ptr: u32 = 0,
+    held_running: bool = false,
+    /// True while the thread draws the held frame again.
+    held_drawing: bool = false,
+    last_draw_us: i64 = 0,
 
     pub fn init(gpa: std.mem.Allocator, io: std.Io, mode: Mode, target: Target) !*RenderThread {
         const r = try gpa.create(RenderThread);
@@ -115,7 +135,9 @@ pub const RenderThread = struct {
             r.serial += 1;
             f.serial = r.serial;
             f.wall_us = host.nowUs();
-            _ = scene.applyAnims(f, f.time_us);
+            r.held_running = scene.applyAnims(f, f.time_us);
+            if (r.ptr_serial != 0) scene.applyDrags(f, r.ptr_x, r.ptr_y);
+            r.held_ptr = r.ptr_serial;
             r.draw(f);
             r.last = f;
             return;
@@ -146,6 +168,50 @@ pub const RenderThread = struct {
         r.cond.signal(r.io);
     }
 
+    /// Gives a new pointer position in logical pixels of the window. It can
+    /// run on any thread. A held frame with a drag is drawn again.
+    pub fn pointer(r: *RenderThread, x: f32, y: f32) void {
+        r.mutex.lockUncancelable(r.io);
+        defer r.mutex.unlock(r.io);
+        r.ptr_x = x;
+        r.ptr_y = y;
+        r.ptr_serial +%= 1;
+        if (r.ptr_serial == 0) r.ptr_serial = 1;
+        r.cond.signal(r.io);
+    }
+
+    /// `inline_draw` mode: draws the last frame again for a time on the
+    /// clock of the UI thread, when an animation or a drag of the frame
+    /// moves. Returns true when it drew.
+    pub fn advance(r: *RenderThread, time_us: i64) bool {
+        if (r.mode != .inline_draw) return false;
+        const f = r.last orelse return false;
+        const moved = f.drags.items.len > 0 and r.held_ptr != r.ptr_serial;
+        if (!r.held_running and !moved) return false;
+        r.held_running = scene.applyAnims(f, time_us);
+        if (r.ptr_serial != 0) scene.applyDrags(f, r.ptr_x, r.ptr_y);
+        r.held_ptr = r.ptr_serial;
+        r.draw(f);
+        return true;
+    }
+
+    /// Makes the thread draw for another target, for a pool of render
+    /// threads. It waits for the submitted frames and drops the held frame.
+    pub fn retarget(r: *RenderThread, target: Target) void {
+        r.flush();
+        r.mutex.lockUncancelable(r.io);
+        defer r.mutex.unlock(r.io);
+        // The held frame can be in a draw: wait until the thread puts it back.
+        while (r.held_drawing) r.cond.waitUncancelable(r.io, &r.mutex);
+        if (r.held) |h| r.pushFree(h);
+        r.held = null;
+        r.held_running = false;
+        r.last = null;
+        r.ptr_serial = 0;
+        r.held_ptr = 0;
+        r.target = target;
+    }
+
     /// Blocks until the render thread showed all submitted frames.
     pub fn flush(r: *RenderThread) void {
         if (r.mode == .inline_draw) return;
@@ -166,10 +232,20 @@ pub const RenderThread = struct {
         _ = r.drawn.fetchAdd(1, .monotonic);
     }
 
+    /// True when the held frame must be drawn again.
+    fn heldMoves(r: *const RenderThread) bool {
+        const h = r.held orelse return false;
+        return r.held_running or (h.drags.items.len > 0 and r.held_ptr != r.ptr_serial);
+    }
+
+    fn keeps(f: *const Frame, running: bool) bool {
+        return running or f.drags.items.len > 0;
+    }
+
     fn run(r: *RenderThread) void {
         while (true) {
             r.mutex.lockUncancelable(r.io);
-            while (r.waiting == null and !r.quit and r.held == null) r.cond.waitUncancelable(r.io, &r.mutex);
+            while (r.waiting == null and !r.quit and !r.heldMoves()) r.cond.waitUncancelable(r.io, &r.mutex);
             if (r.quit) {
                 if (r.held) |h| r.pushFree(h);
                 r.held = null;
@@ -179,18 +255,30 @@ pub const RenderThread = struct {
                 }
             }
             if (r.waiting == null) {
-                // A transition runs and no new frame came: draw the held frame again
-                // for the time that passed, so a busy UI thread does not stop it.
-                // `flush` does not wait for this draw: it waits only for submitted frames.
+                // An animation runs or the pointer moved, and no new frame came: draw the
+                // held frame again, so a busy UI thread does not stop it. `flush` does not
+                // wait for this draw: it waits only for submitted frames.
                 const h = r.held.?;
+                r.held_drawing = true;
                 r.mutex.unlock(r.io);
-                host.sleepUs(anim_step_us);
+                const wait = r.last_draw_us + anim_step_us - host.nowUs();
+                if (wait > 0) host.sleepUs(wait);
+                r.mutex.lockUncancelable(r.io);
+                const ser = r.ptr_serial;
+                const px = r.ptr_x;
+                const py = r.ptr_y;
+                r.mutex.unlock(r.io);
                 const running = scene.applyAnims(h, h.time_us + (host.nowUs() - h.wall_us));
+                if (ser != 0) scene.applyDrags(h, px, py);
+                r.last_draw_us = host.nowUs();
                 r.draw(h);
                 r.mutex.lockUncancelable(r.io);
+                r.held_drawing = false;
                 r.last = h;
-                if (!running) {
-                    r.held = null;
+                r.held_ptr = ser;
+                r.held_running = running;
+                if (!keeps(h, running) or r.held != h) {
+                    if (r.held == h) r.held = null;
                     r.pushFree(h);
                 }
                 r.cond.broadcast(r.io);
@@ -205,33 +293,29 @@ pub const RenderThread = struct {
                 r.held = null;
             }
             r.drawing = f;
+            const ser = r.ptr_serial;
+            const px = r.ptr_x;
+            const py = r.ptr_y;
             // A `submit` can wait for the old frame to leave the slot.
             r.cond.broadcast(r.io);
             r.mutex.unlock(r.io);
 
             const running = scene.applyAnims(f, f.time_us + (host.nowUs() - f.wall_us));
+            if (ser != 0) scene.applyDrags(f, px, py);
+            r.last_draw_us = host.nowUs();
             r.draw(f);
 
             r.mutex.lockUncancelable(r.io);
             r.drawing = null;
             r.last = f;
+            r.held_ptr = ser;
+            r.held_running = running;
+            if (keeps(f, running)) {
+                r.held = f;
+            } else r.pushFree(f);
             // Keep the frame that was drawn last out of the free list until the next draw ends.
             r.cond.broadcast(r.io);
             r.mutex.unlock(r.io);
-            if (running) {
-                r.mutex.lockUncancelable(r.io);
-                r.held = f;
-                r.mutex.unlock(r.io);
-            } else r.recycleLater(f);
         }
-    }
-
-    /// The frame goes back to the free list. `last` still points at it, and the
-    /// next `submit` can pop it, so `lastFrame` is valid only after `flush` and
-    /// before the next submit.
-    fn recycleLater(r: *RenderThread, f: *Frame) void {
-        r.mutex.lockUncancelable(r.io);
-        defer r.mutex.unlock(r.io);
-        r.pushFree(f);
     }
 };

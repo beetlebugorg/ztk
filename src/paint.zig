@@ -232,9 +232,10 @@ pub fn partStyle(w: *Widget, part: []const u8, slot: *PartAnim) struct { style: 
         slot.start_us = now;
     }
     const since = now - slot.start_us;
-    if (since >= spec.totalUs()) return .{ .style = slot.to, .t = 1 };
+    if (since >= spec.totalUs() or app.part_end) return .{ .style = slot.to, .t = 1 };
     app.anim_more = true;
     const p = spec.progress(since);
+    app.notePartMove(slot.start_us, spec, p);
     return .{ .style = anim.mix(&slot.from, &slot.to, p), .t = p };
 }
 
