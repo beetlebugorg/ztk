@@ -111,6 +111,14 @@ const KEYS = {
   F1: "F1", F2: "F2", F3: "F3", F4: "F4", F5: "F5", F6: "F6", F7: "F7", F8: "F8", F9: "F9", F10: "F10", F11: "F11", F12: "F12",
 };
 
+/// Compiles ztk.wasm one time for each URL.
+const compiled = new Map();
+export function compileModule(url) {
+  const u = String(url || new URL("ztk.wasm", import.meta.url));
+  if (!compiled.has(u)) compiled.set(u, WebAssembly.compileStreaming(fetch(u)));
+  return compiled.get(u);
+}
+
 export async function start(canvas, options = {}) {
   const enc = new TextEncoder();
   const dec = new TextDecoder();
@@ -122,19 +130,29 @@ export async function start(canvas, options = {}) {
       ztk_print: (p, n) => log(dec.decode(new Uint8Array(ex.memory.buffer, p, n))),
     },
   };
-  const url = options.wasm || new URL("ztk.wasm", import.meta.url);
-  const { instance } = await WebAssembly.instantiateStreaming(fetch(url), imports);
+  // A page with several demos compiles the module one time and gives it as options.module.
+  const module = options.module || await compileModule(options.wasm);
+  const instance = await WebAssembly.instantiate(module, imports);
   ex = instance.exports;
 
   const dark = matchMedia("(prefers-color-scheme: dark)");
   const reduce = matchMedia("(prefers-reduced-motion: reduce)");
   const forceDark = options.dark;
+  // The window of the script has the size of the canvas, or a fixed logical size
+  // (options.width and options.height) that the canvas shows at its own size.
   const size = () => {
+    if (options.width && options.height) return [options.width, options.height];
     const r = canvas.getBoundingClientRect();
     return [Math.max(1, Math.round(r.width)), Math.max(1, Math.round(r.height))];
   };
+  const scaleNow = () => {
+    if (options.scale) return options.scale;
+    if (!options.width) return devicePixelRatio;
+    const r = canvas.getBoundingClientRect();
+    return devicePixelRatio * (r.width > 0 ? r.width / options.width : 1);
+  };
   const [w0, h0] = size();
-  if (!ex.ztk_init(w0, h0, options.scale || devicePixelRatio, forceDark ?? dark.matches, reduce.matches)) throw new Error("ztk_init failed");
+  if (!ex.ztk_init(w0, h0, scaleNow(), forceDark ?? dark.matches, reduce.matches)) throw new Error("ztk_init failed");
   dark.addEventListener("change", () => forceDark === undefined && ex.ztk_dark(dark.matches));
   reduce.addEventListener("change", () => ex.ztk_reduce_motion(reduce.matches));
 
@@ -223,7 +241,8 @@ export async function start(canvas, options = {}) {
   canvas.parentElement.appendChild(input);
   const pos = (e) => {
     const r = canvas.getBoundingClientRect();
-    return [e.clientX - r.left, e.clientY - r.top];
+    const k = options.width && r.width > 0 ? options.width / r.width : 1;
+    return [(e.clientX - r.left) * k, (e.clientY - r.top) * k];
   };
   const mods = (e) => ex.ztk_mods(e.shiftKey, e.ctrlKey || e.metaKey, e.altKey);
   canvas.addEventListener("pointermove", (e) => { mods(e); ex.ztk_pointer(...pos(e)); });
@@ -252,7 +271,7 @@ export async function start(canvas, options = {}) {
   };
   input.addEventListener("keydown", (e) => key(e, true));
   input.addEventListener("keyup", (e) => key(e, false));
-  new ResizeObserver(() => { const [w, h] = size(); ex.ztk_resize(w, h, options.scale || devicePixelRatio); }).observe(canvas);
+  new ResizeObserver(() => { const [w, h] = size(); ex.ztk_resize(w, h, scaleNow()); }).observe(canvas);
 
   // Accessibility: hidden elements with ARIA roles over the canvas.
   const tree = document.createElement("div");
@@ -283,5 +302,6 @@ export async function start(canvas, options = {}) {
     requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);
-  return { eval: evalScript, exports: ex, frame: (t) => { const n = ex.ztk_frame(t); if (n >= 0) draw(n); return n; }, tree };
+  const addFile = (name, text) => withBytes(name, (pn, nn) => withBytes(text, (pt, nt) => ex.ztk_add_file(pn, nn, pt, nt)));
+  return { eval: evalScript, exports: ex, frame: (t) => { const n = ex.ztk_frame(t); if (n >= 0) draw(n); return n; }, tree, addFile, canvas };
 }

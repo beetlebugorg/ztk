@@ -574,7 +574,7 @@ The user asked for all widgets of Tk 8.6 before the rest of Stage 2, so that the
 - Animation is part of the API: CSS transitions and keyframes, `ztk::animate`, and animated scrolling, tabs, sashes, menus, and tree items, moved by the render thread.
 - Each widget is fluid: under 8 ms of ztk work for a frame at the 99th percentile, the answer to input in the next frame, drags and scrolls that follow the pointer from the render thread, and budgets for a large canvas and a large text.
 - The look is modern by default. The classic look of Tk is a theme that a script selects. Modern extras (switches, segmented buttons, placeholders, tooltips, toasts, popovers) are options and styles on the Tk widgets.
-- Each widget runs on the web. The web backend is task 06 of the widget stage.
+- Each widget runs on the web. The web backend is task 06 of the widget stage, the live demos of the site are task 06b, and the WebGPU renderer, with WebGL 2 and the CPU renderer as fallbacks, is task 06c. WebGPU is the GPU API of the browser, so it keeps the rule of section 4.12.
 
 Each stage after Stage 1 gets its own task list when it starts. The task list of a stage is small tasks in order, in the form of [Stage 1](tasks/README.md).
 

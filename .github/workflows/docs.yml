@@ -13,6 +13,11 @@ on:
       - "tools/build-docs.py"
       - "tools/docs-requirements.txt"
       - ".github/workflows/docs.yml"
+      - "src/**"
+      - "web/**"
+      - "examples/**"
+      - "build.zig"
+      - "build.zig.zon"
   workflow_dispatch:
 
 permissions:
@@ -31,7 +36,12 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install -r tools/docs-requirements.txt
-      - run: python tools/build-docs.py site
+      # The live demos of the landing page and the playground need the web build.
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        with:
+          version: "0.16.0"
+      - run: zig build wasm -Dbackends=headless -Dvulkan=false
+      - run: python tools/build-docs.py site --live zig-out/web
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
           path: site

@@ -57,6 +57,13 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - `tests/web.sh`, 2026-11-24, development machine, headless Chromium with SwiftShader: the WebGL 2 image of the gallery equals the CPU image within 1 level in each pixel. The frame time of the module in V8 (node, ReleaseFast, the gallery at scale 2, 200 frames of pointer motion) was median 4.88 ms and 99th percentile 7.25 ms in one run, median 5.52 ms and 99th percentile 14.14 ms in a second run, and median 3.88 ms and 99th percentile 6.10 ms in a third run, under a load of 8 to 9. The gate of 8 ms at the 99th percentile is met in two of the three runs. The paint makes the whole scene again for each frame, with the text shaped again.
 - The module is 3.0 MB (1.0 MB with gzip), with 0.8 MB of fonts.
 
+## Live demos on the site (task 06b)
+
+- Each card of "What it draws" runs its example live when it comes within 200 pixels of the view, or at the first tap on a device with a coarse pointer. The screenshot shows until the first frame. The page compiles `ztk.wasm` one time, and each card has its own instance and canvas.
+- The demo has the logical size of its poster (the screenshot is at scale 2) and draws at the scale of the screen times the shown size, so it has the size of the poster in the page. `tests/site.sh` (2026-11-24, headless Chromium with SwiftShader) found each card equal to its poster in light and dark: at most 1 level in each pixel.
+- The examples that read no files run as they are. `ztk::style load` gets the style sheet that the page fetched.
+- The page has no budget check of its size yet. The module is 3.0 MB (1.0 MB with gzip) and loads only when the first card goes live.
+
 ## Additions
 
 - `ztk::animate`, `ztk::clock`, the timing function `spring()`, and the flag `--time` of the `ztk` program.
