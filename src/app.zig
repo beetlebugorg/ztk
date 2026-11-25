@@ -64,6 +64,15 @@ pub const max_window: i32 = 8192;
 /// The largest side of a frame in device pixels.
 const max_frame: u32 = 16384;
 
+/// The window, the renderer, and the window manager state of a toplevel
+/// other than ".". The `data` of the toplevel widget holds it.
+pub const Top = struct {
+    win: *platform_mod.Window,
+    render: *render_thread.RenderThread,
+    wm: wm_mod.State = .{},
+    frame_requested: bool = false,
+};
+
 pub const App = struct {
     gpa: std.mem.Allocator,
     it: *ztcl.Interp,
@@ -152,6 +161,12 @@ pub const App = struct {
     style_pending: bool = true,
     /// True from a request for a frame until the frame event arrives.
     frame_requested: bool = false,
+    /// The grab of `grab`, and the tooltips of `ztk::tooltip` by widget path (owned).
+    grab: @import("grab.zig").State = .{},
+    tip: @import("grab.zig").Tip = .{},
+    tooltips: std.StringHashMapUnmanaged([]u8) = .empty,
+    /// The toplevels other than ".", oldest first.
+    tops: std.ArrayListUnmanaged(*Widget) = .empty,
 
     pub fn init(gpa: std.mem.Allocator, it: *ztcl.Interp, opts: Options) !*App {
         const app = try create(gpa, it, opts);
@@ -232,6 +247,8 @@ pub const App = struct {
         app.wm.deinit(app.gpa);
         if (app.style_root) |r| app.gpa.free(r);
         app.events.deinit(app.gpa);
+        app.tops.deinit(app.gpa);
+        @import("grab.zig").deinit(app);
         app.gpa.free(app.root_class);
         app.gpa.free(app.app_name);
         app.gpa.destroy(app);
@@ -335,11 +352,51 @@ pub const App = struct {
     }
 
     /// Asks the backend for one `frame` event, unless one is pending.
+    /// The data of a toplevel other than ".", or null.
+    pub fn topOf(app: *App, w: *const Widget) ?*Top {
+        _ = app;
+        if (w.class != &@import("widgets/toplevel.zig").class) return null;
+        return @ptrCast(@alignCast(w.data orelse return null));
+    }
+
+    /// The platform window of a toplevel.
+    pub fn winOf(app: *App, top: *const Widget) ?*platform_mod.Window {
+        if (app.topOf(top)) |t| return t.win;
+        if (top == app.root) return app.window;
+        return null;
+    }
+
+    pub fn renderOf(app: *App, top: *const Widget) *render_thread.RenderThread {
+        if (app.topOf(top)) |t| return t.render;
+        return app.render;
+    }
+
+    pub fn wmOf(app: *App, top: *const Widget) *wm_mod.State {
+        if (app.topOf(top)) |t| return &t.wm;
+        return &app.wm;
+    }
+
+    /// The toplevel of a platform window, or null.
+    pub fn topOfWindow(app: *App, win: *const platform_mod.Window) ?*Widget {
+        if (app.window == win) return app.root;
+        for (app.tops.items) |t| if (app.topOf(t)) |d| {
+            if (d.win == win) return t;
+        };
+        return null;
+    }
+
+    /// Asks the backend for one `frame` event for each window, unless one is pending.
     pub fn requestFrame(app: *App) void {
-        if (app.frame_requested) return;
-        const win = app.window orelse return;
-        app.frame_requested = true;
-        app.platform.requestFrame(win);
+        if (!app.frame_requested) if (app.window) |win| {
+            app.frame_requested = true;
+            app.platform.requestFrame(win);
+        };
+        for (app.tops.items) |t| if (app.topOf(t)) |d| {
+            if (!d.frame_requested) {
+                d.frame_requested = true;
+                app.platform.requestFrame(d.win);
+            }
+        };
     }
 
     pub fn frameError(app: *App, e: anyerror) void {
@@ -351,13 +408,19 @@ pub const App = struct {
     /// Asks the backend for a window size, and takes the size at once when
     /// the backend gives it at once.
     pub fn setWindowSize(app: *App, requested: geom.Size) void {
-        const win = app.window orelse return;
-        const size: geom.Size = .{ .w = std.math.clamp(requested.w, 1, max_window), .h = std.math.clamp(requested.h, 1, max_window) };
         const root = app.root orelse return;
+        app.setTopSize(root, requested);
+    }
+
+    /// Asks the backend for a size of the window of a toplevel, and takes the size at once when
+    /// the backend gives it at once.
+    pub fn setTopSize(app: *App, top: *Widget, requested: geom.Size) void {
+        const win = app.winOf(top) orelse return;
+        const size: geom.Size = .{ .w = std.math.clamp(requested.w, 1, max_window), .h = std.math.clamp(requested.h, 1, max_window) };
         app.platform.vtable.requestSize(app.platform.ptr, win, size);
-        if (win.size.w != root.geom.w or win.size.h != root.geom.h) {
-            root.geom = .{ .x = 0, .y = 0, .w = win.size.w, .h = win.size.h };
-            root.invalidate(.{ .style = false, .measure = false, .layout = true, .paint = true });
+        if (win.size.w != top.geom.w or win.size.h != top.geom.h) {
+            top.geom = .{ .x = 0, .y = 0, .w = win.size.w, .h = win.size.h };
+            top.invalidate(.{ .style = false, .measure = false, .layout = true, .paint = true });
         }
     }
 
@@ -455,7 +518,9 @@ pub const App = struct {
     pub fn frame(app: *App, top: *widget.Widget) !bool {
         app.enter();
         defer app.leave();
-        const win = app.window orelse return false;
+        const win = app.winOf(top) orelse return false;
+        const wms = app.wmOf(top);
+        const rend = app.renderOf(top);
         const now = app.platform.nowUs();
         const opt_running = @import("animate.zig").tick(app, now);
         const animating = anim.tick(app, now) or opt_running;
@@ -469,16 +534,16 @@ pub const App = struct {
         app.stats.begin(.layout, wall.*());
         _ = layout.run(top);
         app.stats.end(.layout, wall.*());
-        if (app.wm.geometry == null and layout.propagates(top)) {
-            const m = app.wm.minsize;
-            const x = app.wm.maxsize;
+        if (wms.geometry == null and layout.propagates(top)) {
+            const m = wms.minsize;
+            const x = wms.maxsize;
             const want: geom.Size = .{
                 .w = std.math.clamp(top.req.w, @max(m.w, 1), @max(x.w, m.w, 1)),
                 .h = std.math.clamp(top.req.h, @max(m.h, 1), @max(x.h, m.h, 1)),
             };
-            if (want.w != app.wm.last_req.w or want.h != app.wm.last_req.h) {
-                app.wm.last_req = want;
-                app.setWindowSize(want);
+            if (want.w != wms.last_req.w or want.h != wms.last_req.h) {
+                wms.last_req = want;
+                app.setTopSize(top, want);
                 _ = layout.run(top);
             }
         }
@@ -486,7 +551,7 @@ pub const App = struct {
         app.reportGeometry(top);
         // A Configure or Map binding can delete the toplevel.
         if (!top.alive()) return false;
-        if (app.wm.withdrawn or !top.dirty.paint) {
+        if (wms.withdrawn or !top.dirty.paint) {
             top.dirty.measure = false;
             top.dirty.layout = false;
             return false;
@@ -497,7 +562,7 @@ pub const App = struct {
         const dw = @min(dw0, max_frame);
         const dh = @min(dh0, max_frame);
         app.stats.begin(.paint, wall.*());
-        const fr = app.render.back();
+        const fr = rend.back();
         fr.reset(app.gpa);
         fr.scene.reset(@max(dw, 1), @max(dh, 1));
         fr.scene.clear = colorF(top.style.background);
@@ -507,10 +572,11 @@ pub const App = struct {
         app.anim_frame = fr;
         defer app.anim_frame = null;
         try app.paintNode(top, &b);
+        try @import("grab.zig").paintTip(app, top, &b);
         try app.atlas.takePatches(app.gpa, &fr.patches);
         app.stats.end(.paint, wall.*());
         app.stats.begin(.render, wall.*());
-        app.render.submit();
+        rend.submit();
         app.stats.end(.render, wall.*());
         top.dirty = widget.Dirty.none;
         app.anim_more_us = now;
@@ -552,6 +618,12 @@ pub const App = struct {
         }
     }
 
+    /// Waits until each render thread showed its submitted frames.
+    pub fn flushRender(app: *App) void {
+        if (app.render_ready) app.render.flush();
+        for (app.tops.items) |t| if (app.topOf(t)) |d| d.render.flush();
+    }
+
     /// The scene of the last frame that was drawn. In threaded mode, call it after `update`.
     pub fn lastScene(app: *App) *const scene_mod.Scene {
         return &app.render.lastFrame().scene;
@@ -562,10 +634,15 @@ pub const App = struct {
         var i: u8 = 0;
         while (i < 8) : (i += 1) {
             const root = app.root orelse return;
-            const drew = app.frame(root) catch |e| blk: {
+            var drew = app.frame(root) catch |e| blk: {
                 app.frameError(e);
                 break :blk false;
             };
+            var k: usize = 0;
+            while (k < app.tops.items.len) : (k += 1) {
+                const t = app.tops.items[k];
+                if (app.frame(t) catch false) drew = true;
+            }
             const worked = try app.pass();
             if (!drew and !worked) return;
         }
@@ -578,31 +655,30 @@ pub const App = struct {
 
     fn handleEvent(app: *App, ev: event.Event) void {
         // A window that is gone has no events. Compare the pointer only.
-        const win = app.window orelse return;
-        if (ev.window() != win) return;
+        const top = app.topOfWindow(ev.window()) orelse return;
         switch (ev) {
-            .resize => |r| if (app.root) |root| {
+            .resize => |r| {
                 // A backend can report any size.
-                root.geom.w = std.math.clamp(r.size.w, 1, max_window);
-                root.geom.h = std.math.clamp(r.size.h, 1, max_window);
-                root.invalidate(.{ .style = false, .measure = false, .layout = true, .paint = true });
+                top.geom.w = std.math.clamp(r.size.w, 1, max_window);
+                top.geom.h = std.math.clamp(r.size.h, 1, max_window);
+                top.invalidate(.{ .style = false, .measure = false, .layout = true, .paint = true });
             },
-            .close => if (app.root) |root| {
-                if (app.wm.delete_script) |script| {
+            .close => {
+                if (app.wmOf(top).delete_script) |script| {
                     const copy = app.gpa.dupe(u8, script) catch return;
                     defer app.gpa.free(copy);
                     app.callback(copy);
                 } else {
-                    widget.destroy(root);
+                    widget.destroy(top);
                 }
             },
             .frame => {
-                app.frame_requested = false;
-                if (app.root) |root| _ = app.frame(root) catch |e| app.frameError(e);
+                if (app.topOf(top)) |d| d.frame_requested = false else app.frame_requested = false;
+                _ = app.frame(top) catch |e| app.frameError(e);
             },
             .focus => |f| focus_mod.windowFocus(app, f.focused),
-            .scale => if (app.root) |root| root.invalidate(.{ .style = false, .measure = false, .layout = false, .paint = true }),
-            .motion, .button, .leave, .key => dispatch.handle(app, ev),
+            .scale => top.invalidate(.{ .style = false, .measure = false, .layout = false, .paint = true }),
+            .motion, .button, .leave, .key => dispatch.handleIn(app, ev, top),
             else => {},
         }
     }

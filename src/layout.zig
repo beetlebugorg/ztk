@@ -42,7 +42,15 @@ pub const Manager = struct {
 /// whole logical pixels. The content goes inside it.
 pub fn insets(c: *Widget) geom.Insets {
     c.app.ensureStyle(c);
-    return paint.insets(&c.style);
+    var i = paint.insets(&c.style);
+    if (c.class.extra_insets) |f| {
+        const e = f(c);
+        i.top += e.top;
+        i.right += e.right;
+        i.bottom += e.bottom;
+        i.left += e.left;
+    }
+    return i;
 }
 
 /// Stores the requested size. The size is at least 1 by 1. A manager

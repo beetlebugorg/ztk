@@ -14,6 +14,7 @@ const std = @import("std");
 const num = @import("num.zig");
 const ztcl = @import("ztcl");
 const bind = @import("bind.zig");
+const grab = @import("grab.zig");
 const event = @import("event.zig");
 const keysym = @import("keysym.zig");
 const widget_mod = @import("widget.zig");
@@ -117,6 +118,7 @@ fn pointerEvent(app: *App, t: bind.EventType, w: *Widget, x: f32, y: f32, mods: 
 fn updateHover(app: *App, under: ?*Widget, x: f32, y: f32, mods: event.Mods, time_ms: u32) void {
     const d = &app.dispatch;
     if (d.hover == under) return;
+    grab.hover(app, under);
     if (d.hover) |old| {
         d.hover = null;
         setHover(app, old, false);
@@ -154,9 +156,14 @@ fn dropStaleGrab(app: *App, mods: event.Mods) void {
     if (g.alive()) setPressed(g, false);
 }
 
-/// Turns one backend event into widget events and delivers them.
+/// Turns one backend event of the window of "." into widget events and delivers them.
 pub fn handle(app: *App, ev: event.Event) void {
     const root = app.root orelse return;
+    handleIn(app, ev, root);
+}
+
+/// Turns one backend event of the window of a toplevel into widget events and delivers them.
+pub fn handleIn(app: *App, ev: event.Event, root: *Widget) void {
     const d = &app.dispatch;
     switch (ev) {
         .motion => |m| {
@@ -165,7 +172,7 @@ pub fn handle(app: *App, ev: event.Event) void {
                 if (!g.alive()) {
                     d.grab = null;
                 } else {
-                    const under = widgetAt(root, num.pxFloor(m.x), num.pxFloor(m.y));
+                    const under = grab.redirect(app, widgetAt(root, num.pxFloor(m.x), num.pxFloor(m.y)));
                     // The grabbing widget gets Leave and Enter, and no other widget does.
                     if ((under == g) != g.state.hover) {
                         if (under == g) {
@@ -188,7 +195,7 @@ pub fn handle(app: *App, ev: event.Event) void {
                     return;
                 }
             }
-            const under = widgetAt(root, num.pxFloor(m.x), num.pxFloor(m.y));
+            const under = grab.redirect(app, widgetAt(root, num.pxFloor(m.x), num.pxFloor(m.y)));
             updateHover(app, under, m.x, m.y, m.mods, m.time_ms);
             if (!under.alive()) return;
             var e = pointerEvent(app, .motion, under, m.x, m.y, m.mods, m.time_ms);
@@ -196,9 +203,10 @@ pub fn handle(app: *App, ev: event.Event) void {
         },
         .button => |b| {
             if (b.pressed) {
+                grab.press(app);
                 // The mods have the buttons that were down before this press.
                 dropStaleGrab(app, b.mods);
-                const under = widgetAt(root, num.pxFloor(b.x), num.pxFloor(b.y));
+                const under = grab.redirect(app, widgetAt(root, num.pxFloor(b.x), num.pxFloor(b.y)));
                 if (d.grab == null) updateHover(app, under, b.x, b.y, b.mods, b.time_ms);
                 const target = d.grab orelse under;
                 if (!target.alive()) return;
@@ -212,7 +220,7 @@ pub fn handle(app: *App, ev: event.Event) void {
                 e.count = clickCount(app, b.button, e.root_x, e.root_y, b.time_ms);
                 bind.deliver(app, &e);
             } else {
-                const target = d.grab orelse widgetAt(root, num.pxFloor(b.x), num.pxFloor(b.y));
+                const target = d.grab orelse grab.redirect(app, widgetAt(root, num.pxFloor(b.x), num.pxFloor(b.y)));
                 if (target.alive()) {
                     var e = pointerEvent(app, .button_release, target, b.x, b.y, b.mods, b.time_ms);
                     e.button = b.button;
@@ -235,7 +243,7 @@ pub fn handle(app: *App, ev: event.Event) void {
                 }
                 if (!buttonsDown(rest)) {
                     d.grab = null;
-                    const under = widgetAt(root, num.pxFloor(b.x), num.pxFloor(b.y));
+                    const under = grab.redirect(app, widgetAt(root, num.pxFloor(b.x), num.pxFloor(b.y)));
                     updateHover(app, under, b.x, b.y, rest, b.time_ms);
                 }
             }

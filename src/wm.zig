@@ -90,15 +90,15 @@ pub fn cmdWm(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.E
     const name = names[which];
     const args = argv[3..];
     const a = it.alloc();
-    const st = &app.wm;
+    const st = app.wmOf(w);
     if (eq(name, "title")) {
-        if (args.len == 0) return .{ .str = if (st.title.len > 0) st.title else app.app_name };
+        if (args.len == 0) return .{ .str = if (st.title.len > 0) st.title else if (w == app.root) app.app_name else w.name() };
         if (args.len > 1) return it.fail("wrong # args: should be \"wm title window ?newTitle?\"", .{});
         const t = try it.str(args[0]);
         const copy = try app.gpa.dupe(u8, t);
         app.gpa.free(st.title);
         st.title = copy;
-        if (app.window) |win| app.platform.vtable.setTitle(app.platform.ptr, win, copy);
+        if (app.winOf(w)) |win| app.platform.vtable.setTitle(app.platform.ptr, win, copy);
         return Value.empty;
     }
     if (eq(name, "geometry")) {
@@ -112,7 +112,7 @@ pub fn cmdWm(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.E
         }
         const size = parseGeometry(t) orelse return it.fail("bad geometry specifier \"{s}\"", .{t});
         st.geometry = .{ .w = std.math.clamp(size.w, 1, app_mod.max_window), .h = std.math.clamp(size.h, 1, app_mod.max_window) };
-        app.setWindowSize(st.geometry.?);
+        app.setTopSize(w, st.geometry.?);
         return Value.empty;
     }
     if (eq(name, "minsize") or eq(name, "maxsize")) {
@@ -123,7 +123,7 @@ pub fn cmdWm(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.E
         const wd = options.parsePixels(try it.str(args[0]), app.scaling) orelse return it.fail("expected integer but got \"{s}\"", .{try it.str(args[0])});
         const ht = options.parsePixels(try it.str(args[1]), app.scaling) orelse return it.fail("expected integer but got \"{s}\"", .{try it.str(args[1])});
         cur.* = .{ .w = wd, .h = ht };
-        if (is_min) if (app.window) |win| app.platform.vtable.setMinSize(app.platform.ptr, win, cur.*);
+        if (is_min) if (app.winOf(w)) |win| app.platform.vtable.setMinSize(app.platform.ptr, win, cur.*);
         w.invalidate(.{ .style = false, .measure = true, .layout = true, .paint = true });
         return Value.empty;
     }

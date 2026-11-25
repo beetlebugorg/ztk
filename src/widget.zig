@@ -227,6 +227,10 @@ pub const Class = struct {
     /// A second traced variable (for example `-variable` beside `-textvariable`) and its command word.
     traced_var2: ?*const fn (w: *const Widget) []const u8 = null,
     trace_command2: []const u8 = "",
+    /// Space that the class adds inside the border and the padding, for
+    /// example the title of a labelframe. The geometry managers keep their
+    /// content out of it.
+    extra_insets: ?*const fn (w: *Widget) geom.Insets = null,
     /// The accessibility role of the class (section 4.9 of the plan).
     role: []const u8 = "",
     /// The value of `-text` while a `-textvariable` supplies it, or null.
@@ -426,6 +430,7 @@ fn release(w: *Widget) void {
     app.dispatch.forget(w);
     focus.forget(app, w);
     anim.forget(app, w);
+    @import("grab.zig").forget(app, w);
     layout.destroyed(w);
 }
 
@@ -436,6 +441,7 @@ fn finish(w: *Widget) void {
     release(w);
     if (w.class.teardown) |f| f(w);
     app.bindings.removeTag(w.path);
+    @import("grab.zig").dropTooltip(app, w.path);
     _ = app.widgets.remove(w.path);
     app.styles.forget(w);
     if (w.parent) |p| {
