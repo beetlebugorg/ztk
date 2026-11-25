@@ -81,12 +81,12 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-      # Trusted publishing needs npm 11.5.1 or later.
-      - run: npm install -g npm@^11.5.1
+      # Staged publishing needs npm 11.20 or later.
+      - run: npm install -g npm@^11.20.0
       # Each v0 version goes to the "latest" dist-tag, also an -alpha or
       # -beta version. npm needs --tag for a prerelease version.
       - name: Publish
         working-directory: package
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npm publish --provenance --access public --tag latest
+        run: npm stage publish --provenance --access public --tag latest

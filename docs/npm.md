@@ -56,6 +56,10 @@ Each version goes to the `latest` dist-tag, also an `-alpha` or `-beta` version.
 
 `.github/workflows/npm.yml` runs on each push of a version tag. It builds `ztk.wasm`, runs the package tests, and runs `npm publish`. The publish uses npm trusted publishing. GitHub Actions gives npm a short OIDC token, and npm adds a provenance statement to the version. The repository has no long-lived npm token.
 
+### Staged publishing
+
+The workflow stages each release with `npm stage publish`. A staged version is not public. The maintainer approves it with 2FA on npmjs.com (the package page lists the staged versions), or with `npm stage list` and `npm stage approve <stage-id>`. The trusted publisher allows only `npm stage publish`, not `npm publish` or `npm dist-tag`, as npm recommends. So no workflow can make a version public without a person.
+
 ### One-time steps
 
 1. Sign in to npmjs.com. Create the organization `beetlebug` (Add Organization, the free plan for public packages).
