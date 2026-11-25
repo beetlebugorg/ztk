@@ -194,7 +194,9 @@ pub fn setup(app: *App) !void {
     const names = [_][]const u8{ "clam", "alt", "default", "classic" };
     for (names) |n| {
         const parent: ?usize = if (std.mem.eql(u8, n, "default")) null else d.find("default");
-        try d.themes.append(gpa, .{ .name = try gpa.dupe(u8, n), .parent = parent, .classic = std.mem.eql(u8, n, "classic") });
+        const owned = try gpa.dupe(u8, n);
+        errdefer gpa.free(owned);
+        try d.themes.append(gpa, .{ .name = owned, .parent = parent, .classic = std.mem.eql(u8, n, "classic") });
     }
     // `clam` and `alt` come before `default` in the list, as in `wish`.
     d.themes.items[0].parent = 2;
@@ -597,7 +599,9 @@ fn theme(app: *App, it: *ztcl.Interp, argv: []const Value) ztcl.Error!Value {
                     script = argv[k + 1];
                 } else return it.fail("bad option \"{s}\": must be -parent or -settings", .{o});
             }
-            try d.themes.append(app.gpa, .{ .name = try app.gpa.dupe(u8, name), .parent = parent, .classic = d.themes.items[parent].classic });
+            const owned = try app.gpa.dupe(u8, name);
+            errdefer app.gpa.free(owned);
+            try d.themes.append(app.gpa, .{ .name = owned, .parent = parent, .classic = d.themes.items[parent].classic });
             if (script) |s| return settings(app, it, d.themes.items.len - 1, s);
             return Value.empty;
         },
@@ -646,7 +650,9 @@ fn element(app: *App, it: *ztcl.Interp, argv: []const Value) ztcl.Error!Value {
             const ty = try it.str(argv[4]);
             if (!std.mem.eql(u8, ty, "from") and !std.mem.eql(u8, ty, "image")) return it.fail("No such element type {s}", .{ty});
             if (elementKnown(d, name)) return it.fail("Duplicate element {s}", .{name});
-            try d.elements.append(app.gpa, try app.gpa.dupe(u8, name));
+            const owned = try app.gpa.dupe(u8, name);
+            errdefer app.gpa.free(owned);
+            try d.elements.append(app.gpa, owned);
             return Value.empty;
         },
         1 => {
