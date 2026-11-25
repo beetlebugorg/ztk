@@ -189,6 +189,8 @@ pub const App = struct {
     virtual_file: ?*const fn (name: []const u8) ?[]const u8 = null,
     /// The toplevels other than ".", oldest first.
     tops: std.ArrayListUnmanaged(*Widget) = .empty,
+    /// The images of `image create photo`.
+    images: @import("image.zig").Registry = .{},
 
     pub fn init(gpa: std.mem.Allocator, it: *ztcl.Interp, opts: Options) !*App {
         const app = try create(gpa, it, opts);
@@ -303,6 +305,7 @@ pub const App = struct {
         app.anims.deinit(app.gpa);
         anim.deinit(app);
         app.opt_anims.deinit(app.gpa);
+        app.images.deinit(app.gpa);
         app.fonts.deinit();
         app.atlas.deinit();
         app.wm.deinit(app.gpa);

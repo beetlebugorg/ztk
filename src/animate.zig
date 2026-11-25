@@ -56,13 +56,27 @@ pub const OptAnim = struct {
 
 pub const State = struct {
     list: std.ArrayListUnmanaged(OptAnim) = .empty,
+    /// The animations of canvas items.
+    items: std.ArrayListUnmanaged(canvas.ItemAnim) = .empty,
     next_id: u32 = 1,
 
     pub fn deinit(s: *State, gpa: std.mem.Allocator) void {
         for (s.list.items) |*a| a.deinit(gpa);
         s.list.deinit(gpa);
+        for (s.items.items) |*a| a.deinit(gpa);
+        s.items.deinit(gpa);
     }
 };
+
+const canvas = @import("canvas/canvas.zig");
+
+/// The index of an item animation by its id text, or null.
+fn findItemId(app: *App, text: []const u8) ?usize {
+    if (!std.mem.startsWith(u8, text, "anim#")) return null;
+    const id = std.fmt.parseInt(u32, text[5..], 10) catch return null;
+    for (app.opt_anims.items.items, 0..) |a, i| if (a.id == id) return i;
+    return null;
+}
 
 fn valueOf(w: *Widget, it: *ztcl.Interp, spec: usize, kind: Kind) ztcl.Error![4]f64 {
     const text = try options.textOf(w, it, spec);
@@ -186,6 +200,24 @@ pub fn cmdAnimate(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) z
     if (first.len > 0 and first[0] != '.') {
         if (std.mem.eql(u8, first, "cancel") or std.mem.eql(u8, first, "pause") or std.mem.eql(u8, first, "resume")) {
             if (argv.len != 3) return it.fail("wrong # args: should be \"ztk::animate {s} id\"", .{first});
+            if (findItemId(app, try it.str(argv[2]))) |k| {
+                const a = &app.opt_anims.items.items[k];
+                switch (first[0]) {
+                    'c' => {
+                        a.deinit(app.gpa);
+                        _ = app.opt_anims.items.orderedRemove(k);
+                    },
+                    'p' => if (a.paused_at == null) {
+                        a.paused_at = now;
+                    },
+                    else => if (a.paused_at) |p| {
+                        a.start_us += now - p;
+                        a.paused_at = null;
+                        app.requestFrame();
+                    },
+                }
+                return Value.empty;
+            }
             const i = try findId(app, it, argv[2]);
             const a = &app.opt_anims.list.items[i];
             switch (first[0]) {
@@ -209,9 +241,22 @@ pub fn cmdAnimate(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) z
             if (argv.len == 2) {
                 var out: std.ArrayListUnmanaged(Value) = .empty;
                 for (app.opt_anims.list.items) |a| try out.append(al, .{ .str = try std.fmt.allocPrint(al, "anim#{d}", .{a.id}) });
+                for (app.opt_anims.items.items) |a| try out.append(al, .{ .str = try std.fmt.allocPrint(al, "anim#{d}", .{a.id}) });
                 return ztcl.value.wrapList(al, try out.toOwnedSlice(al));
             }
             if (argv.len != 3) return it.wrongArgs("ztk::animate info ?id?");
+            if (findItemId(app, try it.str(argv[2]))) |k| {
+                const a = &app.opt_anims.items.items[k];
+                const state = if (a.paused_at != null) "paused" else if (now - a.start_us < @as(i64, a.delay_ms) * 1000) "waiting" else "running";
+                const elapsed = (a.paused_at orelse now) - a.start_us - @as(i64, a.delay_ms) * 1000;
+                const target = try std.fmt.allocPrint(al, "{s} {d}", .{ a.canvas.path, a.item });
+                const items = [_]Value{
+                    .{ .str = "-target" },  .{ .str = target },
+                    .{ .str = "-state" },   .{ .str = state },
+                    .{ .str = "-elapsed" }, .{ .int = @divTrunc(@max(elapsed, 0), 1000) },
+                };
+                return ztcl.value.newList(al, &items);
+            }
             const a = &app.opt_anims.list.items[try findId(app, it, argv[2])];
             const state = if (a.paused_at != null) "paused" else if (now - a.start_us < @as(i64, a.delay_ms) * 1000) "waiting" else "running";
             const elapsed = (a.paused_at orelse now) - a.start_us - @as(i64, a.delay_ms) * 1000;
@@ -232,6 +277,13 @@ pub fn cmdAnimate(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) z
             return .{ .int = @intFromBool(anim.reduced(app)) };
         }
         return it.fail("bad option \"{s}\": must be a window path, cancel, info, pause, reduce, or resume", .{first});
+    }
+    // A canvas item: `{.c tagOrId}`.
+    if (app.find(first) == null) {
+        const parts = try it.list(argv[1]);
+        if (parts.len == 2) if (app.find(try it.str(parts[0]))) |cw| if (canvas.isCanvas(cw)) {
+            return animateCanvas(app, it, cw, parts[1], argv[2..]);
+        };
     }
     const w = app.find(first) orelse return it.fail("bad window path name \"{s}\"", .{first});
     var a: OptAnim = .{ .id = 0, .widget = w, .start_us = now, .duration_ms = 300, .delay_ms = 0, .timing = easing.Timing.ease, .repeat = 1 };
@@ -299,11 +351,42 @@ pub fn cmdAnimate(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) z
     return .{ .str = try std.fmt.allocPrint(it.alloc(), "anim#{d}", .{a.id}) };
 }
 
+/// `ztk::animate {.c tagOrId} ...`: the timing options here, the item options in the canvas.
+fn animateCanvas(app: *App, it: *ztcl.Interp, w: *Widget, target: Value, args: []const Value) ztcl.Error!Value {
+    _ = app;
+    var timing = easing.Timing.ease;
+    var duration: u32 = 300;
+    var delay: u32 = 0;
+    var repeat: u32 = 1;
+    var command: []const u8 = "";
+    var rest: std.ArrayListUnmanaged(Value) = .empty;
+    var k: usize = 0;
+    while (k < args.len) : (k += 2) {
+        const name = try it.str(args[k]);
+        if (k + 1 >= args.len) return it.fail("value for \"{s}\" missing", .{name});
+        const v = args[k + 1];
+        if (std.mem.eql(u8, name, "-duration") or std.mem.eql(u8, name, "-delay") or std.mem.eql(u8, name, "-repeat")) {
+            const n = try it.int(v);
+            if (n < 0) return it.fail("expected a count of 0 or more but got \"{s}\"", .{try it.str(v)});
+            const c: u32 = @intCast(@min(n, 3_600_000));
+            if (std.mem.eql(u8, name, "-duration")) duration = c else if (std.mem.eql(u8, name, "-delay")) delay = c else repeat = c;
+        } else if (std.mem.eql(u8, name, "-easing")) {
+            timing = try parseTiming(it, v);
+        } else if (std.mem.eql(u8, name, "-command")) {
+            command = try it.str(v);
+        } else {
+            try rest.append(it.alloc(), args[k]);
+            try rest.append(it.alloc(), v);
+        }
+    }
+    return canvas.animateItems(w, it, target, rest.items, timing, duration, delay, repeat, command);
+}
+
 /// Writes the values of each option animation for a time. Returns true
 /// when one still runs.
 pub fn tick(app: *App, now_us: i64) bool {
     const it = app.it;
-    var running = false;
+    var running = canvas.tickAnims(app, now_us);
     var i: usize = 0;
     while (i < app.opt_anims.list.items.len) {
         const a = &app.opt_anims.list.items[i];

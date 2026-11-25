@@ -120,4 +120,21 @@ pack .cols.left.notes.m -anchor w
 pack .cols.left.notes -fill x -pady {10 4} -padx 6
 if {$ztk} { ::ztk::tooltip $b.save "Saves the document" }
 
+# A canvas: shapes that the mouse drags, with a hover color.
+set cv [card .cols.left.canvas "Canvas"]
+canvas $cv.c -width 300 -height 104 -highlightthickness 0
+pack $cv.c -fill x
+$cv.c create rectangle 8 10 88 66 -fill #2563eb -activefill #3b82f6 -outline {} -tags shape
+$cv.c create oval 108 8 168 68 -fill #f59e0b -activefill #fbbf24 -outline {} -tags shape
+$cv.c create polygon 188 68 218 8 248 68 -fill #10b981 -activefill #34d399 -tags shape
+$cv.c create line 8 88 110 88 -arrow last -width 2 -fill #8e8e93
+$cv.c create text 122 88 -text "Drag a shape" -anchor w
+$cv.c bind shape <Button-1> {set ::dragxy [list %x %y]; %W raise current}
+$cv.c bind shape <B1-Motion> {
+    lassign $::dragxy x0 y0
+    %W move current [expr {%x - $x0}] [expr {%y - $y0}]
+    set ::dragxy [list %x %y]
+}
+pack .cols.left.canvas -fill x -pady 4
+
 set status ""

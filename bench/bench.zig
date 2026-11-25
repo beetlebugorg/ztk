@@ -273,6 +273,60 @@ pub fn main(init: std.process.Init) !void {
         report("scroll-wheel", buf[0..runs]);
     }
 
+    // canvas-10000-scroll: a canvas with 10 000 items (a grid of 5 000 cells, each a rectangle
+    // and a text) scrolls by fine wheel steps, one step for each frame, with transitions on.
+    // canvas-drag: the pointer drags one item of the same canvas, one motion for each frame.
+    {
+        var cv: World = undefined;
+        try cv.it.init(gpa);
+        cv.head = try ztk.headless.Headless.init(gpa);
+        cv.app = try ztk.App.init(gpa, &cv.it, .{ .platform = cv.head.platform(), .io = io, .animations = true });
+        defer cv.deinit();
+        cv.head.skip_draw = true;
+        cv.eval(
+            \\canvas .c -width 800 -height 600 -scrollregion {0 0 5000 2400} -highlightthickness 0
+            \\pack .c
+            \\for {set r 0} {$r < 100} {incr r} {
+            \\  for {set k 0} {$k < 50} {incr k} {
+            \\    set x [expr {$k * 100}]; set y [expr {$r * 24}]
+            \\    .c create rectangle $x $y [expr {$x + 100}] [expr {$y + 24}] -fill #ffffff -outline #d0d0d0
+            \\    .c create text [expr {$x + 6}] [expr {$y + 12}] -text "R$r C$k" -anchor w
+            \\  }
+            \\}
+            \\.c create oval 40 40 80 80 -fill #2563eb -tags drag
+            \\.c bind drag <Button-1> {set ::px %x; set ::py %y}
+            \\.c bind drag <B1-Motion> {.c move current [expr {%x - $::px}] [expr {%y - $::py}]; set ::px %x; set ::py %y}
+            \\update
+        );
+        const win = cv.app.window.?;
+        cv.head.pointerMove(win, 400, 300);
+        cv.eval("update");
+        const runs = 200;
+        for (buf[0..runs], 0..) |*slot, i| {
+            cv.head.advance(16);
+            cv.head.pointerScroll(win, 0, if ((i / 50) % 2 == 0) 0.4 else -0.4);
+            const t0 = nowNs();
+            cv.eval("update");
+            slot.* = nowNs() - t0;
+        }
+        report("canvas-10000-scroll", buf[0..runs]);
+        cv.eval(".c xview moveto 0; .c yview moveto 0; update");
+        cv.head.advance(500);
+        cv.eval("update");
+        cv.head.pointerMove(win, 60, 60);
+        cv.head.pointerButton(win, 1, true);
+        cv.eval("update");
+        for (buf[0..runs], 0..) |*slot, i| {
+            cv.head.advance(16);
+            cv.head.pointerMove(win, 60 + @as(f32, @floatFromInt(i % 300)), 60 + @as(f32, @floatFromInt(i % 100)));
+            const t0 = nowNs();
+            cv.eval("update");
+            slot.* = nowNs() - t0;
+        }
+        cv.head.pointerButton(win, 1, false);
+        report("canvas-drag", buf[0..runs]);
+    }
+
     // idle-1000: App.frame with no dirty flag.
     {
         const runs = 400;

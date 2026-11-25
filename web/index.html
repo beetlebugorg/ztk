@@ -105,6 +105,21 @@ if (params.has("test")) {
     canvas.dispatchEvent(new WheelEvent("wheel", { clientX: r.left + x, clientY: r.top + y, deltaX: dx, deltaY: dy, deltaMode: 0, bubbles: true, cancelable: true }));
     ztk.frame(performance.now());
   }
+  // ?drag=x0,y0,x1,y1: a press at the first point, 8 moves to the second, and a release.
+  if (params.get("drag")) {
+    const [x0, y0, x1, y1] = params.get("drag").split(",").map(Number);
+    const r = canvas.getBoundingClientRect();
+    const at = (x, y, b) => ({ clientX: r.left + x, clientY: r.top + y, button: 0, buttons: b, pointerId: 1, bubbles: true });
+    canvas.dispatchEvent(new PointerEvent("pointermove", at(x0, y0, 0)));
+    canvas.dispatchEvent(new PointerEvent("pointerdown", at(x0, y0, 1)));
+    ztk.frame(performance.now());
+    for (let i = 1; i <= 8; i++) {
+      canvas.dispatchEvent(new PointerEvent("pointermove", at(x0 + (x1 - x0) * i / 8, y0 + (y1 - y0) * i / 8, 1)));
+      ztk.frame(performance.now());
+    }
+    canvas.dispatchEvent(new PointerEvent("pointerup", at(x1, y1, 0)));
+    ztk.frame(performance.now());
+  }
   ztk.frame(performance.now() + 1000);
   // ?probe: the CSS size and the backing store of the canvas, and its first image.
   const probe = params.has("probe") ? (() => {

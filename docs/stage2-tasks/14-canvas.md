@@ -1,5 +1,12 @@
 # Task 14: `canvas`
 
+## Two PRs
+
+The task has two PRs (a decision for the user, 2026-11-25):
+
+1. PR 14a: the canvas widget (steps 1 to 8), its tests, the bench cases `canvas-10000-scroll` and `canvas-drag`, and a canvas card in the gallery.
+2. PR 14b: the two example apps below, with their tests, their gates, and their live cards in the gallery.
+
 ## Goal
 
 The `canvas` works with all item types, tags, bindings, `find`, and the transforms of Tk (`move`, `scale`, `coords`).
