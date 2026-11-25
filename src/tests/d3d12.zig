@@ -98,7 +98,7 @@ fn boxScenes(v: *dx.D3D12) !void {
 test "d3d12: init and deinit" {
     const v = open(.{ .debug = true }) orelse return;
     defer v.deinit();
-    std.debug.print("d3d12 device: {s}, software: {}\n", .{ v.deviceName(), v.warp });
+    std.debug.print("d3d12 device: {s}, warp: {}, software: {}\n", .{ v.deviceName(), v.warp, v.software });
 }
 
 test "d3d12: the box scenes equal the CPU renderer" {
@@ -230,8 +230,9 @@ test "d3d12-speed: 10,000 quads" {
     v.setTarget(target);
     try v.draw(&s, &atlas);
     const t0 = std.Io.Clock.awake.now(t.io);
-    const runs = 100;
+    // A software adapter needs about 1 second for one draw in Debug, so it draws 3 times.
+    const runs: u32 = if (v.software) 3 else 100;
     for (0..runs) |_| try v.draw(&s, &atlas);
     const ns = t0.untilNow(t.io, .awake).toNanoseconds();
-    std.debug.print("d3d12-speed: {d:.3} ms for one draw of 10000 quads on {s} ({s})\n", .{ @as(f64, @floatFromInt(ns)) / 1e6 / runs, v.deviceName(), @tagName(@import("builtin").mode) });
+    std.debug.print("d3d12-speed: {d:.3} ms for one draw of 10000 quads on {s} ({s})\n", .{ @as(f64, @floatFromInt(ns)) / 1e6 / @as(f64, @floatFromInt(runs)), v.deviceName(), @tagName(@import("builtin").mode) });
 }
