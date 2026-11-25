@@ -84,6 +84,8 @@ test {
     if (@import("builtin").os.tag == .windows) {
         _ = @import("platform/win32.zig");
         _ = @import("tests/win32.zig");
+        _ = @import("render/d3d12_api.zig");
+        _ = @import("tests/d3d12.zig");
     }
     _ = anim;
     _ = checks;

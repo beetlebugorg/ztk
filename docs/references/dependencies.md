@@ -11,6 +11,7 @@ The rule of the plan: ztk needs only the interfaces of the platform, ztcl, and t
 | libwayland-client | The Wayland protocol, only in the Wayland backend | MIT | 1 |
 | libxkbcommon | Key maps, only in the Wayland and X11 backends | MIT | 1 |
 | libxcb | X11, only in the X11 backend | X11 license | 2 |
+| `user32`, `kernel32`, `gdi32`, `dwmapi`, `advapi32` | Windows, input, and the clipboard, only in the Windows backend | Parts of Windows | 3 |
 
 ## Opened at run time, optional
 
@@ -20,6 +21,7 @@ The rule of the plan: ztk needs only the interfaces of the platform, ztcl, and t
 | fontconfig | The font choices of the user on Linux | HPND | 2 |
 | HarfBuzz | Shaping of complex scripts | "Old MIT" | 4 |
 | AccessKit | Accessibility adapters | MIT OR Apache-2.0 | 8 |
+| `d3d12.dll`, `dxgi.dll`, `d3dcompiler_47.dll` | The GPU and the shader compiler on Windows | Parts of Windows | 3 |
 
 ## Data in ztk
 
@@ -37,6 +39,7 @@ The license of Inter was read in `LICENSE.txt` of its release archive 4.1, and t
 | Linux kernel headers (`linux/fb.h`, `linux/input.h`, `linux/kd.h`, `linux/vt.h`) | The numbers and the structures of the kernel interfaces of the direct backend. ztk writes its own declarations in Zig. | GPL-2.0 WITH Linux-syscall-note |
 | `glslc` (shaderc) | Compiles the shaders | Apache-2.0 |
 | `wayland-scanner`, `wayland-protocols` | Makes the protocol code | MIT |
+| Windows SDK 10.0.26100.0 headers (`winuser.h`, `d3d12.h`, `dxgi1_6.h`, `d3dcompiler.h`) | The numbers, the structures, and the method slots of the Win32 and Direct3D 12 declarations. ztk writes its own declarations in Zig. | The license of the Windows SDK. This page did not check its text. |
 
 The license of the Vulkan headers was read in `LICENSE.md` of https://github.com/KhronosGroup/Vulkan-Headers. The license of AccessKit was read in its README and its `Cargo.toml`. https://github.com/AccessKit/accesskit
 
