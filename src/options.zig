@@ -154,7 +154,8 @@ fn joinWords(it: *ztcl.Interp, words: []const []const u8) ![]const u8 {
     var out: std.ArrayList(u8) = .empty;
     const a = it.alloc();
     for (words, 0..) |wd, i| {
-        if (i > 0) try out.appendSlice(a, ", ");
+        // Two words have no comma: "horizontal or vertical".
+        if (i > 0) try out.appendSlice(a, if (words.len == 2) " " else ", ");
         if (i + 1 == words.len and words.len > 1) try out.appendSlice(a, "or ");
         try out.appendSlice(a, wd);
     }
@@ -164,6 +165,12 @@ fn joinWords(it: *ztcl.Interp, words: []const []const u8) ![]const u8 {
 const relief_words = [_][]const u8{ "flat", "groove", "raised", "ridge", "solid", "sunken" };
 const anchor_words = [_][]const u8{ "n", "ne", "e", "se", "s", "sw", "w", "nw", "center" };
 const justify_words = [_][]const u8{ "left", "right", "center" };
+
+/// A double in the form of Tcl: an integral value gets ".0".
+pub fn formatDouble(a: std.mem.Allocator, v: f64) ![]const u8 {
+    if (v == @trunc(v) and @abs(v) < 1e15) return std.fmt.allocPrint(a, "{d}.0", .{@as(i64, @intFromFloat(v))});
+    return std.fmt.allocPrint(a, "{d}", .{v});
+}
 
 /// Parses the text of one option. On a bad value it sets the message of
 /// `wish` and returns `error.TclError`. A screen distance returns its
@@ -218,6 +225,7 @@ pub fn parseValue(w: *const Widget, it: *ztcl.Interp, spec: Spec, text: []const 
             const v = std.fmt.parseFloat(f64, std.mem.trim(u8, text, " ")) catch
                 return it.fail("expected floating-point number but got \"{s}\"", .{text});
             if (std.math.isNan(v) or std.math.isInf(v)) return it.fail("expected floating-point number but got \"{s}\"", .{text});
+            norm.* = try formatDouble(it.alloc(), v);
             return .{ .double = v };
         },
         .state => {
@@ -267,6 +275,7 @@ pub fn textOf(w: *Widget, it: *ztcl.Interp, i: usize) ztcl.Error![]const u8 {
     const s = w.opts[i];
     if (s.set) return s.text;
     const sp = w.class.specs[i];
+    if (sp.type == .double and s.value == .double) return formatDouble(it.alloc(), s.value.double);
     if (sp.from_style and sp.style_prop != .none) {
         w.app.ensureStyle(w);
         switch (sp.style_prop) {

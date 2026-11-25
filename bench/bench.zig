@@ -214,6 +214,31 @@ pub fn main(init: std.process.Init) !void {
         report("toplevel-open", buf[0..runs]);
     }
 
+    // scale-drag: the pointer drags the slider of a scale beside 1 000 widgets, one motion for each frame.
+    {
+        w.eval("scale .sd -orient horizontal -from 0 -to 1000 -length 400; grid .sd -row 100 -column 0 -columnspan 20; update");
+        const sd = w.app.find(".sd").?;
+        w.eval(".sd set 0; update");
+        const r = try w.it.str(try w.it.eval(".sd coords"));
+        var parts = std.mem.splitScalar(u8, r, ' ');
+        const cx = try std.fmt.parseFloat(f32, parts.next().?) + @as(f32, @floatFromInt(sd.geom.x));
+        const cy = try std.fmt.parseFloat(f32, parts.next().?) + @as(f32, @floatFromInt(sd.geom.y));
+        const win = w.app.window.?;
+        w.head.pointerMove(win, cx, cy);
+        w.head.pointerButton(win, 1, true);
+        w.eval("update");
+        const runs = 200;
+        for (buf[0..runs], 0..) |*slot, i| {
+            w.head.pointerMove(win, cx + @as(f32, @floatFromInt(i % 300)), cy);
+            const t0 = nowNs();
+            w.eval("update");
+            slot.* = nowNs() - t0;
+        }
+        w.head.pointerButton(win, 1, false);
+        w.eval("update; destroy .sd; update");
+        report("scale-drag", buf[0..runs]);
+    }
+
     // idle-1000: App.frame with no dirty flag.
     {
         const runs = 400;

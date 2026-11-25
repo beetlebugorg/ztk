@@ -39,8 +39,16 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - `<<NextWindow>>` and `<<PrevWindow>>` are not virtual events yet: `Tab` and `Shift-Tab` move the focus through bindings on `all`, as in Stage 1.
 - `zig build bench`, ReleaseFast, 2026-11-24, load average 9: `toplevel-open` (a new toplevel with 50 labels, to its first frame, and its delete) median 4.67 ms and 99th percentile 42.9 ms. The 99th percentile is over the gate of 8 ms. Each toplevel starts a render thread, and the slowest runs include the start of that thread.
 
+## scale (task 05)
+
+- The options of `wish` 8.6.16 exist with their defaults, except `-borderwidth` (0, the theme gives the border). `-repeatdelay`, `-repeatinterval`, `-sliderlength`, `-sliderrelief`, `-troughcolor`, `-width`, `-activebackground`, and `-highlight*` are stored and have no effect on the look. A press on the track moves one step; holding the button does not repeat.
+- The class bindings use key patterns (`<Key-Left>`, `<Control-Key-Left>`, `<Key-Home>`) where `wish` binds the virtual events `<<PrevChar>>`, `<<PrevWord>>`, and `<<LineStart>>`, because `event add` is not in ztk yet. So `bind Scale` lists other patterns than in `wish`.
+- `set` does not run `-command`, as in `wish`. A change by the user runs it at once, where `wish` runs it as an idle callback.
+- The drag of the slider runs on the UI thread. `zig build bench`, ReleaseFast, 2026-11-24, load average 9: `scale-drag` (one motion for each frame beside 1 000 widgets) median 1.11 ms and 99th percentile 1.26 ms, under the gate of 8 ms.
+
 ## Additions
 
 - `ztk::animate`, `ztk::clock`, the timing function `spring()`, and the flag `--time` of the `ztk` program.
 - The style classes `switch` (checkbutton) and `segmented` (radiobutton), and the part `::indicator`.
 - `ztk::tooltip path ?text?`, the parts `::tooltip` of a toplevel and `::label` of a labelframe.
+- The parts `::trough`, `::fill`, `::slider`, and `::value` of a scale.

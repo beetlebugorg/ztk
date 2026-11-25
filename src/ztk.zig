@@ -101,6 +101,7 @@ test {
     _ = @import("tests/anim2.zig");
     _ = @import("tests/check.zig");
     _ = @import("tests/toplevel.zig");
+    _ = @import("tests/scale.zig");
     _ = @import("path.zig");
     _ = @import("easing.zig");
     _ = @import("tests/review.zig");
