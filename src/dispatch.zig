@@ -20,6 +20,8 @@ const keysym = @import("keysym.zig");
 const widget_mod = @import("widget.zig");
 const App = @import("app.zig").App;
 const Widget = widget_mod.Widget;
+const Cursor = @import("platform/platform.zig").Cursor;
+const options = @import("options.zig");
 const WidgetEvent = bind.WidgetEvent;
 const Value = ztcl.Value;
 
@@ -33,6 +35,10 @@ pub const State = struct {
     grab: ?*Widget = null,
     click: Click = .{},
     serial: u32 = 0,
+    /// The pointer shape that the backend shows. Null before the first motion.
+    cursor: ?Cursor = null,
+    /// The window of that shape.
+    cursor_win: ?*const anyopaque = null,
 
     /// A widget that is deleted must not stay in the state.
     pub fn forget(s: *State, w: *const Widget) void {
@@ -156,6 +162,33 @@ fn dropStaleGrab(app: *App, mods: event.Mods) void {
     if (g.alive()) setPressed(g, false);
 }
 
+/// The pointer shape over a widget: the first `-cursor` option that is set
+/// on the widget or an ancestor, as in Tk, and else the `cursor` style of
+/// the widget.
+pub fn cursorOf(w: *const Widget) Cursor {
+    var cur: ?*const Widget = w;
+    while (cur) |c| : (cur = c.parent) {
+        const slot = options.maybe(c, "-cursor") orelse continue;
+        const name = switch (slot.value) {
+            .text => |s| s,
+            else => slot.text,
+        };
+        if (name.len > 0) if (Cursor.fromTk(name)) |shape| return shape;
+    }
+    return Cursor.fromCss(w.style.cursor);
+}
+
+/// Gives the backend the shape of the widget that holds or has the pointer, when it changed.
+fn syncCursor(app: *App, root: *Widget) void {
+    const d = &app.dispatch;
+    const shape: Cursor = if (d.grab orelse d.hover) |w| (if (w.alive()) cursorOf(w) else .default) else .default;
+    const win = app.winOf(root) orelse return;
+    if (d.cursor) |c| if (c == shape and d.cursor_win == @as(*const anyopaque, win)) return;
+    d.cursor = shape;
+    d.cursor_win = win;
+    app.platform.setCursor(win, shape);
+}
+
 /// Turns one backend event of the window of "." into widget events and delivers them.
 pub fn handle(app: *App, ev: event.Event) void {
     const root = app.root orelse return;
@@ -165,6 +198,7 @@ pub fn handle(app: *App, ev: event.Event) void {
 /// Turns one backend event of the window of a toplevel into widget events and delivers them.
 pub fn handleIn(app: *App, ev: event.Event, root: *Widget) void {
     const d = &app.dispatch;
+    defer if (ev == .motion or ev == .leave) syncCursor(app, root);
     switch (ev) {
         .motion => |m| {
             dropStaleGrab(app, m.mods);

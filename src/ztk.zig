@@ -71,6 +71,7 @@ test {
     _ = @import("tests/text.zig");
     _ = @import("tests/scene.zig");
     _ = @import("tests/headless.zig");
+    _ = @import("tests/cursor.zig");
     _ = @import("tests/tree.zig");
     _ = @import("tests/options.zig");
     _ = @import("tests/loop.zig");
@@ -97,6 +98,7 @@ test {
         _ = @import("tests/d3d12.zig");
         _ = @import("platform/windows.zig");
         _ = @import("tests/windows.zig");
+        _ = @import("platform/winkeys.zig");
     }
     _ = anim;
     _ = checks;

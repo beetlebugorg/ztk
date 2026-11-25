@@ -38,6 +38,10 @@ const cpu = @import("../render/cpu.zig");
 const renderer = @import("../render/renderer.zig");
 const Image = renderer.Image;
 const d3d12 = @import("../render/d3d12.zig");
+const winkeys = @import("winkeys.zig");
+const keysym_mod = @import("../keysym.zig");
+const Mods = event.Mods;
+const Cursor = plat.Cursor;
 
 pub const Renderer = enum { auto, d3d12, cpu };
 
@@ -72,6 +76,12 @@ const WinRec = struct {
     host: *Win32,
     frame_wanted: bool = false,
     surface: *Surface,
+    /// The shape over the client area, from `setCursor`.
+    cursor: ?w32.HCURSOR = null,
+    /// True after `TrackMouseEvent`, until `WM_MOUSELEAVE`.
+    tracking: bool = false,
+    /// The buttons that are down, bit 0 for button 1.
+    buttons: u8 = 0,
 };
 
 pub const Win32 = struct {
@@ -82,6 +92,10 @@ pub const Win32 = struct {
     windows: std.ArrayListUnmanaged(*WinRec) = .empty,
     timer: w32.HANDLE,
     timer_armed: bool = false,
+    /// The keysym of each key that is down, by scan code with the extended bit, so a release has the keysym of its press.
+    down_syms: [512]u32 = @splat(0),
+    /// The first half of a surrogate pair of `WM_CHAR`.
+    high_surrogate: u16 = 0,
     last_frame_us: i64 = 0,
     /// Counts of the frames that each output drew, for the tests.
     gpu_frames: std.atomic.Value(u32) = .init(0),
@@ -131,6 +145,7 @@ pub const Win32 = struct {
         .poll = vPoll,
         .nowUs = vNowUs,
         .target = vTarget,
+        .setCursor = vSetCursor,
     };
 
     fn self(ptr: *anyopaque) *Win32 {
@@ -302,10 +317,166 @@ pub const Win32 = struct {
         return if (rec.surface.gpu != null) "direct3d12" else "cpu";
     }
 
+    /// The cursor of the client area of a window, for the tests.
+    pub fn cursorHandle(b: *Win32, w: *Window) ?w32.HCURSOR {
+        const rec = b.recOf(w) orelse return null;
+        return rec.cursor;
+    }
+
     /// The window handle of a window, for the tests.
     pub fn hwndOf(b: *Win32, w: *Window) ?w32.HWND {
         const rec = b.recOf(w) orelse return null;
         return rec.hwnd;
+    }
+
+    fn vSetCursor(ptr: *anyopaque, w: *Window, shape: Cursor) void {
+        const rec = self(ptr).recOf(w) orelse return;
+        rec.cursor = w32.LoadCursorW(null, cursorId(shape));
+        // The shape shows now when the pointer is over the window, and at the next WM_SETCURSOR otherwise.
+        if (rec.tracking) _ = w32.SetCursor(rec.cursor);
+    }
+
+    /// The cursor of the system for a shape. Windows has no closed hand,
+    /// so `grabbing` is the four arrows of a move.
+    fn cursorId(shape: Cursor) usize {
+        return switch (shape) {
+            .default => w32.IDC_ARROW,
+            .pointer, .grab => w32.IDC_HAND,
+            .text => w32.IDC_IBEAM,
+            .wait => w32.IDC_WAIT,
+            .progress => w32.IDC_APPSTARTING,
+            .crosshair => w32.IDC_CROSS,
+            .move, .grabbing => w32.IDC_SIZEALL,
+            .not_allowed => w32.IDC_NO,
+            .help => w32.IDC_HELP,
+            .ew_resize => w32.IDC_SIZEWE,
+            .ns_resize => w32.IDC_SIZENS,
+            .nwse_resize => w32.IDC_SIZENWSE,
+            .nesw_resize => w32.IDC_SIZENESW,
+        };
+    }
+
+    // ---- Input ----
+
+    /// The position of a pointer message in logical pixels.
+    fn logical(w: *const Window, lp: w32.LPARAM) [2]f32 {
+        return .{
+            @as(f32, @floatFromInt(w32.loword(lp))) / w.scale,
+            @as(f32, @floatFromInt(w32.hiword(lp))) / w.scale,
+        };
+    }
+
+    fn msgTime() u32 {
+        return @bitCast(w32.GetMessageTime());
+    }
+
+    fn down(vk: c_int) bool {
+        return w32.GetKeyState(vk) < 0;
+    }
+
+    /// The modifier state when the current message was posted, with the
+    /// bits of the X11 state field, and the buttons that are down.
+    fn mods(rec: *const WinRec) Mods {
+        return .{
+            .shift = down(w32.VK_SHIFT),
+            .lock = w32.GetKeyState(w32.VK_CAPITAL) & 1 != 0,
+            .control = down(w32.VK_CONTROL),
+            .mod1 = down(w32.VK_MENU),
+            .mod4 = down(w32.VK_LWIN) or down(w32.VK_RWIN),
+            .button1 = rec.buttons & 1 != 0,
+            .button2 = rec.buttons & 2 != 0,
+            .button3 = rec.buttons & 4 != 0,
+        };
+    }
+
+    /// The button of a message: 1 left, 2 middle, 3 right, as in Tk, and
+    /// 8 and 9 for the two side buttons, as X11 numbers them.
+    fn buttonOf(msg: w32.UINT, wp: w32.WPARAM) u8 {
+        return switch (msg) {
+            w32.WM_LBUTTONDOWN, w32.WM_LBUTTONUP => 1,
+            w32.WM_MBUTTONDOWN, w32.WM_MBUTTONUP => 2,
+            w32.WM_RBUTTONDOWN, w32.WM_RBUTTONUP => 3,
+            else => if ((wp >> 16) & 0xffff == 1) 8 else 9,
+        };
+    }
+
+    fn isHigh(u: u16) bool {
+        return u >= 0xD800 and u <= 0xDBFF;
+    }
+
+    fn isLow(u: u16) bool {
+        return u >= 0xDC00 and u <= 0xDFFF;
+    }
+
+    /// Removes the character message that `TranslateMessage` posted for the
+    /// key that is in dispatch, and joins a surrogate pair. Null: the key
+    /// gives no character.
+    fn takeChar(hwnd: w32.HWND, sys: bool) ?u21 {
+        const id = if (sys) w32.WM_SYSCHAR else w32.WM_CHAR;
+        var m: w32.MSG = .{};
+        if (w32.PeekMessageW(&m, hwnd, id, id, w32.PM_REMOVE) == 0) return null;
+        const first: u16 = @intCast(m.wParam & 0xffff);
+        if (!isHigh(first)) return if (isLow(first)) null else first;
+        if (w32.PeekMessageW(&m, hwnd, id, id, w32.PM_REMOVE) == 0) return null;
+        const second: u16 = @intCast(m.wParam & 0xffff);
+        if (!isLow(second)) return null;
+        return 0x10000 + ((@as(u21, first) - 0xD800) << 10) + (@as(u21, second) - 0xDC00);
+    }
+
+    fn pushKey(b: *Win32, rec: *WinRec, sym: u32, code: u32, pressed: bool, repeat: bool, cp: ?u21) void {
+        var e: Event = .{ .key = .{ .window = rec.win, .keysym = sym, .keycode = code, .pressed = pressed, .repeat = repeat, .mods = mods(rec), .time_ms = msgTime() } };
+        if (cp) |c| {
+            const n = std.unicode.utf8Encode(c, e.key.text[0..4]) catch 0;
+            e.key.text_len = @intCast(n);
+        }
+        b.push(e);
+    }
+
+    /// A key message. A press gets its character from the `WM_CHAR` that
+    /// follows it, and its keysym from that character, or from the map of
+    /// virtual keys for a key with no printable character. A release
+    /// has the keysym of its press.
+    fn key(b: *Win32, rec: *WinRec, msg: w32.UINT, wp: w32.WPARAM, lp: w32.LPARAM) void {
+        const vk: u32 = @intCast(wp & 0xffff);
+        const ulp: usize = @bitCast(lp);
+        const scan: u32 = @intCast((ulp >> 16) & 0x1ff);
+        const pressed = msg == w32.WM_KEYDOWN or msg == w32.WM_SYSKEYDOWN;
+        if (!pressed) {
+            const sym = b.down_syms[scan];
+            b.down_syms[scan] = 0;
+            const s = if (sym != 0) sym else winkeys.keysym(vk, ulp & (1 << 24) != 0, false) orelse return;
+            b.pushKey(rec, s, scan, false, false, null);
+            return;
+        }
+        const repeat = (ulp >> 30) & 1 != 0;
+        const cp = takeChar(rec.hwnd, msg == w32.WM_SYSKEYDOWN);
+        const m = mods(rec);
+        var sym: u32 = 0;
+        if (cp) |c| if (c >= 0x20 and c != 0x7f and !winkeys.mapFirst(vk)) {
+            sym = keysym_mod.fromCodepoint(c);
+        };
+        if (sym == 0) sym = winkeys.keysym(vk, ulp & (1 << 24) != 0, m.shift != m.lock) orelse 0;
+        if (sym == 0 and cp == null) return;
+        if (sym == 0) sym = keysym_mod.fromCodepoint(cp.?);
+        b.down_syms[scan] = sym;
+        b.pushKey(rec, sym, scan, true, repeat, cp);
+    }
+
+    /// A character with no key message: a press and a release of its keysym.
+    fn charOnly(b: *Win32, rec: *WinRec, unit: u16) void {
+        if (isHigh(unit)) {
+            b.high_surrogate = unit;
+            return;
+        }
+        var cp: u21 = unit;
+        if (isLow(unit)) {
+            if (b.high_surrogate == 0) return;
+            cp = 0x10000 + ((@as(u21, b.high_surrogate) - 0xD800) << 10) + (@as(u21, unit) - 0xDC00);
+        }
+        b.high_surrogate = 0;
+        const sym = keysym_mod.fromCodepoint(cp);
+        b.pushKey(rec, sym, 0, true, false, cp);
+        b.pushKey(rec, sym, 0, false, false, null);
     }
 
     // ---- The window procedure ----
@@ -355,6 +526,72 @@ pub const Win32 = struct {
             w32.WM_KILLFOCUS => {
                 b.push(.{ .focus = .{ .window = w, .focused = false } });
                 return 0;
+            },
+            w32.WM_MOUSEMOVE => {
+                if (!rec.tracking) {
+                    var tme: w32.TRACKMOUSEEVENT = .{ .dwFlags = w32.TME_LEAVE, .hwndTrack = rec.hwnd };
+                    if (w32.TrackMouseEvent(&tme) != 0) rec.tracking = true;
+                }
+                const p = logical(w, lp);
+                b.push(.{ .motion = .{ .window = w, .x = p[0], .y = p[1], .mods = mods(rec), .time_ms = msgTime() } });
+                w.feedPointer(p[0], p[1]);
+                return 0;
+            },
+            w32.WM_MOUSELEAVE => {
+                rec.tracking = false;
+                b.push(.{ .leave = .{ .window = w } });
+                return 0;
+            },
+            w32.WM_LBUTTONDOWN, w32.WM_LBUTTONUP, w32.WM_MBUTTONDOWN, w32.WM_MBUTTONUP, w32.WM_RBUTTONDOWN, w32.WM_RBUTTONUP, w32.WM_XBUTTONDOWN, w32.WM_XBUTTONUP => {
+                const button = buttonOf(msg, wp);
+                const pressed = msg == w32.WM_LBUTTONDOWN or msg == w32.WM_MBUTTONDOWN or msg == w32.WM_RBUTTONDOWN or msg == w32.WM_XBUTTONDOWN;
+                const p = logical(w, lp);
+                // The mods have the buttons that were down before this event.
+                b.push(.{ .button = .{ .window = w, .button = button, .pressed = pressed, .x = p[0], .y = p[1], .mods = mods(rec), .time_ms = msgTime() } });
+                if (button <= 5) {
+                    const bit: u8 = @as(u8, 1) << @intCast(button - 1);
+                    if (pressed) rec.buttons |= bit else rec.buttons &= ~bit;
+                }
+                // The window keeps the pointer while a button is down, also outside it.
+                if (pressed) _ = w32.SetCapture(rec.hwnd) else if (rec.buttons == 0) _ = w32.ReleaseCapture();
+                return if (msg == w32.WM_XBUTTONDOWN or msg == w32.WM_XBUTTONUP) 1 else 0;
+            },
+            w32.WM_MOUSEWHEEL, w32.WM_MOUSEHWHEEL => {
+                // The position of a wheel message is on the screen.
+                var pt: w32.POINT = .{ .x = w32.loword(lp), .y = w32.hiword(lp) };
+                _ = w32.ScreenToClient(rec.hwnd, &pt);
+                const steps = @as(f32, @floatFromInt(w32.hiword(wp))) / w32.WHEEL_DELTA;
+                // A scroll event counts steps, with down and right positive.
+                const vertical = msg == w32.WM_MOUSEWHEEL;
+                b.push(.{ .scroll = .{
+                    .window = w,
+                    .dx = if (vertical) 0 else steps,
+                    .dy = if (vertical) -steps else 0,
+                    .x = @as(f32, @floatFromInt(pt.x)) / w.scale,
+                    .y = @as(f32, @floatFromInt(pt.y)) / w.scale,
+                    .mods = mods(rec),
+                    .time_ms = msgTime(),
+                } });
+                return 0;
+            },
+            w32.WM_KEYDOWN, w32.WM_SYSKEYDOWN, w32.WM_KEYUP, w32.WM_SYSKEYUP => {
+                b.key(rec, msg, wp, lp);
+                // Alt+F4 goes on to DefWindowProc, which sends WM_CLOSE. Alt and F10
+                // alone open the system menu there, so the other keys stop here.
+                if ((msg == w32.WM_SYSKEYDOWN or msg == w32.WM_SYSKEYUP) and wp == 0x73) return w32.DefWindowProcW(rec.hwnd, msg, wp, lp);
+                return 0;
+            },
+            w32.WM_CHAR, w32.WM_SYSCHAR => {
+                // A character with no key message before it, such as one that SendInput gives.
+                b.charOnly(rec, @intCast(wp & 0xffff));
+                return 0;
+            },
+            w32.WM_SETCURSOR => {
+                if (w32.loword(lp) == w32.HTCLIENT) {
+                    _ = w32.SetCursor(rec.cursor orelse w32.LoadCursorW(null, w32.IDC_ARROW));
+                    return 1;
+                }
+                return w32.DefWindowProcW(rec.hwnd, msg, wp, lp);
             },
             w32.WM_ERASEBKGND => return 1,
             w32.WM_PAINT => {
