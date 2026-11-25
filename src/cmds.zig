@@ -34,6 +34,8 @@ pub fn register(app: *App) !void {
     try it.register("exit", cmdExit);
     try it.register("winfo", cmdWinfo);
     try it.register("grid", grid.command);
+    try it.register("pack", @import("pack.zig").command);
+    try it.register("place", @import("place.zig").command);
     try it.register("label", widget.classCommand(&label.class));
     try app.classes.put(app.gpa, "label", &label.class);
     try it.register("ztk::priv::textvar", label.cmdTextvar);

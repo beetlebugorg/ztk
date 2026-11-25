@@ -97,6 +97,7 @@ test {
     _ = @import("tests/entry.zig");
     _ = @import("tests/frame.zig");
     _ = @import("tests/grid.zig");
+    _ = @import("tests/pack.zig");
     _ = @import("tests/review.zig");
     _ = @import("tests/lifetime.zig");
     _ = @import("tests/ttf.zig");

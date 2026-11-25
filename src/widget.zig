@@ -113,6 +113,11 @@ pub const Widget = struct {
     /// The manager that places the content of this widget, and its data.
     container_manager: ?*const layout.Manager = null,
     container_data: ?*anyopaque = null,
+    /// The data of `pack` for this widget (`*pack.Entry`), and of `place` (`*place.Entry`).
+    pack_data: ?*anyopaque = null,
+    place_data: ?*anyopaque = null,
+    /// The widgets that `place` puts in this widget, oldest first.
+    placed: std.ArrayListUnmanaged(*Widget) = .empty,
     /// The tags of the widget for `bind`, or null for the default tags. Owned.
     bindtags: ?[][]u8 = null,
     /// The geometry and the mapped flag that the last Configure, Map, or Unmap event reported.
@@ -478,6 +483,7 @@ pub fn free(w: *Widget) void {
     w.classes.deinit(gpa);
     w.freeBindtags();
     w.children.deinit(gpa);
+    w.placed.deinit(gpa);
     gpa.free(w.path);
     gpa.destroy(w);
 }
