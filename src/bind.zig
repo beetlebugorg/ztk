@@ -144,6 +144,9 @@ const mod_names = [_]ModName{
     .{ .name = "M", .set = setMod1 },
     .{ .name = "Mod1", .set = setMod1 },
     .{ .name = "M1", .set = setMod1 },
+    // The names of Tk on macOS: Command is Mod1 and Option is Mod2.
+    .{ .name = "Command", .set = setMod1 },
+    .{ .name = "Option", .set = setMod2 },
     .{ .name = "Mod2", .set = setMod2 },
     .{ .name = "M2", .set = setMod2 },
     .{ .name = "Mod3", .set = setMod3 },

@@ -70,7 +70,8 @@ The backend calls the Objective-C runtime with `objc_msgSend` through typed func
 ## Input
 
 - Keys: `keyDown:`, `keyUp:`, and `flagsChanged:` give key events. The key code maps to a keysym with the US layout and `UCKeyTranslate` for the current layout. The modifier map is a decision for the user (below).
-- Pointer: `mouseDown:`, `mouseDragged:`, `mouseUp:`, the right and other buttons, and `mouseMoved:` with a tracking area. `mouseExited:` gives `leave`. Each position goes to `Window.feedPointer` as well, so a drag follows the pointer from the render thread.
+- Pointer: `mouseDown:`, `mouseDragged:`, `mouseUp:`, the right and other buttons, and `mouseMoved:` with a tracking area. `mouseExited:` gives `leave`. Each position goes to `Window.feedPointer` as well, so a drag follows the pointer from the render thread. The right button is Button-3 and the middle button Button-2, as on the other backends and in Tk 9. Tk 8.6 on macOS numbers them the other way.
+- The names `Command` (Mod1) and `Option` (Mod2) work in `bind` on each system. A key with Command or Control gives no text, so `<Command-c>` runs its binding and types no character. A key with Option gives its character, so Option-s types ß.
 - Scroll: `scrollWheel:` with `hasPreciseScrollingDeltas` gives fractional deltas in logical pixels. The momentum phase of the event goes to the scroll code of the core. Line deltas from a mouse wheel scale by the line height of Tk.
 - Input methods: the view adopts `NSTextInputClient`. `setMarkedText:selectedRange:replacementRange:` gives `preedit`, `insertText:replacementRange:` gives `commit`, and `firstRectForCharacterRange:actualRange:` returns the rectangle from `textInput`.
 
