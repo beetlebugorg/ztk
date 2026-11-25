@@ -52,14 +52,20 @@ pub fn build(b: *std.Build) void {
 
     // The Wayland, direct, and Vulkan code exists for Linux only in Stage 1.
     const is_linux = target.result.os.tag == .linux;
-    const backends = b.option([]const u8, "backends", "The backends to build, separated by commas: wayland, direct, headless (default: all on Linux, headless elsewhere)") orelse if (is_linux) "wayland,direct,headless" else "headless";
+    const is_macos = target.result.os.tag == .macos;
+    const backends = b.option([]const u8, "backends", "The backends to build, separated by commas: wayland, direct, appkit, headless (default: wayland, direct, and headless on Linux, appkit and headless on macOS, headless elsewhere)") orelse
+        if (is_linux) "wayland,direct,headless" else if (is_macos) "appkit,headless" else "headless";
     const wayland_on = std.mem.indexOf(u8, backends, "wayland") != null;
+    // The AppKit backend links the frameworks of the macOS SDK, so a build
+    // from another system gives -Dbackends=headless for a macOS target.
+    const appkit_on = is_macos and std.mem.indexOf(u8, backends, "appkit") != null;
     const vulkan_on = b.option(bool, "vulkan", "Build the Vulkan renderer (default: true on Linux)") orelse is_linux;
     const strip = b.option(bool, "strip", "Remove the debug sections from the program");
     const opts = b.addOptions();
     opts.addOption([]const u8, "repo_root", b.build_root.path orelse ".");
     opts.addOption(bool, "vulkan", vulkan_on);
     opts.addOption(bool, "wayland", wayland_on);
+    opts.addOption(bool, "appkit", appkit_on);
 
     const ztk = b.addModule("ztk", .{
         .root_source_file = b.path("src/ztk.zig"),
@@ -77,10 +83,15 @@ pub fn build(b: *std.Build) void {
         ztk.addAnonymousImport("quad_vert_spv", .{ .root_source_file = shader(b, "vertex", "src/render/shaders/quad.vert", "quad.vert.spv") });
         ztk.addAnonymousImport("quad_frag_spv", .{ .root_source_file = shader(b, "fragment", "src/render/shaders/quad.frag", "quad.frag.spv") });
     }
+    if (appkit_on) {
+        ztk.link_libc = true;
+        ztk.linkSystemLibrary("objc", .{});
+        ztk.linkFramework("Foundation", .{});
+    }
     ztk.addAnonymousImport("inter_regular", .{ .root_source_file = b.path("assets/fonts/Inter-Regular.ttf") });
     ztk.addAnonymousImport("inter_bold", .{ .root_source_file = b.path("assets/fonts/Inter-Bold.ttf") });
 
-    const libc_on = vulkan_on or wayland_on;
+    const libc_on = vulkan_on or wayland_on or appkit_on;
     // The self-hosted backend covers x86-64 Linux. Each other target uses LLVM.
     const use_llvm = libc_on or !is_linux or target.result.cpu.arch != .x86_64;
     // Zig links Mach-O files with its own linker.
