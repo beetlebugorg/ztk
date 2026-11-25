@@ -9,6 +9,8 @@ Read these pages before you work:
 3. [docs/dev/tasks/README.md](docs/dev/tasks/README.md), the rules for a task, and then the file of your task.
 4. [docs/dev/review.md](docs/dev/review.md), the checklist that the reviewer uses on your work.
 
+Put plans, task lists, reports, and limits in `docs/dev/`. The docs site publishes only the user pages that `tools/build-docs.py` lists. A new widget gets a section on its page in `docs/widgets/` and a line in `docs/differences.md`.
+
 ## Commands
 
 Use Zig 0.16.0. Run each build, test, benchmark, and suite command under a memory cap:
