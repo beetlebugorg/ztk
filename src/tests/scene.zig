@@ -249,7 +249,7 @@ test "scene: golden box-clip" {
 
 test "scene: expectGolden fails on a changed pixel and writes the extra files" {
     // In update mode expectGolden would write the changed image over the golden file.
-    if (t.environ.getPosix("ZTK_UPDATE_GOLDEN") != null) return error.SkipZigTest;
+    if (t.environ.contains(t.allocator, "ZTK_UPDATE_GOLDEN") catch false) return error.SkipZigTest;
     var s: Scene = .{};
     defer s.deinit(t.allocator);
     try build(t.allocator, &s, 0, 1);
