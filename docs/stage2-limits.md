@@ -126,4 +126,4 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - The parts `::trough`, `::fill`, `::slider`, and `::value` of a scale.
 - The pseudo-class `:scrolling`, the parts `::trough` and `::thumb` of a scrollbar, a fraction of a unit for `xview scroll` and `yview scroll`, and the event `<MouseWheel>` with a fraction of 120 in `%D`.
 - `ztk::animate {.c tagOrId}` for canvas items, the bindings `<MouseWheel>` and `<Shift-MouseWheel>` of the class `Canvas`, and the theme color for the items that keep the default black of Tk.
-- `ztk::limit ?-steps count? ?-memory bytes? script`, the `interp` command of ztcl in the `ztk` program and the web build (a child has no more host access than its parent), and `ztk::style scheme` (`light` or `dark`, for the colors of canvas items).
+- `ztk::limit ?-steps count? ?-memory bytes? script`, the `interp` command of ztcl in the `ztk` program and the web build (its first call turns on the capability, a child has no more host access than its parent, and the memory of an interpreter with the capability does not compact), and `ztk::style scheme` (`light` or `dark`, for the colors of canvas items).
