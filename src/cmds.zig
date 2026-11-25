@@ -35,9 +35,7 @@ pub fn register(app: *App) !void {
     try it.register("ztk::tooltip", @import("grab.zig").cmdTooltip);
     try it.register("ztk::clock", @import("animate.zig").cmdClock);
     try it.register("ztk::limit", cmdLimit);
-    // A child interpreter has at most the capabilities of its parent, so
-    // `interp` gives a script no host access.
-    try it.allow(@intFromEnum(ztcl.interp.Capability.interp));
+    try it.register("interp", cmdInterp);
     try it.register("destroy", cmdDestroy);
     try it.register("exit", cmdExit);
     try it.register("winfo", cmdWinfo);
@@ -103,6 +101,16 @@ fn cmdLimit(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
     it.step_limit = old_steps -| (steps - it.step_limit);
     it.mem_limit = old_memory;
     return r;
+}
+
+/// The first call of `interp` turns on the capability of ztcl, which
+/// puts the real command in place, and runs the call again. A child
+/// interpreter has at most the capabilities of its parent, so `interp`
+/// gives a script no host access. The capability is off until a script
+/// uses it, because a compact of the memory needs no capability.
+fn cmdInterp(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
+    try it.allow(@intFromEnum(ztcl.interp.Capability.interp));
+    return it.callWords(argv);
 }
 
 /// `exit ?code?`: ends the program through the hook that the program gave.
