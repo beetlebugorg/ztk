@@ -200,6 +200,24 @@ pub const GRAPHICS_PIPELINE_STATE_DESC = extern struct {
     CachedPSO: CACHED_PIPELINE_STATE = .{},
     Flags: u32 = 0,
 };
+pub const DXGI_USAGE_RENDER_TARGET_OUTPUT: u32 = 0x20;
+pub const DXGI_SWAP_EFFECT_FLIP_DISCARD: i32 = 4;
+pub const DXGI_SCALING_NONE: i32 = 1;
+pub const DXGI_MWA_NO_ALT_ENTER: u32 = 1 << 1;
+pub const RESOURCE_STATE_PRESENT: u32 = 0;
+pub const SWAP_CHAIN_DESC1 = extern struct {
+    Width: u32,
+    Height: u32,
+    Format: i32 = DXGI_FORMAT_R8G8B8A8_UNORM,
+    Stereo: BOOL = 0,
+    SampleDesc: SAMPLE_DESC = .{},
+    BufferUsage: u32 = DXGI_USAGE_RENDER_TARGET_OUTPUT,
+    BufferCount: u32 = 2,
+    Scaling: i32 = DXGI_SCALING_NONE,
+    SwapEffect: i32 = DXGI_SWAP_EFFECT_FLIP_DISCARD,
+    AlphaMode: i32 = 0,
+    Flags: u32 = 0,
+};
 pub const ADAPTER_DESC1 = extern struct {
     Description: [128]u16,
     VendorId: u32,
@@ -256,6 +274,7 @@ pub const Blob = opaque {};
 pub const Factory6 = opaque {};
 pub const Adapter1 = opaque {};
 pub const Debug = opaque {};
+pub const SwapChain3 = opaque {};
 
 // The slots of the methods, from the C tables of the SDK headers.
 pub const slot = struct {
@@ -298,6 +317,13 @@ pub const slot = struct {
     pub const factory_enum_warp = 27;
     pub const factory_enum_by_preference = 29;
     pub const adapter_desc1 = 10;
+    pub const unknown_query = 0;
+    pub const factory_make_window_association = 8;
+    pub const factory_create_swapchain_for_hwnd = 15;
+    pub const swap_present = 8;
+    pub const swap_get_buffer = 9;
+    pub const swap_resize_buffers = 13;
+    pub const swap_current_index = 36;
 };
 
 /// The functions that the DLLs export, read with `GetProcAddress`.
@@ -352,6 +378,7 @@ test "d3d12 api: the structures have the sizes of the C headers" {
     try std.testing.expectEqual(@as(usize, 312), @sizeOf(ADAPTER_DESC1));
     try std.testing.expectEqual(@as(usize, 40), @sizeOf(ROOT_SIGNATURE_DESC));
     try std.testing.expectEqual(@as(usize, 20), @sizeOf(HEAP_PROPERTIES));
+    try std.testing.expectEqual(@as(usize, 48), @sizeOf(SWAP_CHAIN_DESC1));
 }
 
 test "d3d12 api: a GUID parses in the byte order of the C form" {

@@ -22,6 +22,9 @@ pub const wayland_enabled = @import("build_options").wayland;
 pub const appkit_enabled = @import("build_options").appkit;
 pub const objc = if (appkit_enabled) @import("sys/objc.zig") else struct {};
 pub const wayland = if (@import("build_options").wayland) @import("platform/wayland.zig") else struct {};
+/// True on Windows, where the Win32 backend exists.
+pub const windows_enabled = @import("builtin").os.tag == .windows;
+pub const windows = if (windows_enabled) @import("platform/windows.zig") else struct {};
 pub const scene = @import("scene.zig");
 pub const png = @import("png.zig");
 pub const cpu = @import("render/cpu.zig");
@@ -89,6 +92,8 @@ test {
         _ = @import("tests/win32.zig");
         _ = @import("render/d3d12_api.zig");
         _ = @import("tests/d3d12.zig");
+        _ = @import("platform/windows.zig");
+        _ = @import("tests/windows.zig");
     }
     _ = anim;
     _ = checks;
