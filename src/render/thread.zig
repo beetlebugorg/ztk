@@ -201,11 +201,17 @@ pub const RenderThread = struct {
         r.flush();
         r.mutex.lockUncancelable(r.io);
         defer r.mutex.unlock(r.io);
-        // The held frame can be in a draw: wait until the thread puts it back.
-        while (r.held_drawing) r.cond.waitUncancelable(r.io, &r.mutex);
-        if (r.held) |h| r.pushFree(h);
+        // The thread draws the held frame again only while `held` is set,
+        // so it starts no new draw of it after this. A draw that runs puts
+        // the frame in the free list when it ends, because `held` differs.
+        // A wait that only checks `held_drawing` can wait forever: while an
+        // animation runs, the thread locks the mutex again and starts the
+        // next draw before the waiting thread runs.
+        const h = r.held;
         r.held = null;
         r.held_running = false;
+        if (h) |f| if (!r.held_drawing) r.pushFree(f);
+        while (r.held_drawing) r.cond.waitUncancelable(r.io, &r.mutex);
         r.last = null;
         r.ptr_serial = 0;
         r.held_ptr = 0;
