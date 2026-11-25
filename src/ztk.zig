@@ -93,7 +93,7 @@ test {
     _ = @import("tests/renderthread.zig");
     _ = @import("text/edit.zig");
     _ = vulkan;
-    _ = @import("tests/vulkan.zig");
+    if (@import("build_options").vulkan) _ = @import("tests/vulkan.zig");
     _ = @import("tests/entry.zig");
     _ = @import("tests/entry2.zig");
     _ = @import("tests/spinbox.zig");
