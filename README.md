@@ -84,6 +84,7 @@ Button:hover { background: var(--accent); color: var(--accent-fg) }
 
 ## Documentation
 
+- [ztk on the web](docs/web.md) and [the npm package](docs/npm.md)
 - [The plan](docs/plan.md)
 - [The Stage 1 tasks](docs/tasks/README.md)
 - [The review checklist](docs/review.md)

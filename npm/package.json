@@ -1,0 +1,36 @@
+{
+  "name": "@beetlebug/ztk",
+  "version": "0.0.0",
+  "description": "Tk widgets for the web: Tcl scripts with Tk commands, drawn by ztk in WebAssembly",
+  "license": "BSD-2-Clause",
+  "author": "The ztk authors",
+  "homepage": "https://beetlebug.org/ztk/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/beetlebugorg/ztk.git"
+  },
+  "bugs": "https://github.com/beetlebugorg/ztk/issues",
+  "keywords": ["tk", "tcl", "gui", "widgets", "webassembly", "wasm", "webgl"],
+  "type": "module",
+  "main": "./ztk.js",
+  "types": "./ztk.d.ts",
+  "exports": {
+    ".": {
+      "types": "./ztk.d.ts",
+      "default": "./ztk.js"
+    },
+    "./ztk.wasm": "./ztk.wasm",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "ztk.js",
+    "ztk.wasm",
+    "ztk.d.ts",
+    "NOTICE",
+    "licenses/"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22.3"
+  }
+}
