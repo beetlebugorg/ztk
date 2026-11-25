@@ -95,6 +95,13 @@ grid $e.l2 $e.e2 -sticky ew -padx 4 -pady 3
 grid columnconfigure $e 1 -weight 1
 pack .cols.right.input -fill x -pady 4
 
+# Scales.
+set vol 40
+labelframe .cols.right.scales -text "Scale" -padx 12 -pady 4
+scale .cols.right.scales.s -orient horizontal -from 0 -to 100 -variable vol -tickinterval 25 -length 260
+pack .cols.right.scales.s -fill x
+pack .cols.right.scales -fill x -pady {10 4} -padx 6
+
 # A labelframe with a message, and a tooltip on the Save button.
 labelframe .cols.left.notes -text "Labelframe and message" -padx 12 -pady 6
 message .cols.left.notes.m -width 300 -text "A message breaks its text into lines. A labelframe puts a title above a group of widgets."

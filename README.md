@@ -24,7 +24,7 @@ What does not work: the Vulkan swapchain on a window and on a display, a window 
 
 - [The plan](docs/plan.md) has the goal, the architecture, the decisions, the performance targets, the verification strategy, and the stages.
 - [The Stage 1 tasks](docs/tasks/README.md) are the 22 small tasks of the first demo.
-- [The widget stage](docs/stage2-tasks/README.md) adds every widget of Tk 8.6. Done so far: `pack`, `place`, animation (`transition`, `@keyframes`, `ztk::animate`), `checkbutton`, `radiobutton`, `toplevel`, `labelframe`, `message`, `grab`, and `ztk::tooltip`. [The limits](docs/stage2-limits.md) list what these lack.
+- [The widget stage](docs/stage2-tasks/README.md) adds every widget of Tk 8.6. Done so far: `pack`, `place`, animation (`transition`, `@keyframes`, `ztk::animate`), `checkbutton`, `radiobutton`, `toplevel`, `labelframe`, `message`, `grab`, `ztk::tooltip`, and `scale`. [The limits](docs/stage2-limits.md) list what these lack.
 - [The review checklist](docs/review.md) is what a reviewer checks for each task.
 - [The size of Tk](docs/tk-size.md) has the measured size of the job.
 
