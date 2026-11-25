@@ -144,6 +144,16 @@ if {$ztk} { $tk.e configure -placeholder "ttk::entry" }
 grid $tk.ok $tk.reset $tk.dark -sticky w -padx 4 -pady 3
 grid $tk.sep -columnspan 3 -sticky ew -padx 4 -pady 4
 grid $tk.s $tk.m $tk.e -sticky w -padx 4 -pady 3
+# The range widgets: the scale and the progress bar share a variable.
+set ttkopt(level) 60
+ttk::combobox $tk.cb -values {Apple Banana Cherry Date} -width 10 -state readonly
+$tk.cb current 1
+ttk::spinbox $tk.sp -from 1 -to 10 -width 4
+$tk.sp set 3
+ttk::scale $tk.sc -from 0 -to 100 -variable ttkopt(level)
+ttk::progressbar $tk.pb -maximum 100 -variable ttkopt(level)
+grid $tk.cb $tk.sp $tk.sc -sticky w -padx 4 -pady 3
+grid $tk.pb -columnspan 3 -sticky ew -padx 4 -pady {3 6}
 pack .cols.right.ttk -fill x -pady 4
 
 # A labelframe with a message, and a tooltip on the Save button.

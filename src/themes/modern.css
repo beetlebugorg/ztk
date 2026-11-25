@@ -402,3 +402,76 @@ TSizegrip {
   color: var(--muted);
   background-color: transparent;
 }
+
+/* A ttk::scale is transparent, so the background of its parent shows. */
+TScale {
+  background-color: transparent;
+}
+
+/* A progress bar: a thin round track and a bar in the accent color. */
+TProgressbar {
+  background-color: transparent;
+  padding: 4px 0px;
+}
+
+TProgressbar::trough {
+  background-color: var(--track);
+  border-radius: 50%;
+}
+
+TProgressbar::bar {
+  background-color: var(--accent);
+  border-radius: 50%;
+}
+
+TProgressbar:disabled {
+  opacity: 0.5;
+}
+
+/* A combobox: a field with an arrow at the right edge. A readonly
+   combobox is a button that opens the list. */
+TCombobox {
+  padding-right: 2px;
+}
+
+TCombobox:read-only {
+  background-color: var(--field-bg);
+  cursor: default;
+}
+
+TCombobox::arrow {
+  color: var(--muted);
+  background-color: transparent;
+  border-radius: 4px;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+TCombobox:hover::arrow, TCombobox:active::arrow {
+  color: var(--fg);
+  background-color: var(--track);
+}
+
+TCombobox:disabled::arrow {
+  opacity: 0.4;
+}
+
+/* The list of a combobox: a popover with a round corner and a shadow. */
+TCombobox::popdown {
+  background-color: var(--field-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0px 4px 16px var(--shadow);
+}
+
+TCombobox::item {
+  color: var(--fg);
+  padding: 4px 8px;
+}
+
+TCombobox::item-active {
+  color: var(--accent-fg);
+  background-color: var(--accent);
+  border-radius: 5px;
+  padding: 4px 8px;
+}

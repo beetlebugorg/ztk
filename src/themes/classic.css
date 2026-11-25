@@ -256,3 +256,44 @@ TSizegrip {
   color: #828282;
   background-color: var(--bg);
 }
+
+TProgressbar {
+  background-color: var(--bg);
+  padding: 2px;
+}
+
+TProgressbar::trough {
+  background-color: var(--trough);
+  border: 1px inset var(--bg);
+}
+
+TProgressbar::bar {
+  background-color: var(--select);
+  border: 1px outset var(--bg);
+}
+
+TCombobox::arrow {
+  color: var(--fg);
+  background-color: var(--bg);
+  border: 1px outset var(--bg);
+}
+
+TCombobox:active::arrow {
+  border-style: inset;
+}
+
+TCombobox::popdown {
+  background-color: var(--bg);
+  border: 1px solid var(--fg);
+}
+
+TCombobox::item {
+  color: var(--fg);
+  padding: 1px 4px;
+}
+
+TCombobox::item-active {
+  color: var(--fg);
+  background-color: var(--select);
+  padding: 1px 4px;
+}

@@ -6,6 +6,10 @@
 //! repeat of a held button. As in Tk, a press on a button invokes it
 //! when the button is released, or after `-repeatdelay` and then each
 //! `-repeatinterval` while it is held.
+//!
+//! `ttk::spinbox` (in `ttk/range.zig`) uses this code with the flag `ttk`
+//! of its class. A change of `-values`, `-from`, or `-to` keeps its text,
+//! `set` needs a value, and `<<Increment>>` and `<<Decrement>>` step it.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -199,6 +203,11 @@ fn configured(w: *Widget, changed: []const usize) ztcl.Error!void {
     const old_to = d.to;
     const from = dbl(w, "-from");
     const to = dbl(w, "-to");
+    if (w.class.ttk) {
+        d.from = from;
+        d.to = to;
+        return;
+    }
     if (range and from > to) {
         const a = it.alloc();
         for ([_][]const u8{ "-from", "-to" }, [_]f64{ old_from, old_to }) |name, v| {
@@ -261,7 +270,9 @@ pub fn invoke(w: *Widget, elem: Elem) ztcl.Error!void {
     }
     if (w.life == .dead) return;
     const cmd = options.get(w, "-command");
-    if (cmd.text.len > 0) {
+    if (cmd.text.len > 0 and w.class.ttk) {
+        w.app.callback(cmd.text);
+    } else if (cmd.text.len > 0) {
         const script = try entry.expand(w, it.alloc(), cmd.text, if (up) "up" else "down", "", 0, .button);
         w.app.callback(script);
     }
@@ -311,6 +322,11 @@ fn subcommand(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!?Val
         try invoke(w, try parseElem(it, try it.str(argv[2]), "element"));
         return Value.empty;
     }
+    if (std.mem.eql(u8, sub, "set") and w.class.ttk) {
+        if (argv.len != 3) return it.fail("wrong # args: should be \"{s} set value\"", .{w.path});
+        entry.valueChanged(w, try it.alloc().dupe(u8, try it.str(argv[2])));
+        return Value.empty;
+    }
     if (std.mem.eql(u8, sub, "set")) {
         if (argv.len != 2 and argv.len != 3) return it.fail("wrong # args: should be \"{s} set ?string?\"", .{w.path});
         if (argv.len == 3) entry.valueChanged(w, try it.alloc().dupe(u8, try it.str(argv[2])));
@@ -322,6 +338,12 @@ fn subcommand(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!?Val
         const x: i32 = @intCast(std.math.clamp(try it.int(argv[2]), -1000000, 1000000));
         const y: i32 = @intCast(std.math.clamp(try it.int(argv[3]), -1000000, 1000000));
         const e = identifyAt(w, x, y);
+        if (w.class.ttk) return .{ .str = switch (e) {
+            .none => "",
+            .buttonup => "uparrow",
+            .buttondown => "downarrow",
+            else => "textarea",
+        } };
         return .{ .str = if (e == .none) "" else @tagName(e) };
     }
     return entry.subcommand(w, it, argv);

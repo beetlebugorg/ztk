@@ -59,6 +59,8 @@ pub fn register(app: *App) !void {
     try entry.register(app);
     try @import("widgets/spinbox.zig").register(app);
     try @import("ttk/widgets.zig").register(app);
+    try @import("ttk/range.zig").register(app);
+    try @import("ttk/combobox.zig").register(app);
     try it.register("clipboard", @import("clipboard.zig").command);
     try @import("canvas/canvas.zig").register(app);
     try it.register("tk", wm.cmdTk);

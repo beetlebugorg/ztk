@@ -192,6 +192,8 @@ pub const App = struct {
     /// The grab of `grab`, and the tooltips of `ztk::tooltip` by widget path (owned).
     grab: @import("grab.zig").State = .{},
     tip: @import("grab.zig").Tip = .{},
+    /// The open list of a `ttk::combobox`.
+    popdown: @import("ttk/combobox.zig").Popdown = .{},
     tooltips: std.StringHashMapUnmanaged([]u8) = .empty,
     /// The browser build: the text of a file of the page by its name, or null.
     virtual_file: ?*const fn (name: []const u8) ?[]const u8 = null,
@@ -806,6 +808,7 @@ pub const App = struct {
         app.anim_frame = fr;
         defer app.anim_frame = null;
         try app.paintNode(top, &b);
+        try @import("ttk/combobox.zig").paintPopdown(app, top, &b);
         try @import("grab.zig").paintTip(app, top, &b);
         try app.atlas.takePatches(app.gpa, &fr.patches);
         app.stats.end(.paint, wall.*());

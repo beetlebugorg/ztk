@@ -4,7 +4,7 @@ ztk follows Tk 8.6.16. A script that runs in `wish` 8.6 runs in ztk when it uses
 
 ## Missing today
 
-- Widgets: `listbox`, `text`, `menu`, `menubutton`, `panedwindow`, the dialogs (`tk_getOpenFile`, `tk_messageBox`, and the others), and the `ttk` widgets `combobox`, `spinbox`, `scale`, `scrollbar`, `progressbar`, `notebook`, `panedwindow`, `menubutton`, and `treeview`.
+- Widgets: `listbox`, `text`, `menu`, `menubutton`, `panedwindow`, the dialogs (`tk_getOpenFile`, `tk_messageBox`, and the others), and the `ttk` widgets `notebook`, `panedwindow`, `menubutton`, and `treeview`.
 - Commands: `option`, `selection`, `event add`, `send`, and `package`. The Tk test files cannot run, because `tcltest` needs `package`.
 - The clipboard is local to the app. It is not connected to the clipboard of the system.
 - `canvas postscript`.
@@ -38,6 +38,7 @@ ztk follows Tk 8.6.16. A script that runs in `wish` 8.6 runs in ztk when it uses
 - `grab -global` acts as a local grab, and `grab status` reports `global`.
 - A press on the trough of a scale or a scrollbar moves one step. Holding the button does not repeat.
 - A `scale` runs `-command` at once after a change by the user. `wish` runs it as an idle callback.
+- The list of a `ttk::combobox` is drawn by ztk in the window of the combobox, and no `$cb.popdown` toplevel or listbox exists. A combobox with no values does not open its list. `ttk::scale set` gives an empty result, where `wish` gives the result of `-command`. `ttk::progressbar start` runs `step` with `after`, as in `wish`, and the indeterminate bar moves on its own while the timer runs.
 - `xview scroll` and `yview scroll` accept a fraction of a unit, and a scroll eases over 160 ms.
 - `<MouseWheel>` and `<Shift-MouseWheel>` follow Tk 8.7. The wheel does not send `<Button-4>` and `<Button-5>`.
 - `<<Paste>>` deletes the selection before it inserts, as Tk does on Windows and macOS.
