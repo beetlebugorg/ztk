@@ -29,7 +29,18 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - The role of a switch is the role of its class, `check box`. A role for each widget comes with Stage 8.
 - `zig build bench`, ReleaseFast, 2026-11-24, load average 9: `check-toggle-1000` (1 000 checkbuttons, one toggles each 10 frames and its indicator moves) median 3.63 ms, 99th percentile 5.12 ms. A second run under the same load gave a 99th percentile of 13.5 ms, so the gate of 8 ms holds only on a machine with less load.
 
+## toplevel, labelframe, message, grab, and focus (task 04)
+
+- A `toplevel` has its own platform window, render thread, and `wm` state. `wm` has the subcommands of Stage 1 for each toplevel. `-menu` is stored until task 12 draws a menu bar. `-screen`, `-use`, `-container`, `-colormap`, and `-visual` are stored and have no effect.
+- `winfo rootx` and `rooty` of a widget in a second toplevel count from the corner of its own window, because a Wayland program does not know the position of its windows.
+- `labelframe` draws its title above the box, or below it with an anchor that starts with `s`. The anchors that start with `e` or `w` put the title at the top right or the top left. `-labelwidget` is stored and has no effect.
+- `message` breaks lines at spaces only. With no `-width`, it tries 24 widths and keeps the first one whose ratio of width to height is at least `-aspect` / 100. `wish` gives other line breaks for the same text, because its font has other widths.
+- `grab` is local. `-global` gives a local grab and `grab status` then reports `global`. A grab sends a pointer event of a widget outside its tree to the grab widget. It does not change the keyboard focus.
+- `<<NextWindow>>` and `<<PrevWindow>>` are not virtual events yet: `Tab` and `Shift-Tab` move the focus through bindings on `all`, as in Stage 1.
+- `zig build bench`, ReleaseFast, 2026-11-24, load average 9: `toplevel-open` (a new toplevel with 50 labels, to its first frame, and its delete) median 4.67 ms and 99th percentile 42.9 ms. The 99th percentile is over the gate of 8 ms. Each toplevel starts a render thread, and the slowest runs include the start of that thread.
+
 ## Additions
 
 - `ztk::animate`, `ztk::clock`, the timing function `spring()`, and the flag `--time` of the `ztk` program.
 - The style classes `switch` (checkbutton) and `segmented` (radiobutton), and the part `::indicator`.
+- `ztk::tooltip path ?text?`, the parts `::tooltip` of a toplevel and `::label` of a labelframe.

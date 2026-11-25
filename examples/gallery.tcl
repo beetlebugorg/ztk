@@ -95,4 +95,11 @@ grid $e.l2 $e.e2 -sticky ew -padx 4 -pady 3
 grid columnconfigure $e 1 -weight 1
 pack .cols.right.input -fill x -pady 4
 
+# A labelframe with a message, and a tooltip on the Save button.
+labelframe .cols.left.notes -text "Labelframe and message" -padx 12 -pady 6
+message .cols.left.notes.m -width 300 -text "A message breaks its text into lines. A labelframe puts a title above a group of widgets."
+pack .cols.left.notes.m -anchor w
+pack .cols.left.notes -fill x -pady {10 4} -padx 6
+if {$ztk} { ::ztk::tooltip $b.save "Saves the document" }
+
 set status ""

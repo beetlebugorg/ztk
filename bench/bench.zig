@@ -199,6 +199,21 @@ pub fn main(init: std.process.Init) !void {
         report("check-toggle-1000", buf[0..runs]);
     }
 
+    // toplevel-open: a new toplevel with 50 widgets, to its first frame.
+    {
+        const runs = 50;
+        for (buf[0..runs], 0..) |*slot, i| {
+            var cmd: [200]u8 = undefined;
+            const text = try std.fmt.bufPrint(&cmd, "toplevel .t{d}; for {{set k 0}} {{$k < 50}} {{incr k}} {{ label .t{d}.l$k -text l$k; grid .t{d}.l$k -row [expr {{$k / 5}}] -column [expr {{$k % 5}}] }}; update", .{ i, i, i });
+            const t0 = nowNs();
+            w.eval(text);
+            slot.* = nowNs() - t0;
+            var del: [32]u8 = undefined;
+            w.eval(try std.fmt.bufPrint(&del, "destroy .t{d}", .{i}));
+        }
+        report("toplevel-open", buf[0..runs]);
+    }
+
     // idle-1000: App.frame with no dirty flag.
     {
         const runs = 400;

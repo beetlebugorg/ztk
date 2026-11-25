@@ -223,8 +223,28 @@ fn tk(it: *ztcl.Interp, argv: []const Value, forward: bool) ztcl.Error!Value {
     return .{ .str = try it.alloc().dupe(u8, r.path) };
 }
 
+/// `tk_focusFollowsMouse`: from now on the focus follows the pointer.
+fn cmdFollows(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
+    if (argv.len != 1) return it.wrongArgs("tk_focusFollowsMouse");
+    _ = try it.eval("bind all <Enter> {::ztk::priv::focus_follow %W}");
+    return Value.empty;
+}
+
+/// `::ztk::priv::focus_follow path`: the pointer entered a widget.
+fn cmdFollow(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
+    const app = App.of(it);
+    app.enter();
+    defer app.leave();
+    if (argv.len != 2) return Value.empty;
+    const w = app.find(try it.str(argv[1])) orelse return Value.empty;
+    if (accepts(w)) set(app, w);
+    return Value.empty;
+}
+
 pub fn register(app: *App) !void {
     const it = app.it;
+    try it.register("tk_focusFollowsMouse", cmdFollows);
+    try it.register("ztk::priv::focus_follow", cmdFollow);
     try it.register("focus", cmdFocus);
     try it.register("tk_focusNext", cmdFocusNext);
     try it.register("tk_focusPrev", cmdFocusPrev);

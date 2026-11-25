@@ -286,7 +286,7 @@ fn paintEntry(w: *Widget, b: *scene.Builder) anyerror!void {
     const shown = try shownText(w, a);
     defer if (shown.ptr != d.edit.text().ptr) a.free(shown);
     const mfont = scaleOne(w) orelse return;
-    const win_scale: f32 = if (app.window) |win| win.scale else 1;
+    const win_scale: f32 = b.scale;
     const pfont = try app.fonts.get(st.font, win_scale);
     const m = font_mod.Fonts.metrics(mfont);
     var run1 = try shape.shape(a, mfont, shown);

@@ -29,7 +29,7 @@ pub const Type = enum {
     variable,
     script,
     synonym,
-    /// One word of `words`. A bad value gives "bad <db_name> ...".
+    /// One word of `words`. A bad value gives "bad <name without the dash> ...".
     word,
     /// A floating-point number.
     double,
@@ -211,7 +211,7 @@ pub fn parseValue(w: *const Widget, it: *ztcl.Interp, spec: Spec, text: []const 
         },
         .word => {
             const i = matchWord(text, spec.words) orelse
-                return it.fail("bad {s} \"{s}\": must be {s}", .{ spec.db_name, text, try joinWords(it, spec.words) });
+                return it.fail("bad {s} \"{s}\": must be {s}", .{ spec.name[1..], text, try joinWords(it, spec.words) });
             return .{ .word = @intCast(i) };
         },
         .double => {

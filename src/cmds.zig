@@ -31,6 +31,8 @@ pub fn register(app: *App) !void {
     try it.register("ztk::style", style.cmdStyle);
     try it.register("ztk::class", style.cmdClass);
     try it.register("ztk::animate", @import("animate.zig").cmdAnimate);
+    try it.register("grab", @import("grab.zig").cmdGrab);
+    try it.register("ztk::tooltip", @import("grab.zig").cmdTooltip);
     try it.register("ztk::clock", @import("animate.zig").cmdClock);
     try it.register("destroy", cmdDestroy);
     try it.register("exit", cmdExit);
@@ -48,9 +50,12 @@ pub fn register(app: *App) !void {
     try focus.register(app);
     try button.register(app);
     try @import("widgets/check.zig").register(app);
+    try @import("widgets/labelframe.zig").register(app);
+    try @import("widgets/message.zig").register(app);
     try entry.register(app);
     try it.register("tk", wm.cmdTk);
-    app.root = try widget.makeNode(app, &toplevel.class, ".", null);
+    app.root = try widget.makeNode(app, &toplevel.root_class, ".", null);
+    try toplevel.register(app);
     const win = try app.platform.createWindow(.{});
     win.user = app.root;
     app.window = win;

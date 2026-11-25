@@ -120,7 +120,7 @@ pub fn lineHeight(app: *App, desc: font_mod.FontDesc) i32 {
 pub fn label(w: *const Widget, b: *scene.Builder, r: geom.Rect, text: []const u8, style: *const Style, anchor: options.Anchor, justify: options.Justify) !void {
     const app = w.app;
     if (text.len == 0 or r.w <= 0 or r.h <= 0) return;
-    const win_scale: f32 = if (app.window) |win| win.scale else 1;
+    const win_scale: f32 = b.scale;
     const mfont = measureFont(app, style.font) orelse return;
     const pfont = try app.fonts.get(style.font, win_scale);
     const m = font_mod.Fonts.metrics(mfont);
@@ -232,4 +232,41 @@ pub fn partStyle(w: *Widget, part: []const u8, slot: *PartAnim) struct { style: 
     app.anim_more = true;
     const p = spec.progress(since);
     return .{ .style = anim.mix(&slot.from, &slot.to, p), .t = p };
+}
+
+/// Breaks text into lines no wider than `max_w` logical pixels, at spaces.
+/// A newline always breaks. A word that is wider than `max_w` stays on
+/// its own line. The lines are slices of `text`.
+pub fn wrapLines(app: *App, a: std.mem.Allocator, text: []const u8, desc: font_mod.FontDesc, max_w: i32) ![]const []const u8 {
+    const font = measureFont(app, desc) orelse return &.{};
+    var out: std.ArrayListUnmanaged([]const u8) = .empty;
+    var paras = std.mem.splitScalar(u8, text, '\n');
+    while (paras.next()) |para| {
+        // Each line is the longest run of whole words that fits.
+        var line_start: usize = 0;
+        var line_end: usize = 0;
+        var pos: usize = 0;
+        while (pos < para.len) {
+            while (pos < para.len and para[pos] == ' ') pos += 1;
+            if (pos >= para.len) break;
+            const ws = pos;
+            while (pos < para.len and para[pos] != ' ') pos += 1;
+            const we = pos;
+            if (line_end > line_start and shape.measure(&app.fonts, font, para[line_start..we]) > max_w) {
+                try out.append(a, para[line_start..line_end]);
+                line_start = ws;
+            } else if (line_end == line_start) line_start = ws;
+            line_end = we;
+        }
+        try out.append(a, para[line_start..line_end]);
+    }
+    return out.items;
+}
+
+/// The size of wrapped lines.
+pub fn linesSize(app: *App, lines: []const []const u8, desc: font_mod.FontDesc) geom.Size {
+    const font = measureFont(app, desc) orelse return .{};
+    var w: i32 = 0;
+    for (lines) |l| w = @max(w, shape.measure(&app.fonts, font, l));
+    return .{ .w = w, .h = num.px(@as(i64, @intCast(lines.len)) * font_mod.Fonts.metrics(font).line_height) };
 }

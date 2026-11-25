@@ -371,12 +371,12 @@ fn cmdUpdate(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.E
         if (!startsWith("idletasks", sub)) return it.fail("bad option \"{s}\": must be idletasks", .{sub});
         while (try app.loop.runIdle()) {}
         if (app.root) |r| _ = app.frame(r) catch |e| app.frameError(e);
-        app.render.flush();
+        app.flushRender();
         return Value.empty;
     }
     while (try app.doOneEvent(false)) {}
     try app.flush();
-    app.render.flush();
+    app.flushRender();
     return Value.empty;
 }
 
