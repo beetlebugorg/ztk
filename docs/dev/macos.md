@@ -45,12 +45,13 @@ Two event kinds go into `src/event.zig`: `preedit` (the marked text and the care
 
 AppKit runs its windows and events on the main thread of the process. The UI thread of ztk is that thread in the `ztk` program, so the backend is a plain `Platform`:
 
-- `wait(timeout)` calls `nextEventMatchingMask:untilDate:inMode:dequeue:` with the timeout and puts the event back with `postEvent:atStart:`. `poll` reads the events and calls `sendEvent:` on each one, so the menus and the window frame of AppKit work.
+- `wait(timeout)` calls `nextEventMatchingMask:untilDate:inMode:dequeue:` with the timeout and calls `sendEvent:` on the event, so the menus and the window frame of AppKit work. `poll` does the same for the events that wait, with no time limit, and moves the ztk events to the core. A callback that adds an event while `wait` blocks posts an empty application event, and the wait ends.
 - A window has a content view of a class that the backend makes at run time with `objc_allocateClassPair`. Its methods turn the `NSEvent` values into ztk events.
-- The frame clock is the display link of the view (`NSView.displayLinkWithTarget:selector:`, macOS 14 and later). It gives one `frame` event for each `requestFrame`.
+- The frame clock is the display link of the view (`NSView.displayLinkWithTarget:selector:`, macOS 14 and later), or a timer at 60 Hz on an older system. It gives one `frame` event for each `requestFrame`, and the link pauses between them.
+- Each window has a Metal renderer of its own, so the render threads of two windows share no buffer and no atlas.
 - An embedder that runs its own `NSApplication` loop calls `poll` from a run loop observer. That mode is a later PR.
 
-The backend calls the Objective-C runtime with `objc_msgSend` through typed function pointers, from Zig, so it needs no Objective-C compiler and no framework headers. It links AppKit, Metal, and QuartzCore, and no other library. The link needs the macOS SDK of the Command Line Tools, so the cross job on Linux keeps `-Dbackends=headless` for the macOS targets.
+The backend calls the Objective-C runtime with `objc_msgSend` through typed function pointers, from Zig, so it needs no Objective-C compiler and no framework headers. It links AppKit, Metal, QuartzCore, and CoreGraphics (for the sRGB colorspace of the layer), and no other library. The link needs the macOS SDK of the Command Line Tools, so the cross job on Linux keeps `-Dbackends=headless` for the macOS targets.
 
 ## The Metal renderer
 
@@ -64,7 +65,7 @@ The backend calls the Objective-C runtime with `objc_msgSend` through typed func
 - The window target is a `CAMetalLayer` on the content view. The render thread gets a drawable with `nextDrawable`, draws, and presents it. Metal and `CAMetalLayer` work from a thread other than the main thread.
 - The offscreen target is an `MTLTexture`. The tests read it back and compare it with the CPU image of the same scene.
 - HiDPI: the layer has `contentsScale` equal to `backingScaleFactor`, and `drawableSize` in device pixels. The scene is in logical pixels, and the renderer scales it, as the Vulkan renderer does.
-- `MTLCreateSystemDefaultDevice` returning nil gives `error.NoMetal`. The backend then uses the CPU renderer and writes the image to the layer.
+- `MTLCreateSystemDefaultDevice` returning nil gives `error.NoMetal`. In PR 5 the window then fails to open. The CPU renderer that writes its image to the layer comes in a later PR.
 
 ## Input
 

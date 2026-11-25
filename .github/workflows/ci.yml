@@ -76,10 +76,12 @@ jobs:
           test "$(zig build run -- --headless "$RUNNER_TEMP/t.tcl" | tr -d '\r')" = 42
 
   test-macos:
-    # The core and the headless backend on macOS. The Vulkan and Wayland
-    # code is Linux only, so the build has the headless backend.
+    # The core, the headless backend, and the AppKit backend with Metal on
+    # macOS. The runner has a desktop session, so the window tests run.
     name: Test (macOS)
     runs-on: macos-latest
+    env:
+      ZTK_TEST_WINDOWS: "1"
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
@@ -93,6 +95,9 @@ jobs:
         run: |
           printf 'puts [expr {6 * 7}]\n' > "$RUNNER_TEMP/t.tcl"
           test "$(zig build run -- --headless "$RUNNER_TEMP/t.tcl" | tr -d '\r')" = 42
+      - name: Run the demo in a window
+        # The first frame ends the run. The alarm stops a run that hangs.
+        run: perl -e 'alarm 120; exec @ARGV' zig-out/bin/ztk --exit-after-frames 1 examples/demo.tcl
 
   test-windows:
     # The core and the headless backend on Windows, as on macOS.

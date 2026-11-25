@@ -12,7 +12,9 @@
 //! never share a buffer. The instance buffer grows by a factor of two. The
 //! atlas page is one R8 texture that uploads again when the generation of
 //! the atlas changes. An offscreen target is a private RGBA8 texture, and
-//! `readPixels` copies it to a shared buffer.
+//! `readPixels` copies it to a shared buffer. A window draws into the
+//! drawable of a `CAMetalLayer`, a BGRA8 texture, with a second pipeline
+//! of the same shaders, and presents it with the command buffer.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -33,6 +35,7 @@ extern fn MTLCreateSystemDefaultDevice() ?Id;
 // The values of the Metal enumerations that the renderer uses.
 const pixel_r8 = 10; // MTLPixelFormatR8Unorm
 const pixel_rgba8 = 70; // MTLPixelFormatRGBA8Unorm
+pub const pixel_bgra8 = 80; // MTLPixelFormatBGRA8Unorm
 const blend_one = 1; // MTLBlendFactorOne
 const blend_one_minus_src_alpha = 5; // MTLBlendFactorOneMinusSourceAlpha
 const usage_shader_read = 1; // MTLTextureUsageShaderRead
@@ -48,6 +51,7 @@ const ClearColor = extern struct { r: f64, g: f64, b: f64, a: f64 };
 const Origin = extern struct { x: usize, y: usize, z: usize };
 const Size = extern struct { w: usize, h: usize, d: usize };
 const Region = extern struct { origin: Origin, size: Size };
+const CGSize = extern struct { w: f64, h: f64 };
 
 const atlas_size: usize = Atlas.page_size;
 
@@ -169,7 +173,9 @@ pub const Metal = struct {
     gpa: std.mem.Allocator,
     device: Id,
     queue: Id,
+    /// The pipelines for an RGBA8 target and for a BGRA8 drawable.
     pipeline: Id,
+    pipeline_bgra: Id,
     atlas_texture: Id,
     atlas_generation: ?u32 = null,
     instances: ?Id = null,
@@ -203,31 +209,17 @@ pub const Metal = struct {
         const ffn = call(Id, lib, "newFunctionWithName:", .{fname});
         defer objc.release(ffn);
 
-        const desc = objc.new(objc.class("MTLRenderPipelineDescriptor").?);
-        defer objc.release(desc);
-        callVoid(desc, "setVertexFunction:", .{vfn});
-        callVoid(desc, "setFragmentFunction:", .{ffn});
-        const attachments = call(Id, desc, "colorAttachments", .{});
-        const color = objc.call(fn (Id, Sel, usize) callconv(.c) Id, attachments, "objectAtIndexedSubscript:", .{0});
-        callVoid(color, "setPixelFormat:", .{@as(usize, pixel_rgba8)});
-        callVoid(color, "setBlendingEnabled:", .{true});
-        // Premultiplied "source over", as in the Vulkan renderer.
-        callVoid(color, "setSourceRGBBlendFactor:", .{@as(usize, blend_one)});
-        callVoid(color, "setDestinationRGBBlendFactor:", .{@as(usize, blend_one_minus_src_alpha)});
-        callVoid(color, "setSourceAlphaBlendFactor:", .{@as(usize, blend_one)});
-        callVoid(color, "setDestinationAlphaBlendFactor:", .{@as(usize, blend_one_minus_src_alpha)});
-        const pipeline = objc.call(fn (Id, Sel, Id, *?Id) callconv(.c) ?Id, device, "newRenderPipelineStateWithDescriptor:error:", .{ desc, &err }) orelse {
-            if (err) |e| logError("Metal pipeline", e);
-            return error.MetalFailed;
-        };
+        const pipeline = try makePipeline(device, vfn, ffn, pixel_rgba8);
         errdefer objc.release(pipeline);
+        const pipeline_bgra = try makePipeline(device, vfn, ffn, pixel_bgra8);
+        errdefer objc.release(pipeline_bgra);
 
         const tdesc = objc.call(fn (objc.Class, Sel, usize, usize, usize, bool) callconv(.c) Id, objc.class("MTLTextureDescriptor").?, "texture2DDescriptorWithPixelFormat:width:height:mipmapped:", .{ pixel_r8, atlas_size, atlas_size, false });
         callVoid(tdesc, "setUsage:", .{@as(usize, usage_shader_read)});
         const atlas_texture = call(Id, device, "newTextureWithDescriptor:", .{tdesc});
 
         const m = try gpa.create(Metal);
-        m.* = .{ .gpa = gpa, .device = device, .queue = queue, .pipeline = pipeline, .atlas_texture = atlas_texture };
+        m.* = .{ .gpa = gpa, .device = device, .queue = queue, .pipeline = pipeline, .pipeline_bgra = pipeline_bgra, .atlas_texture = atlas_texture };
         return m;
     }
 
@@ -236,6 +228,7 @@ pub const Metal = struct {
         if (m.readback) |b| objc.release(b);
         objc.release(m.atlas_texture);
         objc.release(m.pipeline);
+        objc.release(m.pipeline_bgra);
         objc.release(m.queue);
         objc.release(m.device);
         m.gpa.destroy(m);
@@ -293,6 +286,26 @@ pub const Metal = struct {
         const t = m.target orelse return error.NoTarget;
         const pool = objc.Pool.push();
         defer pool.pop();
+        try m.encode(t.texture, t.width, t.height, m.pipeline, null, scene, atlas);
+    }
+
+    /// Draws a scene into the next drawable of a `CAMetalLayer` of the
+    /// device of `m`, with the BGRA8 pixel format, and presents it. The
+    /// drawable size of the layer becomes the size of the scene.
+    pub fn drawLayer(m: *Metal, layer: Id, scene: *const Scene, atlas: *const Atlas) !void {
+        const pool = objc.Pool.push();
+        defer pool.pop();
+        if (scene.width == 0 or scene.height == 0) return;
+        const want = CGSize{ .w = @floatFromInt(scene.width), .h = @floatFromInt(scene.height) };
+        const have = objc.call(fn (Id, Sel) callconv(.c) CGSize, layer, "drawableSize", .{});
+        if (have.w != want.w or have.h != want.h) objc.call(fn (Id, Sel, CGSize) callconv(.c) void, layer, "setDrawableSize:", .{want});
+        // Null when no drawable is free within one second.
+        const drawable = call(?Id, layer, "nextDrawable", .{}) orelse return error.NoDrawable;
+        const tex = call(Id, drawable, "texture", .{});
+        try m.encode(tex, scene.width, scene.height, m.pipeline_bgra, drawable, scene, atlas);
+    }
+
+    fn encode(m: *Metal, texture: Id, width: u32, height: u32, pipeline: Id, drawable: ?Id, scene: *const Scene, atlas: *const Atlas) !void {
         const n = scene.quads.items.len;
         const need = @max(n * @sizeOf(Quad), @sizeOf(Quad));
         const buf = try m.ensureBuffer(&m.instances, &m.instances_size, need);
@@ -305,7 +318,7 @@ pub const Metal = struct {
         const pass = objc.call(fn (objc.Class, Sel) callconv(.c) Id, objc.class("MTLRenderPassDescriptor").?, "renderPassDescriptor", .{});
         const atts = call(Id, pass, "colorAttachments", .{});
         const att = objc.call(fn (Id, Sel, usize) callconv(.c) Id, atts, "objectAtIndexedSubscript:", .{0});
-        callVoid(att, "setTexture:", .{t.texture});
+        callVoid(att, "setTexture:", .{texture});
         callVoid(att, "setLoadAction:", .{@as(usize, load_clear)});
         callVoid(att, "setStoreAction:", .{@as(usize, store_store)});
         const cc = scene.clear;
@@ -314,15 +327,16 @@ pub const Metal = struct {
         const cmd = call(Id, m.queue, "commandBuffer", .{});
         const enc = call(Id, cmd, "renderCommandEncoderWithDescriptor:", .{pass});
         if (n > 0) {
-            callVoid(enc, "setRenderPipelineState:", .{m.pipeline});
+            callVoid(enc, "setRenderPipelineState:", .{pipeline});
             objc.call(fn (Id, Sel, Id, usize, usize) callconv(.c) void, enc, "setVertexBuffer:offset:atIndex:", .{ buf, 0, 0 });
             objc.call(fn (Id, Sel, Id, usize, usize) callconv(.c) void, enc, "setFragmentBuffer:offset:atIndex:", .{ buf, 0, 0 });
-            const size = [2]f32{ @floatFromInt(t.width), @floatFromInt(t.height) };
+            const size = [2]f32{ @floatFromInt(width), @floatFromInt(height) };
             objc.call(fn (Id, Sel, *const anyopaque, usize, usize) callconv(.c) void, enc, "setVertexBytes:length:atIndex:", .{ &size, @sizeOf([2]f32), 1 });
             objc.call(fn (Id, Sel, Id, usize) callconv(.c) void, enc, "setFragmentTexture:atIndex:", .{ m.atlas_texture, 0 });
             objc.call(fn (Id, Sel, usize, usize, usize, usize) callconv(.c) void, enc, "drawPrimitives:vertexStart:vertexCount:instanceCount:", .{ primitive_triangle_strip, 0, 4, n });
         }
         callVoid(enc, "endEncoding", .{});
+        if (drawable) |d| callVoid(cmd, "presentDrawable:", .{d});
         try commitAndWait(cmd);
     }
 
@@ -364,6 +378,27 @@ pub const Metal = struct {
         return .{ .ptr = m, .vtable = &vtable };
     }
 };
+
+fn makePipeline(device: Id, vfn: Id, ffn: Id, format: usize) !Id {
+    const desc = objc.new(objc.class("MTLRenderPipelineDescriptor").?);
+    defer objc.release(desc);
+    callVoid(desc, "setVertexFunction:", .{vfn});
+    callVoid(desc, "setFragmentFunction:", .{ffn});
+    const attachments = call(Id, desc, "colorAttachments", .{});
+    const color = objc.call(fn (Id, Sel, usize) callconv(.c) Id, attachments, "objectAtIndexedSubscript:", .{0});
+    callVoid(color, "setPixelFormat:", .{format});
+    callVoid(color, "setBlendingEnabled:", .{true});
+    // Premultiplied "source over", as in the Vulkan renderer.
+    callVoid(color, "setSourceRGBBlendFactor:", .{@as(usize, blend_one)});
+    callVoid(color, "setDestinationRGBBlendFactor:", .{@as(usize, blend_one_minus_src_alpha)});
+    callVoid(color, "setSourceAlphaBlendFactor:", .{@as(usize, blend_one)});
+    callVoid(color, "setDestinationAlphaBlendFactor:", .{@as(usize, blend_one_minus_src_alpha)});
+    var err: ?Id = null;
+    return objc.call(fn (Id, Sel, Id, *?Id) callconv(.c) ?Id, device, "newRenderPipelineStateWithDescriptor:error:", .{ desc, &err }) orelse {
+        if (err) |e| logError("Metal pipeline", e);
+        return error.MetalFailed;
+    };
+}
 
 fn call(comptime Ret: type, target: Id, selector: [*:0]const u8, args: anytype) Ret {
     const Args = @TypeOf(args);

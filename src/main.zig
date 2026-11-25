@@ -1,7 +1,8 @@
 //! The `ztk` program. `ztk [flags] script.tcl [arguments]` runs a script
 //! in a ztcl interpreter with the Tk commands of ztk. The program turns
 //! on no capability of ztcl, so a script has the sandbox of ztcl. It
-//! connects to Wayland, or uses the headless backend with `--headless`.
+//! connects to Wayland on Linux and uses AppKit on macOS, or uses the
+//! headless backend with `--headless`.
 //! After the script it runs the event loop until `.` is deleted, or
 //! until the number of frames of `--exit-after-frames` is drawn.
 //! SPDX-License-Identifier: BSD-2-Clause
@@ -170,6 +171,7 @@ pub fn main(init: std.process.Init) !void {
 
     var head: ?*ztk.headless.Headless = null;
     var wl: if (ztk.wayland_enabled) ?*ztk.wayland.Wayland else void = if (ztk.wayland_enabled) null else {};
+    var mac: if (ztk.appkit_enabled) ?*ztk.appkit.AppKit else void = if (ztk.appkit_enabled) null else {};
     var platform: ztk.platform.Platform = undefined;
     var direct_be: ?*ztk.direct.Direct = null;
     var win_be: if (ztk.windows_enabled) ?*ztk.windows.Win32 else void = if (ztk.windows_enabled) null else {};
@@ -190,6 +192,9 @@ pub fn main(init: std.process.Init) !void {
     } else if (headless) {
         head = try ztk.headless.Headless.init(init.gpa);
         platform = head.?.platform();
+    } else if (ztk.appkit_enabled) {
+        mac = ztk.appkit.AppKit.init(init.gpa) catch |e| fail(err, "ztk: cannot use AppKit: {s}\n", .{@errorName(e)});
+        platform = mac.?.platform();
     } else if (ztk.wayland_enabled) {
         if (init.environ_map.get("WAYLAND_DISPLAY") == null) {
             fail(err, "ztk: no Wayland display. Use --headless, or run in a Wayland session.\n", .{});
@@ -214,6 +219,9 @@ pub fn main(init: std.process.Init) !void {
     defer if (direct_be) |dbe| dbe.deinit();
     defer if (ztk.windows_enabled) {
         if (win_be) |b| b.deinit();
+    };
+    defer if (ztk.appkit_enabled) {
+        if (mac) |m| m.deinit();
     };
     defer if (ztk.wayland_enabled) {
         if (wl) |w| w.deinit();
