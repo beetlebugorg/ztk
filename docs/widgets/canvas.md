@@ -27,7 +27,7 @@ pack .c -fill both -expand 1
 
 ![A spreadsheet with a formula bar, number formats, and a grid of costs by quarter with totals and error cells](../site/shots/spreadsheet-light.png)
 
-[`examples/spreadsheet.tcl`](../../examples/spreadsheet.tcl) has 10 000 rows on one canvas. It makes items only for the cells in view. Formulas such as `=sum(B2:B7)` are Tcl expressions, with recalculation and cycle errors. A scroll frame uses 0.75 ms of CPU time at the median.
+[`examples/spreadsheet.tcl`](../../examples/spreadsheet.tcl) has 10,000 rows on one canvas. It makes items only for the cells in view. Formulas such as `=sum(B2:B7)` are Tcl expressions, with recalculation and cycle errors. A scroll frame uses 0.75 ms of CPU time at the median.
 
 ## Showcase: the vector tool
 
