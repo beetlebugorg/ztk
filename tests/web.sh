@@ -104,6 +104,19 @@ ok = len(c) == 4 and float(c[0]) > 0.3 and c[0:2] == c[2:4]
 print(("ok" if ok else "FAIL") + ": a DOM wheel event scrolls the entry and its scrollbar (%r)" % r.get("check"))
 sys.exit(0 if ok else 1)
 PY
+# The spinbox of the gallery: a DOM click on its up button steps the value.
+# The page gives the window its requested size, so the place is from that size.
+{ cat "$root/examples/gallery.tcl"; printf '\nupdate\nset s .cols.right.input.body.n\nputs "[expr {[winfo rootx $s] + [winfo width $s] - 8}],[expr {[winfo rooty $s] + 5}]"\nexit\n'; } > "$work/swhere.tcl"
+swhere="$(cd "$work" && "$root/zig-out/bin/ztk" --headless swhere.tcl 2>/dev/null)"
+out="$(page "example=gallery&light&size=860x680&click=$swhere&test=.cols.right.input.body.n%20get")"
+echo "$out" > "$work/spin.json"
+python3 -I - "$work/spin.json" <<'PY' || fail=1
+import json, sys
+r = json.load(open(sys.argv[1]))
+ok = r.get("check") == "2"
+print(("ok" if ok else "FAIL") + ": a DOM click on the up button of the spinbox steps it (%r)" % r.get("check"))
+sys.exit(0 if ok else 1)
+PY
 # The canvas of the gallery: a DOM drag moves the rectangle by its item bindings.
 { cat "$root/examples/gallery.tcl"; printf '\nwm geometry . 860x680\nupdate\nset c .cols.left.canvas.body.c\nputs "[expr {[winfo rootx $c] + 40}],[expr {[winfo rooty $c] + 30}],[expr {[winfo rootx $c] + 80}],[expr {[winfo rooty $c] + 50}]"\nexit\n'; } > "$work/cwhere.tcl"
 cwhere="$(cd "$work" && "$root/zig-out/bin/ztk" --headless cwhere.tcl 2>/dev/null)"

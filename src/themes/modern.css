@@ -108,7 +108,7 @@ Button.primary:active {
   border-color: var(--accent-hover);
 }
 
-Entry {
+Entry, Spinbox {
   color: var(--fg);
   background-color: var(--field-bg);
   border: 1px solid var(--border);
@@ -118,19 +118,80 @@ Entry {
   cursor: text;
 }
 
-Entry:focus {
+Entry:focus, Spinbox:focus {
   border-color: var(--accent);
   outline: 2px solid var(--focus-ring);
   outline-offset: 0px;
 }
 
-Entry:disabled {
+Entry:disabled, Spinbox:disabled {
   color: var(--muted);
 }
 
-Entry::selection {
+Entry::selection, Spinbox::selection {
   background-color: var(--accent);
   color: var(--accent-fg);
+}
+
+/* The placeholder fades in while the field is empty and out when the
+   first character comes. */
+Entry::placeholder, Spinbox::placeholder {
+  color: var(--muted);
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+
+Entry:placeholder-shown::placeholder, Spinbox:placeholder-shown::placeholder {
+  opacity: 1;
+}
+
+/* The search style: a round field with a lens and a clear button. */
+Entry.search {
+  border-radius: 999px;
+  padding: 5px 6px;
+}
+
+Entry.search::icon {
+  color: var(--muted);
+}
+
+Entry.search::clear {
+  color: var(--muted);
+  background-color: transparent;
+  border-radius: 50%;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+Entry.search:hover::clear {
+  color: var(--fg);
+  background-color: var(--track);
+}
+
+/* The buttons of a spinbox: a column at the right edge. The style of a
+   button has :hover and :active from that button alone. */
+Spinbox {
+  padding-right: 2px;
+}
+
+Spinbox::buttonup, Spinbox::buttondown {
+  color: var(--muted);
+  background-color: transparent;
+  border-radius: 4px;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+Spinbox:hover::buttonup, Spinbox:hover::buttondown {
+  color: var(--fg);
+  background-color: var(--track);
+}
+
+Spinbox:active::buttonup, Spinbox:active::buttondown {
+  color: var(--accent-fg);
+  background-color: var(--accent);
+}
+
+Spinbox:disabled::buttonup, Spinbox:disabled::buttondown {
+  opacity: 0.4;
 }
 
 Checkbutton, Radiobutton {

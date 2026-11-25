@@ -48,7 +48,9 @@ pub const State = packed struct(u16) {
     background: bool = false,
     /// A scroll moved the view a moment ago (`:scrolling`).
     scrolling: bool = false,
-    _pad: u6 = 0,
+    /// An entry shows its placeholder text (`:placeholder-shown`).
+    placeholder: bool = false,
+    _pad: u5 = 0,
 };
 
 pub const Dirty = packed struct(u8) {
