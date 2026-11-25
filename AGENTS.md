@@ -5,9 +5,9 @@ ztk is an experimental Tk replacement in Zig, on the ztcl interpreter. The repos
 Read these pages before you work:
 
 1. [WRITING.md](WRITING.md), before you write code comments, commits, or PRs.
-2. [docs/plan.md](docs/plan.md), the design and the decisions.
-3. [docs/tasks/README.md](docs/tasks/README.md), the rules for a task, and then the file of your task.
-4. [docs/review.md](docs/review.md), the checklist that the reviewer uses on your work.
+2. [docs/dev/plan.md](docs/dev/plan.md), the design and the decisions.
+3. [docs/dev/tasks/README.md](docs/dev/tasks/README.md), the rules for a task, and then the file of your task.
+4. [docs/dev/review.md](docs/dev/review.md), the checklist that the reviewer uses on your work.
 
 ## Commands
 
@@ -29,7 +29,7 @@ systemd-run --user --scope -q -p MemoryMax=4G -p MemorySwapMax=0 -- <command>
 | `zig build run -- file.tcl` | Runs a script. |
 | `tools/oracle.sh script.tcl args` | Runs a script in `wish` and in `ztk --headless`, and prints the difference. |
 | `tools/oracle.sh tools/oracle-pack.tcl seed count` | Compares random `pack` layouts with `wish`. `oracle-place.tcl` does the same for `place`. |
-| `zig-out/bin/ztk [flags] script.tcl` | Runs a script. See `ztk --version` and the flags in `docs/tasks/17-wayland.md`. |
+| `zig-out/bin/ztk [flags] script.tcl` | Runs a script. See `ztk --version` and the flags in `docs/dev/tasks/17-wayland.md`. |
 | `tests/wayland-smoke.sh` | Runs `ztk` on a private headless compositor. |
 | `tools/shots.sh [folder]` | Draws the screenshots of the examples into `docs/site/shots`, in light and dark at scale 2. |
 | `zig build wasm` | Builds the browser files into `zig-out/web`: `ztk.wasm`, `ztk.js`, the playground `index.html`, and the examples. |

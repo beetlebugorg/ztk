@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ztk · Tk, rebuilt in Zig</title>
-<meta name="description" content="A Tk replacement in Zig, on the ztcl interpreter, with a GPU renderer and stylesheets in a subset of CSS. Stage 1 is a working demo on Linux.">
+<meta name="description" content="Tk, rebuilt in Zig: Tk scripts with a modern look from CSS, themed ttk widgets, fluid animation, and live demos in the browser with WebGPU.">
 <link rel="canonical" href="https://beetlebug.org/ztk/">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="assets/site.css">
@@ -21,6 +21,7 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
   <a class="logo" href="./"><span class="glyph" aria-hidden="true">tk</span>ztk</a>
   <nav class="toplinks" aria-label="Site">
     <a href="overview/">Docs</a>
+    <a href="play/index.html">Playground</a>
     <a class="sib" href="https://beetlebug.org/ztcl/">ztcl</a>
     <a href="https://github.com/beetlebugorg/ztk">GitHub</a>
   </nav>
@@ -30,14 +31,14 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
 <section class="hero">
   <div class="wrap">
     <div>
-      <span class="pill"><b>Stage 1</b> Experimental · BSD-2-Clause</span>
+      <span class="pill"><b>Experimental</b> BSD-2-Clause · Zig 0.16</span>
       <h1>Tk, rebuilt in <em>Zig</em>.</h1>
-      <p class="sub">ztk runs Tk scripts on the ztcl interpreter, with a GPU renderer and stylesheets in a subset of CSS. Stage 1 is a working demo on Linux.</p>
+      <p class="sub">ztk runs your Tk scripts with a modern look from CSS, themed <code>ttk</code> widgets, and fluid animation. The same scripts run live in the browser with WebGPU. Scroll down: every window on this page is running.</p>
       <div class="actions">
-        <a class="btn primary" href="overview/#status">Get started</a>
-        <a class="btn ghost" href="https://github.com/beetlebugorg/ztk">GitHub</a>
+        <a class="btn primary" href="play/index.html">Open the playground</a>
+        <a class="btn ghost" href="quickstart/">Get started</a>
       </div>
-      <p class="meta">The goal: a script that runs in <code>wish</code> 8.6 runs in ztk with no change. The test files of Tk 8.6.16 measure it.</p>
+      <p class="meta">Tk compatible: each example on this page also runs in <code>wish</code> 8.6. No third-party library, on the <a href="https://beetlebug.org/ztcl/">ztcl</a> interpreter.</p>
     </div>
     <div class="codecard" aria-label="A code sample">
       <div class="bar"><i></i><i></i><i></i><span>demo.tcl</span></div>
@@ -64,17 +65,61 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
 <section class="stats" aria-label="Key numbers">
   <div class="wrap">
     <div class="stat"><b>0.85 ms</b><span>CPU time of a frame with 1 000 widgets, 99th percentile</span></div>
+    <div class="stat"><b>1.52 ms</b><span>CPU time of a scroll frame of a canvas with 10 000 items, 99th percentile</span></div>
     <div class="stat"><b>1.6 ms</b><span>from start to the first frame, headless</span></div>
-    <div class="stat"><b>11.2 MB</b><span>private memory of the demo on Wayland</span></div>
-    <div class="stat"><b>434</b><span>unit tests pass in Debug and in ReleaseFast</span></div>
+    <div class="stat"><b>1.0 MB</b><span>the WebAssembly build with gzip, with the fonts</span></div>
   </div>
 </section>
 
-<section class="section" id="screenshots">
+<section class="section" id="themes">
+  <div class="wrap">
+    <p class="eyebrow">Themed widgets</p>
+    <h2>ttk widgets, modern or classic.</h2>
+    <p class="lede">The same script in two themes. <code>ttk::button</code>, <code>ttk::checkbutton</code> with the switch style, <code>ttk::radiobutton</code>, <code>ttk::entry</code>, <code>ttk::labelframe</code>, <code>ttk::separator</code>, and <code>ttk::sizegrip</code> keep the options and the messages of <code>wish</code>. <code>ttk::style</code> restyles them, and each setting becomes a CSS rule.</p>
+    <div class="shots">
+      <figure class="shot" data-example="themes">
+        <a class="frame" href="https://github.com/beetlebugorg/ztk/blob/main/examples/themes.tcl">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="assets/shots/themes-dark.png">
+            <img src="assets/shots/themes-light.png" width="322" height="304" alt="The ttk widgets in the modern theme: a blue Apply button, Cancel, a disabled button, a check box, a switch, three radio buttons, a separator, two entries, and a size grip." loading="lazy">
+          </picture>
+        </a>
+        <figcaption><a href="https://github.com/beetlebugorg/ztk/blob/main/examples/themes.tcl"><code>examples/themes.tcl</code></a><b>Modern</b>Round corners, an accent color, a light and a dark scheme, and transitions on each state.</figcaption>
+      </figure>
+      <figure class="shot" data-example="themes-classic">
+        <a class="frame" href="https://github.com/beetlebugorg/ztk/blob/main/examples/themes-classic.tcl">
+          <img src="assets/shots/themes-classic-light.png" width="304" height="267" alt="The same ttk widgets in the classic theme, with the gray and the square reliefs of Tk on X11." loading="lazy">
+        </a>
+        <figcaption><a href="https://github.com/beetlebugorg/ztk/blob/main/examples/themes-classic.tcl"><code>examples/themes-classic.tcl</code></a><b>Classic</b>The reliefs and the gray of Tk on X11. One line selects it: <code>ztk::style theme classic</code>.</figcaption>
+      </figure>
+      <div class="codecard">
+        <div class="bar"><i></i><i></i><i></i><span>Accent.TButton</span></div>
+<pre><code><span class="k">ttk::style</span> configure Accent.TButton \
+    -foreground white \
+    -background <span class="n">#2563eb</span>
+<span class="k">ttk::style</span> map Accent.TButton \
+    -background {active <span class="n">#1d4ed8</span>}
+<span class="k">ttk::button</span> .ok -text <span class="s">"Apply"</span> \
+    -style Accent.TButton</code></pre>
+<pre><code><span class="c">/* the same rules in CSS */</span>
+<span class="k">TButton.Accent</span> {
+  <span class="v">color</span>: white;
+  <span class="v">background-color</span>: <span class="n">#2563eb</span>;
+}
+<span class="k">TButton.Accent:hover</span> {
+  <span class="v">background-color</span>: <span class="n">#1d4ed8</span>;
+}</code></pre>
+      </div>
+    </div>
+    <p class="muted small" style="margin-top:20px"><a href="widgets/ttk/">Themed widgets</a> documents each <code>ttk</code> widget, and <a href="styling/#ttkstyle">Styling and themes</a> has <code>ttk::style</code>.</p>
+  </div>
+</section>
+
+<section class="section alt" id="screenshots">
   <div class="wrap">
     <p class="eyebrow">What it draws</p>
     <h2>Tk scripts, drawn by ztk.</h2>
-    <p class="lede">Each image is one frame of an example script, drawn by the CPU renderer on the headless backend at scale 2. When a card scrolls into view, the same script runs live in its place: ztk in WebAssembly, drawn with WebGPU where the browser has it and WebGL 2 elsewhere. Click, type, and toggle in it. The images follow the color scheme of your system. Each script also runs in <code>wish</code> 8.6.</p>
+    <p class="lede">When a card scrolls into view, its script runs live in its place: ztk in WebAssembly, drawn with WebGPU where the browser has it and WebGL 2 elsewhere. Click, type, drag, and toggle in it. Each script also runs in <code>wish</code> 8.6, and the cards follow the color scheme of your system.</p>
     <div class="shots">
       <figure class="shot full" data-example="spreadsheet">
         <a class="frame" href="https://github.com/beetlebugorg/ztk/blob/main/examples/spreadsheet.tcl">
@@ -155,32 +200,30 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
 
 <section class="section" id="performance">
   <div class="wrap">
-    <p class="eyebrow">Performance</p>
-    <h2>Each target of the plan has a number.</h2>
-    <p class="lede">The plan sets a budget for frame time, start time, memory, and size. The Stage 1 report measures each one, and it also lists the targets that Stage 1 missed.</p>
+    <p class="eyebrow">Fluid</p>
+    <h2>Smooth frames, even with a busy script.</h2>
+    <p class="lede">The script makes a scene of quads, and a render thread draws it. The render thread also moves transitions, switches, sliders, and scrollbars by its own clock, so they keep moving while your script works.</p>
     <div class="split">
       <figure class="chart">
-        <h3>Measured against the budget</h3>
-        <p class="how">The dashed line is the target of the plan. A bar to the left of the line meets it. Each row has its own unit. Measured on 2026-11-23, on an Intel Core i7-6700K. The timings use <code>ReleaseFast</code>. The size uses a static <code>ReleaseSmall</code> build.</p>
+        <h3>CPU time of one frame, 99th percentile</h3>
+        <p class="how">Milliseconds, <code>zig build bench</code>, <code>ReleaseFast</code>, on an Intel Core i7-6700K with other load, 2026-11-23 to 2026-11-25. The dashed line is the budget of 8 ms. A shorter bar is faster.</p>
         <dl class="bars">
-          <dt>Frame CPU time, 1 000 widgets, p99</dt><dd><span class="track budget"><span class="fill" style="width:10.6%" title="0.85 ms, target 4 ms"></span></span><span class="val">0.85 <small>/ 4 ms</small></span></dd>
-          <dt>First frame, headless</dt><dd><span class="track budget"><span class="fill" style="width:2.7%" title="1.6 ms, target 30 ms"></span></span><span class="val">1.6 <small>/ 30 ms</small></span></dd>
-          <dt>First frame, Wayland</dt><dd><span class="track budget"><span class="fill" style="width:1.5%" title="3.0 ms, target 100 ms"></span></span><span class="val">3.0 <small>/ 100 ms</small></span></dd>
-          <dt>Private memory of the demo</dt><dd><span class="track budget"><span class="fill" style="width:23.3%" title="11.2 MB, target 24 MB"></span></span><span class="val">11.2 <small>/ 24 MB</small></span></dd>
-          <dt>GPU submit, 10 000 quads, NVIDIA</dt><dd><span class="track budget"><span class="fill" style="width:45%" title="1.8 ms, target 2 ms"></span></span><span class="val">1.8 <small>/ 2 ms</small></span></dd>
-          <dt>GPU submit, 10 000 quads, Intel</dt><dd><span class="track budget"><span class="fill over" style="width:100%" title="26.7 ms, target 2 ms: not met"></span></span><span class="val">26.7 <small>/ 2 ms</small></span></dd>
-          <dt>Program size, without fonts</dt><dd><span class="track budget"><span class="fill over" style="width:95%" title="about 5.7 MB, target 3 MB: not met"></span></span><span class="val">5.7 <small>/ 3 MB</small></span></dd>
+          <dt>Hover, 1 000 widgets</dt><dd><span class="track budget"><span class="fill" style="width:10.6%" title="0.85 ms"></span></span><span class="val">0.85 <small>ms</small></span></dd>
+          <dt>ttk hover, 1 000 widgets</dt><dd><span class="track budget"><span class="fill" style="width:13%" title="1.04 ms"></span></span><span class="val">1.04 <small>ms</small></span></dd>
+          <dt>Transition, 1 000 widgets</dt><dd><span class="track budget"><span class="fill" style="width:17%" title="1.36 ms"></span></span><span class="val">1.36 <small>ms</small></span></dd>
+          <dt>Canvas scroll, 10 000 items</dt><dd><span class="track budget"><span class="fill" style="width:19%" title="1.52 ms"></span></span><span class="val">1.52 <small>ms</small></span></dd>
+          <dt>Vector pan, 10 000 shapes</dt><dd><span class="track budget"><span class="fill" style="width:48.3%" title="3.86 ms"></span></span><span class="val">3.86 <small>ms</small></span></dd>
+          <dt>Spreadsheet scroll, 10 000 rows</dt><dd><span class="track budget"><span class="fill" style="width:65%" title="5.20 ms"></span></span><span class="val">5.20 <small>ms</small></span></dd>
         </dl>
-        <p class="note">An amber bar misses the target. A bar at the right edge is two or more times the target. The size is about 5.7 MB, 6.5 MB with the fonts.</p>
       </figure>
       <div>
         <h3>No frames when idle</h3>
-        <p class="muted">A window with no change draws no frame and wakes no thread. The tests counted 0 frames in 5 000 ms of the manual clock.</p>
-        <h3 style="margin-top:28px">A render thread</h3>
-        <p class="muted">The UI thread runs the script and makes a scene: a plain list of quads. The render thread draws the scene. The UI thread does not wait for it, except in <code>update</code>.</p>
-        <h3 style="margin-top:28px">Small changes write few rows</h3>
-        <p class="muted">On the framebuffer, the CPU renderer writes only the rows that changed. A test checks that a small change writes less than 10 % of the rows.</p>
-        <p class="muted small" style="margin-top:20px">The frame rate on a real display is not measured yet. <a href="https://github.com/beetlebugorg/ztk/blob/main/docs/stage1-report.md">The Stage 1 report</a> has each command and each result.</p>
+        <p class="muted">A window with no change draws no frame and wakes no thread.</p>
+        <h3 style="margin-top:28px">Fast to start</h3>
+        <p class="muted">1.6 ms from start to the first frame on the headless backend, and 3.0 ms on Wayland. The demo uses 11.2 MB of private memory.</p>
+        <h3 style="margin-top:28px">Animation in the API</h3>
+        <p class="muted">CSS transitions, <code>@keyframes</code>, springs, and <code>ztk::animate</code> for widget options and canvas items. Reduced motion shows each end state at once.</p>
+        <p style="margin-top:24px"><a class="btn ghost" href="performance/">All the numbers</a></p>
       </div>
     </div>
   </div>
@@ -194,10 +237,10 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
     <div class="grid g3">
       <div class="card"><span class="tag">Works</span><h3>CPU renderer</h3><p class="muted">The reference renderer. It draws the demo into a Wayland shared memory buffer and into a framebuffer.</p></div>
       <div class="card"><span class="tag">Works offscreen</span><h3>Vulkan on Linux</h3><p class="muted">The Vulkan renderer matches the CPU renderer on two GPUs, within 2 levels. The swapchain on a window is not written yet.</p></div>
-      <div class="card"><span class="tag plan">Planned · Stage 3</span><h3>Metal on macOS</h3><p class="muted">With AppKit, Metal, and Core Text from the system.</p></div>
-      <div class="card"><span class="tag plan">Planned · Stage 3</span><h3>Direct3D 12 on Windows</h3><p class="muted">With <code>user32</code>, <code>d3d12</code>, <code>dxgi</code>, and <code>dwrite</code> from the system.</p></div>
+      <div class="card"><span class="tag plan">Planned</span><h3>Metal on macOS</h3><p class="muted">With AppKit, Metal, and Core Text from the system.</p></div>
+      <div class="card"><span class="tag plan">Planned</span><h3>Direct3D 12 on Windows</h3><p class="muted">With <code>user32</code>, <code>d3d12</code>, <code>dxgi</code>, and <code>dwrite</code> from the system.</p></div>
       <div class="card"><span class="tag">Works</span><h3>WebGPU and WebGL 2 on the web</h3><p class="muted">WebGPU with WGSL shaders where the browser gives an adapter, else WebGL 2, else the CPU renderer into a 2D canvas. No library is in the WebAssembly file.</p></div>
-      <div class="card"><span class="tag plan">Planned · Stage 2</span><h3>X11 on Linux</h3><p class="muted">With <code>libxcb</code> and Vulkan.</p></div>
+      <div class="card"><span class="tag plan">Planned</span><h3>X11 on Linux</h3><p class="muted">With <code>libxcb</code> and Vulkan.</p></div>
     </div>
   </div>
 </section>
@@ -208,11 +251,12 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
       <div>
         <p class="eyebrow">Modern features</p>
         <h2>Style Tk widgets with CSS.</h2>
-        <p class="lede" style="margin-bottom:24px">A stylesheet in a subset of CSS gives the default look. Your stylesheet changes it, with selectors, states, variables, and transitions.</p>
+        <p class="lede" style="margin-bottom:24px">A stylesheet in a subset of CSS gives the default look. <a href="styling/">Styling and themes</a> has the details. Your stylesheet changes it, with selectors, states, variables, and transitions.</p>
         <ul class="checks">
           <li><b>A modern theme</b> from a stylesheet, with a dark scheme.</li>
           <li><b>A font engine with no library.</b> It reads TrueType outlines and the kerning of the GPOS table.</li>
-          <li><b>A classic theme</b> with the sizes and colors of Tk is planned.</li>
+          <li><b>A classic theme</b> with the sizes and the colors of Tk on X11.</li>
+          <li><b>Transitions and keyframes</b> on each state, with springs.</li>
         </ul>
       </div>
       <div class="codecard">
@@ -261,44 +305,9 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
 
 <section class="section" id="status">
   <div class="wrap">
-    <p class="eyebrow">Status</p>
-    <h2>Stage 1 of nine: a demo-sized toolkit.</h2>
-    <p class="lede">ztk is not a drop-in Tk yet. The plan, the commands, and the behavior can change at any time. The plan estimates two and a quarter to three and a half years of work for one engineer.</p>
-    <ul class="status">
-      <li><span class="st ok">Works</span><span><code>frame</code>, <code>label</code>, <code>button</code>, <code>entry</code>, <code>grid</code>, <code>bind</code>, <code>event generate</code>, <code>focus</code>, and <code>wm</code> and <code>winfo</code> for <code>.</code></span></li>
-      <li><span class="st ok">Works</span><span><code>examples/demo.tcl</code> runs in ztk and in <code>wish</code> 8.6.16.</span></li>
-      <li><span class="st wip">Partial</span><span>The <code>grid</code> solver: 11 of 600 random layouts differ from <code>wish</code> 8.6.16. Two rules of the solver are not found yet.</span></li>
-      <li><span class="st no">Not yet</span><span>The Vulkan swapchain on a window and on a display, and the other widgets and commands of Tk.</span></li>
-      <li><span class="st no">Not tried</span><span>A window on a live desktop, and the direct backend on a real device. The tests run on Linux only.</span></li>
-      <li><span class="st wip">Review</span><span>Four independent reviews said "do not merge" or "not yet". The fixes for the fourth review are in the code, and no review has checked them yet.</span></li>
-      <li><span class="st plan">Note</span><span>The code and the docs are written largely with AI coding agents, under human direction. Review the work before you depend on it.</span></li>
-    </ul>
-
-    <div class="split" style="margin-top:56px">
-      <div>
-        <h3>The size of the job</h3>
-        <p class="muted">Measured on Tk 8.6.16, 2026-11-23. <a href="tk-size/">The size of Tk</a> has the commands.</p>
-        <div class="prose" style="padding:0">
-          <div class="table"><table>
-            <tr><th>What</th><th>Count</th></tr>
-            <tr><td>Manual pages for script commands</td><td>87</td></tr>
-            <tr><td>Widget classes, classic and <code>ttk</code></td><td>18 and 18</td></tr>
-            <tr><td>Test files</td><td>109</td></tr>
-            <tr><td>Tests that a real <code>wish</code> counted</td><td>10 221</td></tr>
-            <tr><td>Source lines of Tk</td><td>322 187</td></tr>
-          </table></div>
-        </div>
-      </div>
-      <div>
-        <h3>Planned</h3>
-        <ul class="status" style="margin-top:16px">
-          <li><span class="st plan">Stage 2</span><span>X11, <code>pack</code> and <code>place</code>, <code>grab</code>, and the fonts of the system.</span></li>
-          <li><span class="st plan">Stage 3</span><span>macOS with Metal and Windows with Direct3D 12.</span></li>
-          <li><span class="st plan">Stage 4</span><span>CFF outlines, variable fonts, color glyphs, ligatures, and marks.</span></li>
-          <li><span class="st plan">Later</span><span>The canvas, drag and drop, accessibility, and the commands of Tk 9.</span></li>
-        </ul>
-        <p class="muted small" style="margin-top:16px"><a href="plan/">The plan</a> has the stages and the decisions.</p>
-      </div>
+    <div class="callout">
+      <p class="eyebrow">Status</p>
+      <p><b>Experimental.</b> ztk is not yet a drop-in Tk: <code>listbox</code>, <code>text</code>, <code>menu</code>, and more widgets are still to come, and macOS and Windows have only the headless backend. The code and the docs were written largely with AI coding agents, under human direction, so review the code before you depend on it. <a href="differences/">Differences from Tk</a> lists the gaps, and the <a href="https://github.com/beetlebugorg/ztk/blob/main/docs/dev/plan.md#11-stages">plan</a> has the roadmap.</p>
     </div>
   </div>
 </section>
@@ -309,7 +318,7 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
       <div>
         <p class="eyebrow" style="color:var(--sib)">The interpreter under ztk</p>
         <h3>ztcl: fast, sandboxed Tcl in Zig</h3>
-        <p>A Tcl 8.6 interpreter with a bytecode VM, exact step and memory limits, and an optional JIT. 37 383 tests of the Tcl suite pass.</p>
+        <p>A Tcl 8.6 interpreter with a bytecode VM, exact step and memory limits, real threads, and an optional JIT up to 28 times as fast as tclsh.</p>
       </div>
       <a class="btn sib-btn" href="https://beetlebug.org/ztcl/">Visit ztcl</a>
     </div>
@@ -321,7 +330,8 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
   <span>ztk · BSD-2-Clause</span>
   <span class="right">
     <a href="overview/">Docs</a>
-    <a href="plan/">Plan</a>
+    <a href="play/index.html">Playground</a>
+    <a href="widgets/">Widgets</a>
     <a href="changelog/">Changelog</a>
     <a href="https://beetlebug.org/ztcl/">ztcl</a>
     <a href="https://github.com/beetlebugorg/ztk">GitHub</a>

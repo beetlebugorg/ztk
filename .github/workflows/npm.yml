@@ -2,7 +2,7 @@ name: npm
 
 # Builds and tests the npm package. On a pull request and on main, the
 # job ends with `npm publish --dry-run`. On a version tag, it publishes
-# the package to npmjs.com. See docs/npm.md.
+# the package to npmjs.com. See docs/dev/npm.md.
 #
 # The publish uses npm trusted publishing: GitHub Actions gives npm an
 # OIDC token (id-token: write), and npm adds a provenance statement.

@@ -12,7 +12,7 @@ The planner read these parts on 2026-11-23: the framebuffer package, the drawing
 
 | # | Lesson of Printdeck | Fact | Where ztk uses it |
 |---|---|---|---|
-| 1 | A UI can draw directly to the framebuffer, with `evdev` for input. The code is small. | The framebuffer package has 143 lines and the `evdev` reader has 119 lines. | The direct backend: [task 20](../tasks/20-direct.md), and decision D21 of the plan. ztk adds a GPU output with Vulkan on the display. |
+| 1 | A UI can draw directly to the framebuffer, with `evdev` for input. The code is small. | The framebuffer package has 143 lines and the `evdev` reader has 119 lines. | The direct backend: [task 20](../dev/tasks/20-direct.md), and decision D21 of the plan. ztk adds a GPU output with Vulkan on the display. |
 | 2 | Write only the rows that changed to the display. Framebuffer memory is slow to write, and most frames change few rows. | With music playing, the deck used 22 % of one core of a Raspberry Pi 5. After a cache for a scaled image and the changed-rows rule, it used 3.5 %. | `changedRows` in task 06, the `--cpu` path of task 17, task 20 |
 | 3 | Cache a scaled image. Do not scale it again in each frame. | Part of the same measurement. | Images, Stage 2 |
 | 4 | Convert to the panel format and turn the frame in the present step. The drawing code sees one upright RGBA canvas. | The panel formats are 16 bits (RGB565) and 32 bits. The rotations are 0, 90, 180, and 270 degrees. | Task 20 |

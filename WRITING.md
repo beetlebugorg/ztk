@@ -32,7 +32,7 @@ Use one name for one thing. The plan uses these names:
 | scene | The list of quads that one frame draws. |
 | backend | The code for one platform: its windows, its input, and its GPU API. |
 | the implementer | The agent or person that writes the code of a task. |
-| the reviewer | The agent or person that checks the work with `docs/review.md`. |
+| the reviewer | The agent or person that checks the work with `docs/dev/review.md`. |
 
 Do not name an AI model or an AI vendor in the repository.
 

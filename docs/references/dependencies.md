@@ -1,6 +1,6 @@
 # Dependencies
 
-The rule of the plan: ztk needs only the interfaces of the platform, ztcl, and the Zig standard library. Section 6 of [the plan](../plan.md) has the table for each platform. The license names of the system libraries are from the package data of the development machine on 2026-11-23. A task that first links a library checks the license file and adds its text to `licenses/`.
+The rule of the plan: ztk needs only the interfaces of the platform, ztcl, and the Zig standard library. Section 6 of [the plan](../dev/plan.md) has the table for each platform. The license names of the system libraries are from the package data of the development machine on 2026-11-23. A task that first links a library checks the license file and adds its text to `licenses/`.
 
 ## Linked into ztk
 

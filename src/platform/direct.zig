@@ -7,7 +7,7 @@
 //! timer. With no request, no timer runs. One window exists. It has the
 //! display size after the rotation, divided by the scale. The Vulkan
 //! output on a display (`VK_KHR_display`) is not part of this file: see
-//! docs/tasks/BLOCKED.md.
+//! docs/dev/tasks/BLOCKED.md.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");

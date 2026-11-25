@@ -9,7 +9,7 @@
 //! only the rows that changed as damage, and a draw with no changed row
 //! commits no buffer. Key repeat runs inside the backend: `wait` and
 //! `poll` use the time of the next repeat. The Vulkan swapchain is not
-//! part of this file (see docs/tasks/BLOCKED.md).
+//! part of this file (see docs/dev/tasks/BLOCKED.md).
 //!
 //! The pointer has its own event queue and an input thread that reads
 //! it, so the pointer positions reach the render thread while the UI
