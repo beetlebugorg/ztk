@@ -16,6 +16,11 @@
 const std = @import("std");
 const scene = @import("../scene.zig");
 const Frame = scene.Frame;
+const host = @import("../sys/host.zig");
+
+/// The time between two frames that the render thread draws by itself
+/// while a transition runs: 120 frames in each second.
+const anim_step_us: i64 = 8333;
 
 pub const Mode = enum { threaded, inline_draw };
 
@@ -34,6 +39,8 @@ pub const RenderThread = struct {
     free: [3]?*Frame = .{ null, null, null },
     waiting: ?*Frame = null,
     drawing: ?*Frame = null,
+    /// The frame that the render thread draws again while its transitions run.
+    held: ?*Frame = null,
     /// The frame that was drawn last. Valid to read after `flush`.
     last: ?*Frame = null,
     serial: u64 = 0,
@@ -99,6 +106,8 @@ pub const RenderThread = struct {
             const f = r.back_frame;
             r.serial += 1;
             f.serial = r.serial;
+            f.wall_us = host.nowUs();
+            _ = scene.applyAnims(f, f.time_us);
             r.draw(f);
             r.last = f;
             return;
@@ -108,6 +117,7 @@ pub const RenderThread = struct {
         const f = r.back_frame;
         r.serial += 1;
         f.serial = r.serial;
+        f.wall_us = host.nowUs();
         while (r.waiting) |old| {
             // The patches of the replaced frame come first.
             if (f.patches.insertSlice(r.gpa, 0, old.patches.items)) |_| {
@@ -151,18 +161,47 @@ pub const RenderThread = struct {
     fn run(r: *RenderThread) void {
         while (true) {
             r.mutex.lockUncancelable(r.io);
-            while (r.waiting == null and !r.quit) r.cond.waitUncancelable(r.io, &r.mutex);
-            if (r.waiting == null and r.quit) {
+            while (r.waiting == null and !r.quit and r.held == null) r.cond.waitUncancelable(r.io, &r.mutex);
+            if (r.quit) {
+                if (r.held) |h| r.pushFree(h);
+                r.held = null;
+                if (r.waiting == null) {
+                    r.mutex.unlock(r.io);
+                    return;
+                }
+            }
+            if (r.waiting == null) {
+                // A transition runs and no new frame came: draw the held frame again
+                // for the time that passed, so a busy UI thread does not stop it.
+                // `flush` does not wait for this draw: it waits only for submitted frames.
+                const h = r.held.?;
                 r.mutex.unlock(r.io);
-                return;
+                host.sleepUs(anim_step_us);
+                const running = scene.applyAnims(h, h.time_us + (host.nowUs() - h.wall_us));
+                r.draw(h);
+                r.mutex.lockUncancelable(r.io);
+                r.last = h;
+                if (!running) {
+                    r.held = null;
+                    r.pushFree(h);
+                }
+                r.cond.broadcast(r.io);
+                r.mutex.unlock(r.io);
+                continue;
             }
             const f = r.waiting.?;
             r.waiting = null;
+            // A new frame replaces the held one.
+            if (r.held) |h| {
+                r.pushFree(h);
+                r.held = null;
+            }
             r.drawing = f;
             // A `submit` can wait for the old frame to leave the slot.
             r.cond.broadcast(r.io);
             r.mutex.unlock(r.io);
 
+            const running = scene.applyAnims(f, f.time_us + (host.nowUs() - f.wall_us));
             r.draw(f);
 
             r.mutex.lockUncancelable(r.io);
@@ -171,7 +210,11 @@ pub const RenderThread = struct {
             // Keep the frame that was drawn last out of the free list until the next draw ends.
             r.cond.broadcast(r.io);
             r.mutex.unlock(r.io);
-            r.recycleLater(f);
+            if (running) {
+                r.mutex.lockUncancelable(r.io);
+                r.held = f;
+                r.mutex.unlock(r.io);
+            } else r.recycleLater(f);
         }
     }
 

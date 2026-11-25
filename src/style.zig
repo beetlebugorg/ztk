@@ -29,7 +29,72 @@ const Token = @import("css/token.zig").Token;
 
 pub const Origin = enum(u8) { base, theme, platform, option_db, ttk, app, widget };
 
-pub const Transition = struct { duration_ms: u32 = 0, linear: bool = false };
+const easing = @import("easing.zig");
+
+/// The properties that a transition or an animation moves.
+pub const AnimProp = enum(u4) { color, background, border_color, outline_color, caret_color, opacity, radius, shadow, outline, padding, min_size };
+pub const n_anim_props = @typeInfo(AnimProp).@"enum".fields.len;
+
+/// The timing of one property.
+pub const TransSpec = struct {
+    duration_ms: u32 = 0,
+    delay_ms: u32 = 0,
+    timing: easing.Timing = easing.Timing.ease,
+
+    /// The length from the start to the end, with the delay. A spring has its own duration.
+    pub fn totalUs(t: TransSpec) i64 {
+        const d: i64 = switch (t.timing) {
+            .spring => |p| @intFromFloat(easing.springDuration(p) * 1_000_000),
+            else => @as(i64, t.duration_ms) * 1000,
+        };
+        return @as(i64, t.delay_ms) * 1000 + d;
+    }
+
+    /// The eased progress at `us` after the start.
+    pub fn progress(t: TransSpec, us: i64) f32 {
+        const after = us - @as(i64, t.delay_ms) * 1000;
+        if (after <= 0) return t.timing.eval(0);
+        const len = t.totalUs() - @as(i64, t.delay_ms) * 1000;
+        if (len <= 0 or after >= len) return 1;
+        return t.timing.eval(@as(f32, @floatFromInt(after)) / @as(f32, @floatFromInt(len)));
+    }
+
+    pub fn active(t: TransSpec) bool {
+        return t.duration_ms > 0 or t.timing == .spring;
+    }
+};
+
+/// The `transition` of a style: one timing for each property.
+pub const Transition = struct {
+    props: [n_anim_props]TransSpec = [_]TransSpec{.{}} ** n_anim_props,
+
+    pub fn any(t: *const Transition) bool {
+        for (t.props) |p| if (p.active()) return true;
+        return false;
+    }
+
+    /// The longest total time of the properties.
+    pub fn totalUs(t: *const Transition) i64 {
+        var m: i64 = 0;
+        for (t.props) |p| if (p.active()) {
+            m = @max(m, p.totalUs());
+        };
+        return m;
+    }
+};
+
+pub const Direction = enum { normal, reverse, alternate, alternate_reverse };
+pub const Fill = enum { none, forwards, backwards, both };
+
+/// The `animation` of a style. An empty name is no animation.
+pub const AnimationSpec = struct {
+    name: []const u8 = "",
+    spec: TransSpec = .{},
+    /// The count of iterations. Infinite is 0.
+    count: f32 = 1,
+    direction: Direction = .normal,
+    fill: Fill = .none,
+};
 
 pub const Style = struct {
     color: geom.Color = .{ .r = 0, .g = 0, .b = 0 },
@@ -52,6 +117,7 @@ pub const Style = struct {
     min_width: i32 = 0,
     min_height: i32 = 0,
     transition: Transition = .{},
+    animation: AnimationSpec = .{},
     caret_color: geom.Color = .{ .r = 0, .g = 0, .b = 0 },
     text_align: options.Justify = .left,
     cursor: []const u8 = "default",
@@ -274,6 +340,27 @@ pub const StyleSet = struct {
             s.clearCache();
             return;
         };
+    }
+
+    /// The `@keyframes` rule with a name. A later sheet wins.
+    pub fn keyframes(s: *const StyleSet, name: []const u8) ?css_parse.Keyframes {
+        var i = s.sheets.items.len;
+        while (i > 0) {
+            i -= 1;
+            for (s.sheets.items[i].sheet.keyframes) |k| if (std.mem.eql(u8, k.name, name)) return k;
+        }
+        return null;
+    }
+
+    /// The style of one keyframe: the declarations on top of `base`.
+    pub fn keyframeStyle(s: *StyleSet, w: *const Widget, base: *const Style, parent: ?*const Style, env: Env, decls: []const css_parse.Decl) Style {
+        var arena = std.heap.ArenaAllocator.init(s.gpa);
+        defer arena.deinit();
+        const ctx: Ctx = .{ .s = s, .w = w, .a = arena.allocator(), .env = env, .parent = parent, .parent_font_size = if (parent) |p| p.font.size else env.root_font_size };
+        var st = base.*;
+        ctx.applyAll(&st, decls);
+        sanitize(&st);
+        return st;
     }
 
     pub fn diagnostics(s: *const StyleSet, id: u32) []const css_parse.Diagnostic {
@@ -648,6 +735,7 @@ const Ctx = struct {
                 .min_width => st.min_width = src.min_width,
                 .min_height => st.min_height = src.min_height,
                 .transition => st.transition = src.transition,
+                .animation => st.animation = src.animation,
                 .caret_color => st.caret_color = src.caret_color,
                 .cursor => st.cursor = src.cursor,
                 .text_align => st.text_align = src.text_align,
@@ -744,6 +832,7 @@ const Ctx = struct {
                 st.min_height = num.pxRound(@max(c.lengthPx(l, em), 0));
             },
             .transition => c.applyTransition(st, v),
+            .animation => c.applyAnimation(st, v),
             .cursor => {
                 const t = trim(v);
                 if (t.len == 1 and t[0] == .ident) st.cursor = c.s.intern(t[0].ident);
@@ -902,19 +991,181 @@ const Ctx = struct {
         st.shadow = .{ .dx = lens[0], .dy = lens[1], .blur = lens[2], .spread = lens[3], .color = col orelse st.color };
     }
 
-    fn applyTransition(c: Ctx, st: *Style, v: []const Token) void {
-        _ = c;
-        var t: Transition = .{};
-        for (v) |tk| switch (tk) {
-            .dimension => |d| {
-                if (std.ascii.eqlIgnoreCase(d.unit, "ms")) t.duration_ms = @intFromFloat(num.clampF(d.value, 0, 60000)) else if (std.ascii.eqlIgnoreCase(d.unit, "s")) t.duration_ms = @intFromFloat(num.clampF(d.value * 1000, 0, 60000));
+    /// A time in ms from a token: `ms` or `s`.
+    fn timeMs(tk: Token) ?u32 {
+        if (tk != .dimension) return null;
+        const d = tk.dimension;
+        if (std.ascii.eqlIgnoreCase(d.unit, "ms")) return @intFromFloat(num.clampF(d.value, 0, 600000));
+        if (std.ascii.eqlIgnoreCase(d.unit, "s")) return @intFromFloat(num.clampF(d.value * 1000, 0, 600000));
+        return null;
+    }
+
+    /// The numbers inside a function, separated by commas or white space.
+    fn funcNumbers(v: []const Token, start: usize, out: []f32) struct { n: usize, end: usize } {
+        var n: usize = 0;
+        var i = start;
+        while (i < v.len and v[i] != .rparen) : (i += 1) {
+            if (v[i] == .number and n < out.len) {
+                out[n] = v[i].number;
+                n += 1;
+            }
+        }
+        return .{ .n = n, .end = i };
+    }
+
+    /// A timing function at `v[i]`, or null. `i` moves past it.
+    fn timingAt(v: []const Token, i: *usize) ?easing.Timing {
+        const tk = v[i.*];
+        switch (tk) {
+            .ident => |n| {
+                const named = [_]struct { []const u8, easing.Timing }{
+                    .{ "linear", .linear },             .{ "ease", easing.Timing.ease },
+                    .{ "ease-in", easing.Timing.ease_in }, .{ "ease-out", easing.Timing.ease_out },
+                    .{ "ease-in-out", easing.Timing.ease_in_out },
+                    .{ "step-start", .{ .steps = .{ .n = 1, .pos = .jump_start } } },
+                    .{ "step-end", .{ .steps = .{ .n = 1, .pos = .jump_end } } },
+                };
+                for (named) |e| if (std.ascii.eqlIgnoreCase(n, e[0])) return e[1];
+                return null;
             },
-            .ident => |n| if (std.ascii.eqlIgnoreCase(n, "linear")) {
-                t.linear = true;
+            .function => |f| {
+                var nums: [4]f32 = undefined;
+                const r = funcNumbers(v, i.* + 1, &nums);
+                if (std.ascii.eqlIgnoreCase(f, "cubic-bezier")) {
+                    if (r.n != 4) return null;
+                    i.* = r.end;
+                    return .{ .cubic = .{ num.clampF(nums[0], 0, 1), nums[1], num.clampF(nums[2], 0, 1), nums[3] } };
+                }
+                if (std.ascii.eqlIgnoreCase(f, "spring")) {
+                    i.* = r.end;
+                    var p = [3]f32{ 100, 10, 1 };
+                    for (0..@min(r.n, 3)) |k| p[k] = num.clampF(nums[k], 0.01, 100000);
+                    return .{ .spring = p };
+                }
+                if (std.ascii.eqlIgnoreCase(f, "steps")) {
+                    if (r.n < 1) return null;
+                    var pos: easing.StepPos = .jump_end;
+                    var k = i.* + 1;
+                    while (k < r.end) : (k += 1) if (v[k] == .ident) {
+                        const w = v[k].ident;
+                        if (std.ascii.eqlIgnoreCase(w, "jump-start") or std.ascii.eqlIgnoreCase(w, "start")) pos = .jump_start;
+                        if (std.ascii.eqlIgnoreCase(w, "jump-none")) pos = .jump_none;
+                        if (std.ascii.eqlIgnoreCase(w, "jump-both")) pos = .jump_both;
+                    };
+                    i.* = r.end;
+                    return .{ .steps = .{ .n = @intFromFloat(num.clampF(nums[0], 1, 1000)), .pos = pos } };
+                }
+                return null;
             },
-            else => {},
+            else => return null,
+        }
+    }
+
+    /// The properties that a name in `transition` selects, as a bit mask.
+    fn propMask(name: []const u8) ?u16 {
+        const one = struct {
+            fn b(p: AnimProp) u16 {
+                return @as(u16, 1) << @intFromEnum(p);
+            }
+        }.b;
+        const table = [_]struct { []const u8, u16 }{
+            .{ "all", 0xffff },
+            .{ "color", one(.color) },
+            .{ "background-color", one(.background) },
+            .{ "background", one(.background) },
+            .{ "border-color", one(.border_color) },
+            .{ "border", one(.border_color) },
+            .{ "outline-color", one(.outline_color) },
+            .{ "outline", one(.outline_color) | one(.outline) },
+            .{ "outline-offset", one(.outline) },
+            .{ "caret-color", one(.caret_color) },
+            .{ "opacity", one(.opacity) },
+            .{ "border-radius", one(.radius) },
+            .{ "box-shadow", one(.shadow) },
+            .{ "padding", one(.padding) },
+            .{ "min-width", one(.min_size) },
+            .{ "min-height", one(.min_size) },
+            .{ "none", 0 },
         };
+        for (table) |e| if (std.ascii.eqlIgnoreCase(name, e[0])) return e[1];
+        return null;
+    }
+
+    fn applyTransition(c: Ctx, st: *Style, v: []const Token) void {
+        var t: Transition = .{};
+        for (c.splitCommas(v)) |part_raw| {
+            const part = trim(part_raw);
+            var spec: TransSpec = .{};
+            var mask: u16 = 0xffff;
+            var times: u8 = 0;
+            var i: usize = 0;
+            while (i < part.len) : (i += 1) {
+                const tk = part[i];
+                if (tk == .whitespace) continue;
+                if (timeMs(tk)) |ms| {
+                    if (times == 0) spec.duration_ms = ms else spec.delay_ms = ms;
+                    times += 1;
+                    continue;
+                }
+                if (timingAt(part, &i)) |tm| {
+                    spec.timing = tm;
+                    continue;
+                }
+                if (tk == .ident) if (propMask(tk.ident)) |m| {
+                    mask = m;
+                };
+            }
+            for (&t.props, 0..) |*slot, k| if (mask & (@as(u16, 1) << @intCast(k)) != 0) {
+                slot.* = spec;
+            };
+        }
         st.transition = t;
+    }
+
+    fn applyAnimation(c: Ctx, st: *Style, v: []const Token) void {
+        var an: AnimationSpec = .{};
+        var times: u8 = 0;
+        var i: usize = 0;
+        while (i < v.len) : (i += 1) {
+            const tk = v[i];
+            if (tk == .whitespace) continue;
+            if (timeMs(tk)) |ms| {
+                if (times == 0) an.spec.duration_ms = ms else an.spec.delay_ms = ms;
+                times += 1;
+                continue;
+            }
+            if (tk == .number) {
+                an.count = num.clampF(tk.number, 0.001, 1000000);
+                continue;
+            }
+            if (timingAt(v, &i)) |tm| {
+                an.spec.timing = tm;
+                continue;
+            }
+            if (tk == .ident) {
+                const n = tk.ident;
+                if (std.ascii.eqlIgnoreCase(n, "infinite")) {
+                    an.count = 0;
+                } else if (std.meta.stringToEnum(Direction, n)) |d| {
+                    an.direction = d;
+                } else if (std.ascii.eqlIgnoreCase(n, "alternate-reverse")) {
+                    an.direction = .alternate_reverse;
+                } else if (std.meta.stringToEnum(Fill, n)) |f| {
+                    if (f != .none) an.fill = f else an.name = "";
+                } else if (std.ascii.eqlIgnoreCase(n, "running") or std.ascii.eqlIgnoreCase(n, "paused")) {} else {
+                    an.name = c.s.intern(n);
+                }
+            }
+        }
+        st.animation = an;
+    }
+
+    /// Applies declarations to a style, for a keyframe.
+    fn applyAll(c: Ctx, st: *Style, decls: []const css_parse.Decl) void {
+        for (decls) |d| {
+            if (d.prop == .custom or d.prop == .transition or d.prop == .animation) continue;
+            c.apply(st, d);
+        }
     }
 };
 

@@ -142,6 +142,42 @@ pub fn main(init: std.process.Init) !void {
         report("frame-text-1000", buf[0..runs]);
     }
 
+    // anim-hover-1000 and anim-1000 run on their own App with transitions on and a manual clock.
+    {
+        var aw: World = undefined;
+        try aw.it.init(gpa);
+        aw.head = try ztk.headless.Headless.init(gpa);
+        aw.app = try ztk.App.init(gpa, &aw.it, .{ .platform = aw.head.platform(), .io = io, .animations = true });
+        defer aw.deinit();
+        aw.head.skip_draw = true;
+        aw.eval("ztk::style add {Button { transition: background-color 200ms ease } Button:hover { background-color: #ff0000 }}");
+        aw.eval(thousand);
+        // anim-hover-1000: the pointer moves to the next button, and the frames of the transition follow.
+        const runs = 200;
+        const a = aw.app.find(".w0").?;
+        const b2 = aw.app.find(".w2").?;
+        for (buf[0..runs], 0..) |*slot, i| {
+            if (i % 10 == 0) {
+                const tg = if ((i / 10) % 2 == 0) b2 else a;
+                aw.head.pointerMove(aw.app.window.?, @floatFromInt(tg.geom.x + 2), @floatFromInt(tg.geom.y + 2));
+            }
+            aw.head.advance(16);
+            const t0 = nowNs();
+            aw.eval("update");
+            slot.* = nowNs() - t0;
+        }
+        report("anim-hover-1000", buf[0..runs]);
+        // anim-1000: 1 000 option animations of ztk::animate run at once.
+        aw.eval("for {set i 0} {$i < 1000} {incr i} { ztk::animate .w$i -background #00ff00 -duration 5000 -easing linear }");
+        for (buf[0..runs]) |*slot| {
+            aw.head.advance(16);
+            const t0 = nowNs();
+            aw.eval("update");
+            slot.* = nowNs() - t0;
+        }
+        report("anim-1000", buf[0..runs]);
+    }
+
     // idle-1000: App.frame with no dirty flag.
     {
         const runs = 400;

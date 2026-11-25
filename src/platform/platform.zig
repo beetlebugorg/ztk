@@ -50,6 +50,8 @@ pub const Platform = struct {
         /// The target that draws and shows one frame of the window. The
         /// render thread calls it.
         target: *const fn (ptr: *anyopaque, w: *Window) Target,
+        /// Sets the clock. Only a backend with a manual clock has it.
+        setTimeUs: ?*const fn (ptr: *anyopaque, us: i64) void = null,
     };
 
     pub fn target(p: Platform, w: *Window) Target {

@@ -72,6 +72,7 @@ pub const Prop = enum {
     min_width,
     min_height,
     transition,
+    animation,
     caret_color,
     cursor,
     text_align,
@@ -104,8 +105,15 @@ pub const Rule = struct {
 
 pub const Diagnostic = struct { line: u32, message: []const u8 };
 
+/// One stop of a `@keyframes` rule: the offset from 0 to 1 and its declarations.
+pub const KeyStop = struct { offset: f32, decls: []const Decl };
+
+/// A `@keyframes` rule. The stops are sorted by offset.
+pub const Keyframes = struct { name: []const u8, stops: []const KeyStop };
+
 pub const Sheet = struct {
     rules: []const Rule,
+    keyframes: []const Keyframes = &.{},
     diagnostics: []const Diagnostic,
     arena: std.heap.ArenaAllocator,
 
@@ -137,6 +145,7 @@ const prop_names = [_]struct { []const u8, Prop }{
     .{ "min-width", .min_width },
     .{ "min-height", .min_height },
     .{ "transition", .transition },
+    .{ "animation", .animation },
     .{ "caret-color", .caret_color },
     .{ "cursor", .cursor },
     .{ "text-align", .text_align },
@@ -164,6 +173,7 @@ const Parser = struct {
     lines: []const u32,
     pos: usize = 0,
     rules: std.ArrayListUnmanaged(Rule) = .empty,
+    keyframes: std.ArrayListUnmanaged(Keyframes) = .empty,
     diags: std.ArrayListUnmanaged(Diagnostic) = .empty,
     order: u32 = 0,
 
@@ -227,6 +237,11 @@ const Parser = struct {
         if (has_block) {
             p.pos = block_end;
         } else if (p.pos < end) p.pos += 1;
+        if (std.ascii.eqlIgnoreCase(name, "keyframes")) {
+            if (!has_block) return p.diag(line, "@keyframes has no block", .{});
+            const inner_end = if (block_end > block_open + 1 and p.toks[block_end - 1] == .rbrace) block_end - 1 else block_end;
+            return p.keyframesRule(trimWs(prelude), block_open + 1, inner_end, line);
+        }
         if (!std.ascii.eqlIgnoreCase(name, "media")) {
             return p.diag(line, "unsupported at-rule @{s}", .{name});
         }
@@ -241,6 +256,41 @@ const Parser = struct {
         p.pos = block_open + 1;
         try p.parseRules(m, inner_end);
         p.pos = saved;
+    }
+
+    /// `@keyframes name { from { ... } 50% { ... } to { ... } }`
+    fn keyframesRule(p: *Parser, prelude: []const Token, start: usize, end: usize, line: u32) Err!void {
+        if (prelude.len != 1 or (prelude[0] != .ident and prelude[0] != .string)) return p.diag(line, "@keyframes needs one name", .{});
+        const kname = if (prelude[0] == .ident) prelude[0].ident else prelude[0].string;
+        var stops: std.ArrayListUnmanaged(KeyStop) = .empty;
+        var i = start;
+        while (i < end) {
+            while (i < end and p.toks[i] == .whitespace) i += 1;
+            if (i >= end) break;
+            const sel_start = i;
+            while (i < end and p.toks[i] != .lbrace) i += 1;
+            if (i >= end) break;
+            const open = i;
+            const close = @min(p.blockEnd(open), end);
+            const inner = if (close > open + 1 and p.toks[close - 1] == .rbrace) close - 1 else close;
+            const decls = try p.declarations(p.toks[open + 1 .. inner], p.lines[@min(open + 1, p.lines.len)..@min(inner, p.lines.len)]);
+            // The selector is a list of `from`, `to`, and percentages.
+            for (p.toks[sel_start..open]) |t| {
+                const off: ?f32 = switch (t) {
+                    .ident => |n| if (std.ascii.eqlIgnoreCase(n, "from")) 0 else if (std.ascii.eqlIgnoreCase(n, "to")) 1 else null,
+                    .percentage => |v| std.math.clamp(v / 100, 0, 1),
+                    else => null,
+                };
+                if (off) |o| try stops.append(p.a, .{ .offset = o, .decls = decls });
+            }
+            i = close;
+        }
+        std.mem.sort(KeyStop, stops.items, {}, struct {
+            fn less(_: void, a: KeyStop, b: KeyStop) bool {
+                return a.offset < b.offset;
+            }
+        }.less);
+        try p.keyframes.append(p.a, .{ .name = kname, .stops = stops.items });
     }
 
     fn mediaCondition(p: *Parser, prelude: []const Token, m: *Media) !bool {
@@ -580,5 +630,5 @@ pub fn parse(gpa: std.mem.Allocator, src: []const u8) std.mem.Allocator.Error!Sh
     }
     var p: Parser = .{ .a = a, .toks = toks.items, .lines = lines.items };
     try p.parseSheet();
-    return .{ .rules = p.rules.items, .diagnostics = p.diags.items, .arena = arena };
+    return .{ .rules = p.rules.items, .keyframes = p.keyframes.items, .diagnostics = p.diags.items, .arena = arena };
 }

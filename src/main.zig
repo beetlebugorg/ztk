@@ -17,6 +17,7 @@ const usage =
     \\  --cpu                    use the CPU renderer on Wayland
     \\  --exit-after-frames N    exit with status 0 after N frames
     \\  --screenshot FILE.png    with --headless: write the last frame at the exit
+    \\  --time MS               with --headless: draw the first frame, then move the clock to MS
     \\  --scale N                with --headless: the scale of the window
     \\  --direct                 needs --direct-unsafe-test-device (the VT is not fully owned yet)
     \\  --direct-unsafe-test-device  with --direct: run on a device that is free to lose its console
@@ -85,6 +86,7 @@ pub fn main(init: std.process.Init) !void {
     var direct_opts: ztk.direct.Options = .{};
     var max_frames: ?u64 = null;
     var screenshot: ?[]const u8 = null;
+    var time_ms: ?i64 = null;
     var scale: f32 = 1;
     var script: ?[]const u8 = null;
     var rest: []const [:0]const u8 = &.{};
@@ -126,6 +128,11 @@ pub fn main(init: std.process.Init) !void {
             } else {
                 direct_opts.output = std.meta.stringToEnum(ztk.direct.Output, v) orelse fail(err, "ztk: the output is auto, vulkan, or framebuffer\n", .{});
             }
+        } else if (std.mem.eql(u8, a, "--time")) {
+            i += 1;
+            if (i >= args.len) fail(err, "ztk: {s} needs a value\n", .{a});
+            time_ms = std.fmt.parseInt(i64, args[i], 10) catch fail(err, "ztk: bad time \"{s}\"\n", .{args[i]});
+            if (time_ms.? < 0) fail(err, "ztk: the time is 0 or more\n", .{});
         } else if (std.mem.eql(u8, a, "--exit-after-frames") or std.mem.eql(u8, a, "--screenshot") or std.mem.eql(u8, a, "--scale")) {
             i += 1;
             if (i >= args.len) fail(err, "ztk: {s} needs a value\n", .{a});
@@ -220,6 +227,14 @@ pub fn main(init: std.process.Init) !void {
 
     var status: u8 = 0;
     if (app.runScript(text)) |_| {
+        if (time_ms) |ms| if (head) |h| {
+            // The first frame starts the animations at the time 0. The frames that follow are at MS.
+            app.flush() catch {};
+            app.render.flush();
+            h.now_us = ms * 1000;
+            if (app.root) |r| r.invalidate(.{ .style = true, .measure = false, .layout = false, .paint = true });
+            if (app.max_frames) |m| app.max_frames = m + app.frames;
+        };
         app.run() catch |e| {
             const msg = if (e == error.TclError) it.str(it.result) catch "error" else @errorName(e);
             err.print("{s}\n", .{msg}) catch {};

@@ -13,6 +13,7 @@ const num = @import("num.zig");
 const geom = @import("geom.zig");
 const atlas_mod = @import("text/atlas.zig");
 const shape_mod = @import("text/shape.zig");
+const easing = @import("easing.zig");
 
 pub const Kind = enum(u32) { box = 0, shadow = 1, glyph = 2, image = 3 };
 
@@ -293,23 +294,93 @@ pub const Builder = struct {
     }
 };
 
+/// A transition that the render thread moves. The quads `first` to
+/// `first + count` of the scene go from the quads `from` to the quads
+/// `from + count` of `Frame.anim_quads`, which are the same quads at the
+/// start and at the end of the transition.
+pub const FrameAnim = struct {
+    first: u32,
+    count: u32,
+    from: u32,
+    /// The time of the start, on the clock of the UI thread.
+    start_us: i64,
+    delay_us: i64,
+    len_us: i64,
+    timing: easing.Timing,
+
+    /// The eased progress at a time.
+    pub fn progress(a: FrameAnim, time_us: i64) f32 {
+        const since = time_us - a.start_us - a.delay_us;
+        if (since <= 0) return a.timing.eval(0);
+        if (since >= a.len_us) return 1;
+        return a.timing.eval(@as(f32, @floatFromInt(since)) / @as(f32, @floatFromInt(@max(a.len_us, 1))));
+    }
+
+    pub fn done(a: FrameAnim, time_us: i64) bool {
+        return time_us - a.start_us - a.delay_us >= a.len_us;
+    }
+};
+
+fn lerp4(a: [4]f32, b: [4]f32, t: f32) [4]f32 {
+    var o: [4]f32 = undefined;
+    for (&o, a, b) |*x, p, q| x.* = p + (q - p) * t;
+    return o;
+}
+
+/// Writes the quads of each transition of the frame for a time. Returns
+/// true when a transition still runs at that time.
+pub fn applyAnims(f: *Frame, time_us: i64) bool {
+    var running = false;
+    const quads = f.scene.quads.items;
+    for (f.anims.items) |a| {
+        if (a.first + a.count > quads.len or a.from + 2 * a.count > f.anim_quads.items.len) continue;
+        const t = a.progress(time_us);
+        if (!a.done(time_us)) running = true;
+        for (0..a.count) |k| {
+            const p = f.anim_quads.items[a.from + k];
+            const q = f.anim_quads.items[a.from + a.count + k];
+            var out = q;
+            out.rect = lerp4(p.rect, q.rect, t);
+            out.radii = lerp4(p.radii, q.radii, t);
+            out.border = lerp4(p.border, q.border, t);
+            out.fill = lerp4(p.fill, q.fill, t);
+            out.fill2 = lerp4(p.fill2, q.fill2, t);
+            out.border_color = lerp4(p.border_color, q.border_color, t);
+            out.params = lerp4(p.params, q.params, t);
+            quads[a.first + k] = out;
+        }
+    }
+    return running;
+}
+
 /// All that the render thread needs for one frame. It has no pointer into
 /// the widget tree or the interpreter. The patches own their bytes.
 pub const Frame = struct {
     scene: Scene = .{},
     patches: std.ArrayListUnmanaged(AtlasPatch) = .empty,
     serial: u64 = 0,
+    /// The transitions that the render thread moves, and their quads.
+    anims: std.ArrayListUnmanaged(FrameAnim) = .empty,
+    anim_quads: std.ArrayListUnmanaged(Quad) = .empty,
+    /// The time of the frame on the clock of the UI thread, and the
+    /// system time when the UI thread handed it over.
+    time_us: i64 = 0,
+    wall_us: i64 = 0,
 
     /// Frees the patches and clears the quads. The capacity stays.
     pub fn reset(f: *Frame, gpa: std.mem.Allocator) void {
         for (f.patches.items) |p| gpa.free(p.bytes);
         f.patches.clearRetainingCapacity();
         f.scene.quads.clearRetainingCapacity();
+        f.anims.clearRetainingCapacity();
+        f.anim_quads.clearRetainingCapacity();
     }
 
     pub fn deinit(f: *Frame, gpa: std.mem.Allocator) void {
         for (f.patches.items) |p| gpa.free(p.bytes);
         f.patches.deinit(gpa);
         f.scene.deinit(gpa);
+        f.anims.deinit(gpa);
+        f.anim_quads.deinit(gpa);
     }
 };
