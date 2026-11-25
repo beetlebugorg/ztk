@@ -312,3 +312,25 @@ test "windows: the clipboard of the system round-trips text with CRLF line ends"
     defer t.allocator.free(back);
     try t.expectEqualStrings("from the other one", back);
 }
+
+test "windows: an entry with the focus gets the text store, and a commit inserts text" {
+    if (!enabled()) return;
+    const b = try be.Win32.init(t.allocator, .{ .visible = false, .renderer = .cpu });
+    defer b.deinit();
+    var it: ztcl.Interp = undefined;
+    try it.init(t.allocator);
+    defer it.deinit();
+    const app = try App.init(t.allocator, &it, .{ .platform = b.platform(), .io = t.io, .render_mode = .inline_draw, .animations = false });
+    defer app.deinit();
+    const store = b.storeOf(app.window.?) orelse {
+        std.debug.print("SKIP: no TSF in this session\n", .{});
+        return;
+    };
+    _ = try it.eval("entry .e; pack .e; focus -force .e; update");
+    const e = app.find(".e").?;
+    try t.expectEqual(e.geom.w, store.rect.w);
+    // The store gives a commit as it does at the end of a composition.
+    store.owner.commit(store.owner.ctx, "\u{65E5}\u{672C}");
+    _ = try it.eval("update");
+    try t.expectEqualStrings("\u{65E5}\u{672C}", try it.str(try it.eval(".e get")));
+}

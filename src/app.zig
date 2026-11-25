@@ -176,6 +176,8 @@ pub const App = struct {
     scroll_link: ?@import("scroll.zig").Link = null,
     /// The contents of the clipboard (`clipboard append`).
     clipboard: @import("clipboard.zig").Store = .{},
+    /// The input method: what the backend has, and the composition text.
+    text_input: @import("textinput.zig").State = .{},
     anim_last_us: i64 = -1,
     anim_requested_us: i64 = -1,
     stats: stats_mod.Stats = .{},
@@ -321,6 +323,7 @@ pub const App = struct {
         app.widgets.deinit(app.gpa);
         app.classes.deinit(app.gpa);
         app.clipboard.deinit(app.gpa);
+        app.text_input.deinit(app.gpa);
         while (app.handles) |h| {
             app.handles = h.next;
             app.gpa.destroy(h);
@@ -868,6 +871,7 @@ pub const App = struct {
 
     /// Runs frames and passes until no work is left, as `update` needs.
     pub fn flush(app: *App) ztcl.Error!void {
+        defer @import("textinput.zig").sync(app);
         var i: u8 = 0;
         while (i < 8) : (i += 1) {
             const root = app.root orelse return;
@@ -915,7 +919,7 @@ pub const App = struct {
             },
             .focus => |f| focus_mod.windowFocus(app, f.focused),
             .scale => top.invalidate(.{ .style = false, .measure = false, .layout = false, .paint = true }),
-            .motion, .button, .leave, .key, .scroll => dispatch.handleIn(app, ev, top),
+            .motion, .button, .leave, .key, .scroll, .preedit, .commit => dispatch.handleIn(app, ev, top),
         }
     }
 

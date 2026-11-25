@@ -46,6 +46,13 @@ pub const Event = union(enum) {
     scale: struct { window: *Window, scale: f32 },
     close: struct { window: *Window },
     frame: struct { window: *Window, time_us: i64 },
+    /// The composition text of an input method, in UTF-8, and the caret
+    /// in it as a byte offset. An empty text ends the composition. The
+    /// text belongs to the backend until the next `poll`.
+    preedit: struct { window: *Window, text: []const u8, caret: u32 },
+    /// The text that an input method gives to the widget, in UTF-8. The
+    /// text belongs to the backend until the next `poll`.
+    commit: struct { window: *Window, text: []const u8 },
 
     /// The window of the event. The pointer is never dereferenced by the
     /// caller when the window may be gone.
