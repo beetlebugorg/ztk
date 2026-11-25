@@ -34,7 +34,7 @@ systemd-run --user --scope -q -p MemoryMax=4G -p MemorySwapMax=0 -- <command>
 | `tools/shots.sh [folder]` | Draws the screenshots of the examples into `docs/site/shots`, in light and dark at scale 2. |
 | `zig build wasm` | Builds the browser files into `zig-out/web`: `ztk.wasm`, `ztk.js`, the playground `index.html`, and the examples. |
 | `tests/web.sh` | Runs the demo and the gallery in a headless Chromium: DOM input, the accessible roles, WebGL 2 against the CPU renderer, and the frame time in V8. |
-| `tests/site.sh` | Builds the site with the web build, makes each card of the landing page go live in a headless Chromium, compares its first frame with its poster in light and dark, and sends a click, text, and a toggle. Set `PYTHON` to a Python with `markdown-it-py` and `Pillow`. |
+| `tests/site.sh` | Builds the site with the web build, makes each card of the landing page go live in a headless Chromium, compares its first frame with its poster in light and dark, and sends a click, text, and a toggle. It then checks the size and the aspect ratio of each canvas of the playground and the landing page at three page sizes and the pixel ratios 1, 2, and 3. That check needs `node`. Set `PYTHON` to a Python with `markdown-it-py` and `Pillow`. |
 | `tests/shots.sh` | Checks that the files in `docs/site/shots` equal new shots, and runs each example in `wish`. |
 
 Each later task adds its commands to this table.

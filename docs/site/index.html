@@ -331,6 +331,11 @@ async function live(card) {
     const { m, module } = await load();
     const script = await text(new URL(`examples/${name}.tcl`, base));
     if (script == null) throw new Error("no script");
+    // The poster gives the logical size of the window (it is at scale 2).
+    // A lazy image can still be loading, so the card waits for it.
+    img.loading = "eager";
+    await img.decode().catch(() => {});
+    if (!img.naturalWidth) throw new Error("the poster did not load");
     const shown = img.getBoundingClientRect();
     const box = document.createElement("div");
     box.className = "frame live";
@@ -347,6 +352,7 @@ async function live(card) {
     box.style.visibility = "hidden";
     box.style.position = "absolute";
     frame.after(box);
+    card.dataset.poster = `${img.naturalWidth}x${img.naturalHeight}`;
     const opts = { module, width: img.naturalWidth / 2, height: img.naturalHeight / 2 };
     if (params.get("livescale")) opts.scale = Number(params.get("livescale"));
     const h = await m.start(canvas, opts);
@@ -383,7 +389,13 @@ if (params.has("livetest")) {
   // The test of tests/site.sh: each card goes live, then gets a click, typed text, or a toggle.
   window.ztkLive = Promise.all(cards.map(live)).then(async () => {
     const out = { live: cards.map((c) => c.dataset.example + ":" + c.dataset.live), png: {}, checks: {} };
-    for (const [name, h] of Object.entries(handles)) out.png[name] = h.canvas.toDataURL("image/png");
+    out.geom = {};
+    for (const [name, h] of Object.entries(handles)) {
+      out.png[name] = h.canvas.toDataURL("image/png");
+      const r = h.canvas.getBoundingClientRect();
+      const poster = document.querySelector(`.shot[data-example="${name}"]`).dataset.poster.split("x").map(Number);
+      out.geom[name] = { css: [r.width, r.height], store: [h.canvas.width, h.canvas.height], dpr: devicePixelRatio, poster };
+    }
     const at = (h, path) => h.eval(`list [expr {[winfo rootx ${path}] + 6}] [expr {[winfo rooty ${path}] + 6}]`).result.split(" ").map(Number);
     const click = (h, path) => {
       const [x, y] = at(h, path);
