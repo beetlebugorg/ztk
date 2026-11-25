@@ -22,7 +22,7 @@ Measured on 2026-11-25 on an x64 PC with Windows 11 (build 26200) and Zig 0.16.0
 | 3 | `src/render/d3d12_api.zig` (the COM interfaces that ztk calls) and the Direct3D 12 renderer, offscreen | Each golden scene drawn by Direct3D 12 equals the CPU image within the tolerance of the Vulkan tests |
 | 4 | The Win32 backend: windows, the event loop, the frame clock, the scale, and a swapchain target. The CPU output with `SetDIBitsToDevice` when no Direct3D 12 device exists. | Window tests that run only with `ZTK_TEST_WINDOWS=1` |
 | 5 | Keyboard, pointer, wheel, and cursors (`setCursor`) | Unit tests of the key and modifier maps from recorded messages |
-| 6 | The clipboard of the system (`clipboardGet`, `clipboardSet`) | `clipboard` tests against the clipboard of the CI machine |
+| 6 | The clipboard of the system (`clipboardGet`, `clipboardSet`) | Core tests with the clipboard of the headless backend, and a round trip of `CF_UNICODETEXT` with `ZTK_TEST_CLIPBOARD=1` in a process that has clipboard access |
 | 7 | Input methods with the Text Services Framework (`textInput`, `preedit`, `commit`) | Unit tests that call the text store with the calls of an input method, and check the events |
 | 8 | The dark mode and the accent color (`appearance`) | Unit tests of the registry values and of `WM_SETTINGCHANGE` |
 

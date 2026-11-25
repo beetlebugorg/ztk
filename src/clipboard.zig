@@ -1,7 +1,8 @@
 //! The `clipboard` command: `append`, `clear`, and `get`, with the options
 //! and the messages of `wish` 8.6.16. The App keeps the data of each type
-//! in a `Store`. The clipboard is local to the App: no backend gives the
-//! clipboard of the system yet.
+//! in a `Store`. After each change the text of the type `STRING` goes to
+//! the clipboard of the system through the backend, and `clipboard get`
+//! reads the text of the system when another program put it there last.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -48,6 +49,32 @@ pub const Store = struct {
         return null;
     }
 };
+
+/// Gives the text of the type `STRING` to the clipboard of the system, after
+/// a change of the store.
+pub fn publish(app: *App) void {
+    app.platform.clipboardSet("STRING", app.clipboard.get("STRING") orelse "");
+}
+
+/// Puts text on the clipboard, as `clipboard clear` and `clipboard append` do.
+pub fn setText(app: *App, text: []const u8) !void {
+    app.clipboard.clear(app.gpa);
+    try app.clipboard.append(app.gpa, "STRING", text);
+    publish(app);
+}
+
+/// The data of a type, in memory of `a`: the text of the clipboard of the
+/// system when another program put it there last, and else the store.
+pub fn read(app: *App, a: std.mem.Allocator, typ: []const u8) !?[]const u8 {
+    if (eq(typ, "STRING") or eq(typ, "UTF8_STRING")) {
+        if (app.platform.clipboardGet(app.gpa, "STRING")) |sys| {
+            defer app.gpa.free(sys);
+            return try a.dupe(u8, sys);
+        }
+    }
+    const data = app.clipboard.get(typ) orelse return null;
+    return try a.dupe(u8, data);
+}
 
 fn eq(a: []const u8, b: []const u8) bool {
     return std.mem.eql(u8, a, b);
@@ -100,6 +127,7 @@ pub fn command(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl
             }
             if (argv.len - i != 1) return it.wrongArgs("clipboard append ?-option value ...? data");
             app.clipboard.append(gpa, typ, try it.str(argv[i])) catch return error.OutOfMemory;
+            publish(app);
             return Value.empty;
         },
         1 => {
@@ -109,6 +137,7 @@ pub fn command(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl
                 try checkWindow(app, it, try it.str(argv[3]));
             }
             app.clipboard.clear(gpa);
+            publish(app);
             return Value.empty;
         },
         else => {
@@ -122,9 +151,9 @@ pub fn command(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl
                 const v = try it.str(argv[i]);
                 if (o == 0) try checkWindow(app, it, v) else typ = v;
             }
-            const data = app.clipboard.get(typ) orelse
+            const data = (read(app, it.alloc(), typ) catch return error.OutOfMemory) orelse
                 return it.fail("CLIPBOARD selection doesn't exist or form \"{s}\" not defined", .{typ});
-            return .{ .str = try it.alloc().dupe(u8, data) };
+            return .{ .str = data };
         },
     }
 }
