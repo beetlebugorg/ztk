@@ -10,6 +10,7 @@ These files are the plan, the task lists, the reviews, and the reports of ztk. T
 | [stage2-tasks/](stage2-tasks/README.md) | The tasks of the widget stage. |
 | [stage2-limits.md](stage2-limits.md) | What each widget of the widget stage lacks, with the bench results. |
 | [review.md](review.md) | The checklist of a reviewer. |
+| [perf-review.md](perf-review.md) | A performance review: the slow paths, with a measure and a proposed change for each one. |
 | [tk-size.md](tk-size.md) | The measured size of Tk. |
 | [release.md](release.md), [npm.md](npm.md) | The release process and the npm package. |
 
