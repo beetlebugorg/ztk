@@ -19,6 +19,8 @@ pub const keymap = @import("platform/keymap.zig");
 pub const direct = if (direct_enabled) @import("platform/direct.zig") else @import("platform/direct_off.zig");
 pub const vkdisplay = if (@import("build_options").vulkan) @import("platform/vkdisplay.zig") else struct {};
 pub const wayland_enabled = @import("build_options").wayland;
+pub const appkit_enabled = @import("build_options").appkit;
+pub const objc = if (appkit_enabled) @import("sys/objc.zig") else struct {};
 pub const wayland = if (@import("build_options").wayland) @import("platform/wayland.zig") else struct {};
 pub const scene = @import("scene.zig");
 pub const png = @import("png.zig");
@@ -77,6 +79,7 @@ test {
     _ = direct;
     _ = vkdisplay;
     _ = @import("sys/host.zig");
+    if (appkit_enabled) _ = objc;
     if (direct_enabled) {
         _ = @import("sys/linux.zig");
         _ = @import("tests/direct.zig");
