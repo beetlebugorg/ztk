@@ -17,7 +17,8 @@ Do the tasks in order. One task is one branch, one PR, and one review. A task st
 | 05 | [`scale`](05-scale.md) | 04 |
 | 06 | [The web backend](06-web.md) | 05 |
 | 06b | Live demos on the site: each card of "What it draws" runs its example in WebAssembly (see task 18) | 06 |
-| 07 | [Scrolling and `scrollbar`](07-scrollbar.md) | 06b |
+| 06c | [The WebGPU renderer](06c-webgpu.md) | 06b |
+| 07 | [Scrolling and `scrollbar`](07-scrollbar.md) | 06c |
 | 08 | [`entry` additions and `spinbox`](08-entry-spinbox.md) | 07 |
 | 09 | [`ttk::style` and the simple `ttk` widgets](09-ttk-simple.md) | 08 |
 | 10 | [`ttk::combobox`, `ttk::spinbox`, `ttk::scale`, `ttk::scrollbar`, and `ttk::progressbar`](10-ttk-range.md) | 09 |
@@ -76,7 +77,7 @@ Animation is part of the API of each widget. Task 02 makes the engine and the AP
 Each widget, the animation engine, and the style system build and run in the WebAssembly target. Task 06 adds the browser as a backend.
 
 - No code path of the core needs threads, files, or a native window. Where the native build uses the render thread, the web build drives the same frame clock from `requestAnimationFrame`, or from a worker with an `OffscreenCanvas` when the browser has it. The fluid gates of the stage apply to the web build too.
-- The browser draws the same scene with its own GPU API: WebGL 2, and WebGPU where the browser has it. No translation layer is between ztk and the browser.
+- The browser draws the same scene with its own GPU API: WebGPU where the browser gives an adapter (task 06c), else WebGL 2, else the CPU renderer into a 2D canvas. No translation layer is between ztk and the browser.
 - Input comes from the DOM: pointer, wheel with momentum, keyboard, and a hidden input element for text and composition (IME). The clipboard is the async clipboard. The scale is `devicePixelRatio`. `prefers-color-scheme` and `prefers-reduced-motion` set the scheme and turn the animations off.
 - Accessibility: a parallel DOM tree with ARIA roles, from the `role` of each class.
 - From task 06 on, the acceptance of each task includes the web build: `zig build wasm` compiles, and a headless browser test (Playwright or a headless Chromium on the path) runs the example of the task and checks its pixels or its state. A machine without the browser skips the test with `SKIP:` and the reason.

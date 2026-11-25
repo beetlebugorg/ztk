@@ -218,7 +218,11 @@ pub fn partStyle(w: *Widget, part: []const u8, slot: *PartAnim) struct { style: 
         spec = p;
     };
     if (!slot.valid or anim.reduced(app) or !spec.active()) {
-        slot.* = .{ .from = target, .to = target, .start_us = now, .valid = true };
+        // A part with no change is at the end of its move: its start is long ago.
+        slot.from = target;
+        slot.to = target;
+        slot.start_us = now - (1 << 40);
+        slot.valid = true;
         return .{ .style = target, .t = 1 };
     }
     if (!target.eql(&slot.to)) {

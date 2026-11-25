@@ -74,9 +74,9 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
   <div class="wrap">
     <p class="eyebrow">What it draws</p>
     <h2>Tk scripts, drawn by ztk.</h2>
-    <p class="lede">Each image is one frame of an example script, drawn by the CPU renderer on the headless backend at scale 2. The images follow the color scheme of your system. Each script also runs in <code>wish</code> 8.6.</p>
+    <p class="lede">Each image is one frame of an example script, drawn by the CPU renderer on the headless backend at scale 2. When a card scrolls into view, the same script runs live in its place: ztk in WebAssembly, drawn with WebGL 2. Click, type, and toggle in it. The images follow the color scheme of your system. Each script also runs in <code>wish</code> 8.6.</p>
     <div class="shots">
-      <figure class="shot wide">
+      <figure class="shot wide" data-example="dashboard">
         <a class="frame" href="https://github.com/beetlebugorg/ztk/blob/main/examples/dashboard.tcl">
           <picture>
             <source media="(prefers-color-scheme: dark)" srcset="assets/shots/dashboard-dark.png">
@@ -85,7 +85,7 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
         </a>
         <figcaption><a href="https://github.com/beetlebugorg/ztk/blob/main/examples/dashboard.tcl"><code>examples/dashboard.tcl</code></a><b>A status board</b>Frames with gradients, shadows, and round corners, and labels as badges. The colors come from the variables of its stylesheet.</figcaption>
       </figure>
-      <figure class="shot">
+      <figure class="shot" data-example="signin">
         <a class="frame" href="https://github.com/beetlebugorg/ztk/blob/main/examples/signin.tcl">
           <picture>
             <source media="(prefers-color-scheme: dark)" srcset="assets/shots/signin-dark.png">
@@ -94,7 +94,7 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
         </a>
         <figcaption><a href="https://github.com/beetlebugorg/ztk/blob/main/examples/signin.tcl"><code>examples/signin.tcl</code></a><b>A sign-in form</b>A card frame with a shadow on a gradient window. The password entry uses <code>-show</code>, and it has the focus ring.</figcaption>
       </figure>
-      <figure class="shot wide">
+      <figure class="shot wide" data-example="gallery">
         <a class="frame" href="https://github.com/beetlebugorg/ztk/blob/main/examples/gallery.tcl">
           <picture>
             <source media="(prefers-color-scheme: dark)" srcset="assets/shots/gallery-dark.png">
@@ -103,7 +103,7 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
         </a>
         <figcaption><a href="https://github.com/beetlebugorg/ztk/blob/main/examples/gallery.tcl"><code>examples/gallery.tcl</code></a><b>A widget gallery</b>Buttons, check buttons with a mixed state, two switches, radio buttons, a segmented control, entries, a scale, and a labelframe with a message, in cards that <code>pack</code> and <code>grid</code> place.</figcaption>
       </figure>
-      <figure class="shot">
+      <figure class="shot" data-example="calculator">
         <a class="frame" href="https://github.com/beetlebugorg/ztk/blob/main/examples/calculator.tcl">
           <picture>
             <source media="(prefers-color-scheme: dark)" srcset="assets/shots/calculator-dark.png">
@@ -112,7 +112,7 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
         </a>
         <figcaption><a href="https://github.com/beetlebugorg/ztk/blob/main/examples/calculator.tcl"><code>examples/calculator.tcl</code></a><b>A calculator</b>A keypad of buttons in a <code>grid</code>. The 0 key spans two columns.</figcaption>
       </figure>
-      <figure class="shot">
+      <figure class="shot wide" data-example="settings">
         <a class="frame" href="https://github.com/beetlebugorg/ztk/blob/main/examples/settings.tcl">
           <picture>
             <source media="(prefers-color-scheme: dark)" srcset="assets/shots/settings-dark.png">
@@ -121,7 +121,7 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
         </a>
         <figcaption><a href="https://github.com/beetlebugorg/ztk/blob/main/examples/settings.tcl"><code>examples/settings.tcl</code></a><b>A settings page</b>Groups of labels and entries, a text selection, a disabled entry, and a disabled button.</figcaption>
       </figure>
-      <figure class="shot">
+      <figure class="shot" data-example="demo">
         <a class="frame" href="https://github.com/beetlebugorg/ztk/blob/main/examples/demo.tcl">
           <picture>
             <source media="(prefers-color-scheme: dark)" srcset="assets/shots/demo-dark.png">
@@ -309,5 +309,121 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
     <a href="https://github.com/beetlebugorg/ztk">GitHub</a>
   </span>
 </div></footer>
+<script type="module">
+// The live demos: each card of "What it draws" runs its script in ztk
+// (WebAssembly and WebGL 2) when it scrolls into view, or at the first tap
+// on a touch screen. The screenshot is the poster until the first frame.
+// The page compiles the module one time; each card has its own instance.
+const cards = [...document.querySelectorAll(".shot[data-example]")];
+const params = new URLSearchParams(location.search);
+const base = new URL("play/", location.href);
+let lib = null;
+const load = () => lib ??= import(new URL("ztk.js", base).href).then(async (m) => ({ m, module: await m.compileModule(new URL("ztk.wasm", base)) }));
+const text = async (u) => { const r = await fetch(u); return r.ok ? r.text() : null; };
+const handles = {};
+async function live(card) {
+  if (card.dataset.live) return handles[card.dataset.example];
+  card.dataset.live = "loading";
+  const name = card.dataset.example;
+  const frame = card.querySelector(".frame");
+  const img = frame.querySelector("img");
+  try {
+    const { m, module } = await load();
+    const script = await text(new URL(`examples/${name}.tcl`, base));
+    if (script == null) throw new Error("no script");
+    const shown = img.getBoundingClientRect();
+    const box = document.createElement("div");
+    box.className = "frame live";
+    const holder = document.createElement("div");
+    holder.className = "live-canvas";
+    holder.style.width = shown.width + "px";
+    holder.style.height = shown.height + "px";
+    const canvas = document.createElement("canvas");
+    canvas.style.width = shown.width + "px";
+    canvas.style.height = shown.height + "px";
+    canvas.setAttribute("aria-label", `The example ${name}, running live`);
+    holder.appendChild(canvas);
+    box.appendChild(holder);
+    box.style.visibility = "hidden";
+    box.style.position = "absolute";
+    frame.after(box);
+    const opts = { module, width: img.naturalWidth / 2, height: img.naturalHeight / 2 };
+    if (params.get("livescale")) opts.scale = Number(params.get("livescale"));
+    const h = await m.start(canvas, opts);
+    const css = await text(new URL(`examples/${name}.css`, base));
+    if (css != null) h.addFile(`${name}.css`, css);
+    const r = h.eval(script);
+    if (!r.ok) throw new Error(r.result);
+    h.frame(performance.now());
+    box.style.visibility = "";
+    box.style.position = "";
+    frame.replaceWith(box);
+    card.dataset.live = "1";
+    const cap = card.querySelector("figcaption");
+    const det = document.createElement("details");
+    det.className = "source";
+    const sum = document.createElement("summary");
+    sum.textContent = "View source";
+    const pre = document.createElement("pre");
+    pre.textContent = script;
+    const edit = document.createElement("a");
+    edit.href = new URL(`?example=${name}`, base).href;
+    edit.textContent = "Open in the playground";
+    det.append(sum, edit, pre);
+    cap.appendChild(det);
+    handles[name] = h;
+    return h;
+  } catch (e) {
+    card.dataset.live = "failed";
+    return null;
+  }
+}
+const coarse = matchMedia("(pointer: coarse)").matches;
+if (params.has("livetest")) {
+  // The test of tests/site.sh: each card goes live, then gets a click, typed text, or a toggle.
+  window.ztkLive = Promise.all(cards.map(live)).then(async () => {
+    const out = { live: cards.map((c) => c.dataset.example + ":" + c.dataset.live), png: {}, checks: {} };
+    for (const [name, h] of Object.entries(handles)) out.png[name] = h.canvas.toDataURL("image/png");
+    const at = (h, path) => h.eval(`list [expr {[winfo rootx ${path}] + 6}] [expr {[winfo rooty ${path}] + 6}]`).result.split(" ").map(Number);
+    const click = (h, path) => {
+      const [x, y] = at(h, path);
+      const r = h.canvas.getBoundingClientRect();
+      const k = r.width / (h.canvas.width / (Number(params.get("livescale")) || devicePixelRatio));
+      const o = { clientX: r.left + x * k, clientY: r.top + y * k, button: 0, pointerId: 1, bubbles: true };
+      for (const t of ["pointermove", "pointerdown", "pointerup"]) h.canvas.dispatchEvent(new PointerEvent(t, o));
+      h.frame(performance.now());
+    };
+    if (handles.demo) {
+      const h = handles.demo;
+      click(h, ".count");
+      out.checks.count = h.eval("set count").result;
+      click(h, ".name");
+      const input = h.canvas.parentElement.parentElement.querySelector("textarea");
+      input.value = "Ada";
+      input.dispatchEvent(new InputEvent("input", { data: "Ada" }));
+      h.frame(performance.now());
+      out.checks.name = h.eval(".name get").result;
+    }
+    if (handles.gallery) {
+      const h = handles.gallery;
+      click(h, ".cols.left.checks.body.notify");
+      out.checks.notify = h.eval("set opts(notify)").result;
+    }
+    const pre = document.createElement("pre");
+    pre.id = "result";
+    pre.textContent = JSON.stringify(out);
+    document.body.appendChild(pre);
+  });
+} else if (typeof WebAssembly === "object" && "IntersectionObserver" in window) {
+  if (coarse) {
+    for (const c of cards) c.querySelector(".frame").addEventListener("click", (e) => { if (!c.dataset.live) { e.preventDefault(); live(c); } });
+  } else {
+    const io = new IntersectionObserver((es) => {
+      for (const e of es) if (e.isIntersecting) { io.unobserve(e.target); live(e.target); }
+    }, { rootMargin: "200px" });
+    for (const c of cards) io.observe(c);
+  }
+}
+</script>
 </body>
 </html>

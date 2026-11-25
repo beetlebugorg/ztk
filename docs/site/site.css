@@ -293,6 +293,12 @@ figure.chart { margin: 0; }
 .shot figcaption code { font-size: 13px; color: var(--text-3); }
 .shot figcaption a { text-decoration: none; }
 .shot figcaption a:hover code { color: var(--accent); }
+.shot .live-canvas { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--line-strong); box-shadow: var(--shadow); }
+.shot .live-canvas canvas { display: block; touch-action: none; }
+.shot details.source { margin-top: 10px; font-size: 14px; }
+.shot details.source summary { cursor: pointer; color: var(--accent); }
+.shot details.source a { display: inline-block; margin: 6px 0; }
+.shot details.source pre { max-height: 320px; overflow: auto; font-size: 12px; background: var(--bg-soft); padding: 10px; border-radius: 8px; }
 @media (max-width: 960px) {
   .shots { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

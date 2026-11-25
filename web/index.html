@@ -62,15 +62,7 @@ async function run() {
   ztk = await start(canvas, { log, dark: params.has("dark") ? true : (params.has("light") ? false : undefined) });
   for (const name of examples) {
     const css = await fetch(`examples/${name}.css`);
-    if (css.ok) {
-      const enc = new TextEncoder();
-      const n = enc.encode(name + ".css"), t = enc.encode(await css.text());
-      const ex = ztk.exports;
-      const pn = ex.ztk_alloc(n.length), pt = ex.ztk_alloc(t.length);
-      new Uint8Array(ex.memory.buffer, pn, n.length).set(n);
-      new Uint8Array(ex.memory.buffer, pt, t.length).set(t);
-      ex.ztk_add_file(pn, n.length, pt, t.length);
-    }
+    if (css.ok) ztk.addFile(name + ".css", await css.text());
   }
   const r = ztk.eval(code.value);
   window.ztkResult = r;

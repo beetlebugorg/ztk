@@ -74,6 +74,8 @@ def rel(from_page, to_page):
 
 
 class Build:
+    live = None
+
     def __init__(self):
         self.md = MarkdownIt("commonmark", {"html": False}).enable("table").enable("strikethrough")
         self.anchors = {}
@@ -235,9 +237,24 @@ class Build:
             shutil.copy(SITE_DIR / name, out / "assets" / name)
         # The screenshots of the examples (tools/shots.sh).
         shutil.copytree(SITE_DIR / "shots", out / "assets" / "shots")
+        # The live demos and the playground: the files of `zig build wasm`, when they exist.
+        if self.live is not None:
+            shutil.copytree(self.live, out / "play")
+            print(f"copied the web build from {self.live} to {out / 'play'}")
         (out / ".nojekyll").write_text("", encoding="utf-8")
         print(f"wrote {len(rendered) + 1} pages to {out}")
 
 
 if __name__ == "__main__":
-    Build().run(Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "zig-out" / "docs-site")
+    # Use: build-docs.py [output folder] [--live zig-out/web]
+    args = sys.argv[1:]
+    live = None
+    if "--live" in args:
+        i = args.index("--live")
+        live = Path(args[i + 1]).resolve()
+        if not (live / "ztk.wasm").is_file():
+            raise SystemExit(f"--live: no ztk.wasm in {live}: run zig build wasm first")
+        del args[i : i + 2]
+    b = Build()
+    b.live = live
+    b.run(Path(args[0]).resolve() if args else ROOT / "zig-out" / "docs-site")
