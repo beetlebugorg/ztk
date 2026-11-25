@@ -220,6 +220,7 @@ pub extern "user32" fn GetKeyState(vk: c_int) callconv(.winapi) i16;
 pub extern "user32" fn TrackMouseEvent(tme: *TRACKMOUSEEVENT) callconv(.winapi) BOOL;
 pub extern "user32" fn SetCapture(hwnd: HWND) callconv(.winapi) ?HWND;
 pub extern "user32" fn ReleaseCapture() callconv(.winapi) BOOL;
+pub extern "user32" fn ScreenToClient(hwnd: HWND, p: *POINT) callconv(.winapi) BOOL;
 pub extern "user32" fn GetMessageTime() callconv(.winapi) LONG;
 pub extern "user32" fn GetDC(hwnd: ?HWND) callconv(.winapi) ?HDC;
 pub extern "user32" fn ReleaseDC(hwnd: ?HWND, dc: HDC) callconv(.winapi) c_int;

@@ -13,6 +13,49 @@ const RenderThread = @import("../render/thread.zig").RenderThread;
 
 pub const WindowOptions = struct { title: []const u8 = "", size: geom.Size = .{ .w = 200, .h = 200 } };
 
+/// The pointer shapes, with the names of the CSS `cursor` property.
+pub const Cursor = enum {
+    default,
+    pointer,
+    text,
+    wait,
+    progress,
+    crosshair,
+    move,
+    not_allowed,
+    help,
+    grab,
+    grabbing,
+    ew_resize,
+    ns_resize,
+    nwse_resize,
+    nesw_resize,
+
+    /// The shape of a CSS name. A name with no shape gives `default`.
+    pub fn fromCss(name: []const u8) Cursor {
+        var buf: [16]u8 = undefined;
+        if (name.len > buf.len) return .default;
+        for (name, 0..) |ch, i| buf[i] = if (ch == '-') '_' else ch;
+        return std.meta.stringToEnum(Cursor, buf[0..name.len]) orelse .default;
+    }
+
+    /// The shape of a cursor name of Tk (the X cursor font), or null
+    /// for a name with no shape here.
+    pub fn fromTk(name: []const u8) ?Cursor {
+        const map = [_]struct { []const u8, Cursor }{
+            .{ "arrow", .default },         .{ "left_ptr", .default },         .{ "top_left_arrow", .default },
+            .{ "xterm", .text },            .{ "hand1", .pointer },            .{ "hand2", .pointer },
+            .{ "watch", .wait },            .{ "crosshair", .crosshair },      .{ "cross", .crosshair },
+            .{ "tcross", .crosshair },      .{ "fleur", .move },               .{ "question_arrow", .help },
+            .{ "sb_h_double_arrow", .ew_resize }, .{ "sb_v_double_arrow", .ns_resize }, .{ "X_cursor", .not_allowed },
+            .{ "size_we", .ew_resize },     .{ "size_ns", .ns_resize },        .{ "size_nw_se", .nwse_resize },
+            .{ "size_ne_sw", .nesw_resize }, .{ "size", .move },
+        };
+        for (map) |m| if (std.mem.eql(u8, m[0], name)) return m[1];
+        return null;
+    }
+};
+
 pub const Window = struct {
     /// Logical pixels.
     size: geom.Size,
@@ -61,7 +104,14 @@ pub const Platform = struct {
         target: *const fn (ptr: *anyopaque, w: *Window) Target,
         /// Sets the clock. Only a backend with a manual clock has it.
         setTimeUs: ?*const fn (ptr: *anyopaque, us: i64) void = null,
+        /// Sets the pointer shape over the client area of a window. Null:
+        /// the backend keeps its own shape.
+        setCursor: ?*const fn (ptr: *anyopaque, w: *Window, shape: Cursor) void = null,
     };
+
+    pub fn setCursor(p: Platform, w: *Window, shape: Cursor) void {
+        if (p.vtable.setCursor) |f| f(p.ptr, w, shape);
+    }
 
     pub fn target(p: Platform, w: *Window) Target {
         return p.vtable.target(p.ptr, w);
