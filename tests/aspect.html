@@ -14,7 +14,7 @@ const wait = (f) => new Promise((res) => {
   const t0 = performance.now();
   const poll = () => {
     const v = f();
-    if (v != null || performance.now() - t0 > 30000) res(v); else setTimeout(poll, 100);
+    if (v != null || performance.now() - t0 > 90000) res(v); else setTimeout(poll, 100);
   };
   poll();
 });

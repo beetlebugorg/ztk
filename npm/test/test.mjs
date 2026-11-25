@@ -21,11 +21,11 @@ const check = (ok, what) => {
 };
 
 check(typeof ztk.mount === "function" && typeof ztk.start === "function", "mount and start are exports");
-check(JSON.stringify(ztk.renderers) === '["webgl2","cpu"]', "renderers");
+check(JSON.stringify(ztk.renderers) === '["webgpu","webgl2","cpu"]', "renderers");
 check(ztk.wasmURL().href === import.meta.resolve(`${name}/ztk.wasm`), "wasmURL is the file of the package");
 const pkg = JSON.parse(fs.readFileSync(new URL(import.meta.resolve(`${name}/package.json`)), "utf8"));
 check(pkg.name === name && /^\d+\.\d+\.\d+/.test(pkg.version), "package.json entry");
-for (const f of ["LICENSE", "NOTICE", "licenses/LICENSE-Inter.txt", "licenses/ztcl/LICENSE"]) {
+for (const f of ["webgpu.js", "LICENSE", "NOTICE", "licenses/LICENSE-Inter.txt", "licenses/ztcl/LICENSE"]) {
   check(fs.existsSync(new URL(f, import.meta.resolve(`${name}/package.json`))), `${f} is in the package`);
 }
 

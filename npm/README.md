@@ -1,6 +1,6 @@
 # {{name}}
 
-ztk is a replacement for Tk, written in Zig, on the Tcl interpreter ztcl. This package runs ztk in a browser. A Tcl script with Tk commands makes the widgets, and ztk draws them on a canvas with WebGL 2, or with its CPU renderer.
+ztk is a replacement for Tk, written in Zig, on the Tcl interpreter ztcl. This package runs ztk in a browser. A Tcl script with Tk commands makes the widgets, and ztk draws them on a canvas with WebGPU, WebGL 2, or its CPU renderer.
 
 - `ztk.wasm` has the interpreter, the widgets, the layout, the style sheets, the fonts (Inter), and the CPU renderer. It is 3.0 MB, or 1.0 MB with gzip.
 - The page side handles the input, the input methods (IME), the HiDPI scale, the color scheme, and ARIA roles for the widgets.
@@ -67,7 +67,7 @@ The tests of the package run Vite 7. Webpack 5 and Rollup also have support for 
 | `files` | Files by name for `ztk::style load`, for example `{ "app.css": text }`. |
 | `theme` | `"auto"` (the default) follows `prefers-color-scheme` of the page. `"light"` and `"dark"` set the scheme. |
 | `size` | `"auto"` (the default): the window starts with the size of the element and then gets the size of its widgets, as a Tk toplevel does. `"fill"`: the window follows the size of the element, so give the element a size. `[width, height]`: a fixed logical size, which the canvas shows at the CSS size that the page gives it. |
-| `renderer` | `"auto"` (the default), `"webgl2"`, `"cpu"`, or `"webgpu"`. `"auto"` selects WebGL 2, and the CPU renderer when the browser has no WebGL 2. This version has no WebGPU renderer, so `"webgpu"` rejects. |
+| `renderer` | `"auto"` (the default), `"webgl2"`, `"cpu"`, or `"webgpu"`. `"auto"` selects WebGPU when the browser gives an adapter, else WebGL 2, else the CPU renderer. A forced renderer that the browser does not have rejects. |
 | `scale` | The device pixels in one logical pixel. The default is `devicePixelRatio`, and a change of it gives a new scale. |
 | `module` | A module from `compileModule()`, so that many apps on one page compile `ztk.wasm` one time. |
 | `wasm` | The URL of `ztk.wasm`. The default is the file next to `ztk.js`. |

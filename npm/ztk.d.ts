@@ -36,7 +36,7 @@ export interface MountOptions {
   theme?: Theme;
   /** The size of the window. The default is "auto". */
   size?: Size;
-  /** The renderer. The default is "auto". This version has no WebGPU renderer. */
+  /** The renderer. The default is "auto": WebGPU, else WebGL 2, else the CPU renderer. */
   renderer?: Renderer;
   /** The device pixels in one logical pixel. The default is `devicePixelRatio`. */
   scale?: number;

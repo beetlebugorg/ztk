@@ -24,6 +24,7 @@
   },
   "files": [
     "ztk.js",
+    "webgpu.js",
     "ztk.wasm",
     "ztk.d.ts",
     "NOTICE",

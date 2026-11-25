@@ -2,10 +2,17 @@
 # SPDX-License-Identifier: BSD-2-Clause
 # Runs ztk in a headless browser. It serves zig-out/web, runs the demo,
 # clicks the Count button and types into the entry through DOM events,
-# and checks the variables and the accessible roles. It then compares
-# the canvas that WebGL 2 drew with the image of the CPU renderer for the
-# same script and size: at most 2 levels in each channel, in all but
-# 0.5 % of the pixels.
+# and checks the variables and the accessible roles. It then draws the
+# gallery with each renderer of the page (WebGPU, WebGL 2, and the CPU
+# renderer into a 2D canvas), and with WebGPU on a display-p3 canvas. It
+# compares each image with the image of the native CPU renderer for the
+# same script and size, and WebGPU with WebGL 2: at most 2 levels in
+# each channel, in all but 0.5 % of the pixels. It checks the automatic
+# choice with WebGPU on and off, and a frame after a forced loss of the
+# WebGPU device. It reports the CPU time of a frame with WebGPU and with
+# WebGL 2 for the gallery and a stress scene. The browser runs in real
+# time through tests/browser.mjs, with SwiftShader for Vulkan (WebGPU)
+# and for ANGLE (WebGL 2).
 # Use: tests/web.sh      (after: zig build wasm && zig build)
 # Exit status: 0 pass, 1 fail, 77 when a tool or the build is missing.
 set -u
@@ -18,18 +25,26 @@ done
 [ -f "$root/zig-out/web/ztk.wasm" ] || { echo "SKIP: build the web files first: zig build wasm"; exit 77; }
 [ -x "$root/zig-out/bin/ztk" ] || { echo "SKIP: build ztk first: zig build"; exit 77; }
 python3 -I -c 'import PIL' 2>/dev/null || { echo "SKIP: python3 has no PIL"; exit 77; }
+command -v node >/dev/null 2>&1 || { echo "SKIP: node is not on the path (tests/browser.mjs needs it)"; exit 77; }
 work="$(mktemp -d)"
 port=$(python3 -I -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
 python3 -I -m http.server "$port" --bind 127.0.0.1 --directory "$root/zig-out/web" >/dev/null 2>&1 &
 server=$!
 trap 'kill $server 2>/dev/null; rm -rf "$work"' EXIT
 sleep 1
+# page QUERY [WEBGPU]: the result of index.html?QUERY. WEBGPU=off runs
+# the browser without WebGPU.
+gpu="--use-angle=vulkan --enable-features=Vulkan --use-vulkan=swiftshader"
 page() {
-    timeout 90 "$browser" --headless=new --no-sandbox --use-angle=swiftshader --enable-unsafe-swiftshader \
-        --force-device-scale-factor=1 --window-size=900,700 --virtual-time-budget=8000 \
-        --user-data-dir="$work/profile" --dump-dom "http://127.0.0.1:$port/index.html?$1" 2>/dev/null \
-        | python3 -I -c 'import sys,re,html; m=re.search(r"<pre id=\"result\">(.*?)</pre>", sys.stdin.read(), re.S); print(html.unescape(m.group(1)) if m else "{}")'
+    flags="$gpu"
+    [ "${2:-on}" = on ] && flags="$gpu --enable-unsafe-webgpu"
+    n=$((n + 1))
+    # $flags has several flags on purpose.
+    # shellcheck disable=SC2086
+    ZTK_BROWSER_VIEWPORT=900x700x1 ZTK_BROWSER_TIMEOUT_MS=170000 timeout 180 node "$root/tests/browser.mjs" "$browser" "$work/profile-$n" \
+        "http://127.0.0.1:$port/index.html?$1" $flags
 }
+n=0
 fail=0
 # The demo: the Count button and the entry, through DOM input.
 size=400x200
@@ -74,39 +89,113 @@ ok = r.get("check", "").endswith("Ada")
 print(("ok" if ok else "FAIL") + ": typed text reaches the entry through the hidden input (%r)" % r.get("check"))
 sys.exit(0 if ok else 1)
 PY
-# The pixels: WebGL 2 against the CPU renderer, for the gallery at the same size.
+# The pixels: each renderer against the CPU renderer, for the gallery at the same size.
 gsize=720x440
-out="$(page "example=gallery&light&size=$gsize&test=wm%20geometry%20.%20$gsize")"
-echo "$out" > "$work/gallery.json"
+q="example=gallery&light&size=$gsize&test=wm%20geometry%20.%20$gsize"
+page "$q&renderer=webgpu&lose" > "$work/webgpu.json"
+page "$q" > "$work/auto-on.json"
+page "$q&renderer=webgpu&colorspace=display-p3" > "$work/p3.json"
+page "$q" off > "$work/webgl2.json"
+page "$q&renderer=cpu" > "$work/cpu-web.json"
+# The stress scene for the frame time: 1 200 labels in a grid of 30
+# columns over the demo, in a window of 720 by 440. About 200 of them show.
+stress="wm%20geometry%20.%20720x440;frame%20.s;place%20.s%20-x%200%20-y%200%20-relwidth%201%20-relheight%201;for%20%7Bset%20i%200%7D%20%7B%24i%3C1200%7D%20%7Bincr%20i%7D%20%7Blabel%20.s.l%24i%20-text%20%22Item%20%24i%22;grid%20.s.l%24i%20-row%20%5Bexpr%20%7B%24i/30%7D%5D%20-column%20%5Bexpr%20%7B%24i%2530%7D%5D%7D"
+page "example=demo&light&size=$gsize&test=$stress&renderer=webgpu" > "$work/stress-webgpu.json"
+page "example=demo&light&size=$gsize&test=$stress" off > "$work/stress-webgl2.json"
 { cat "$root/examples/gallery.tcl"; printf '\nwm geometry . %s\n' "$gsize"; } > "$work/g.tcl"
 cp "$root/examples/gallery.tcl" "$root/examples/gallery.css" "$work/"
 (cd "$work" && ZTK_NO_ANIMATION=1 "$root/zig-out/bin/ztk" --headless --scale 1 --exit-after-frames 2 --screenshot "$work/cpu.png" g.tcl >/dev/null 2>&1)
-python3 -I - "$work/gallery.json" "$work/cpu.png" <<'PY' || fail=1
-import json, sys, base64, io
+python3 -I - "$work" <<'PY' || fail=1
+import json, sys, base64, io, os
 from PIL import Image
-r = json.load(open(sys.argv[1]))
-png = r.get("png", "")
-if not png.startswith("data:image/png;base64,"):
-    print("FAIL: the page gave no canvas image"); sys.exit(1)
-web = Image.open(io.BytesIO(base64.b64decode(png.split(",", 1)[1]))).convert("RGB")
-cpu = Image.open(sys.argv[2]).convert("RGB")
-if web.size != cpu.size:
-    print("FAIL: the sizes differ: web %s, cpu %s" % (web.size, cpu.size)); sys.exit(1)
-a, b = web.load(), cpu.load()
-bad = worst = 0
-for y in range(web.size[1]):
-    for x in range(web.size[0]):
-        d = max(abs(p - q) for p, q in zip(a[x, y], b[x, y]))
-        worst = max(worst, d)
-        if d > 2: bad += 1
-share = bad / (web.size[0] * web.size[1])
-ok = share <= 0.005
-print(("ok" if ok else "FAIL") + ": WebGL 2 against the CPU renderer: %.3f %% of the pixels differ by more than 2 levels, worst %d" % (share * 100, worst))
-sys.exit(0 if ok else 1)
+work = sys.argv[1]
+fail = 0
+def load(name):
+    p = os.path.join(work, name)
+    try:
+        return json.load(open(p))
+    except Exception:
+        return {}
+def image(png):
+    return Image.open(io.BytesIO(base64.b64decode(png.split(",", 1)[1]))).convert("RGB")
+def compare(a, b):
+    if a.size != b.size:
+        return None
+    pa, pb = a.load(), b.load()
+    bad = worst = 0
+    for y in range(a.size[1]):
+        for x in range(a.size[0]):
+            d = max(abs(p - q) for p, q in zip(pa[x, y], pb[x, y]))
+            worst = max(worst, d)
+            bad += d > 2
+    return bad / (a.size[0] * a.size[1]), worst
+def check(label, a, b):
+    global fail
+    r = compare(a, b)
+    if r is None:
+        print(f"FAIL: {label}: the sizes differ: {a.size} and {b.size}"); fail = 1; return
+    ok = r[0] <= 0.005
+    fail |= not ok
+    print(("ok" if ok else "FAIL") + f": {label}: {r[0] * 100:.3f} % of the pixels differ by more than 2 levels, worst {r[1]}")
+cpu = Image.open(os.path.join(work, "cpu.png")).convert("RGB")
+runs = {"webgpu": load("webgpu.json"), "webgl2": load("webgl2.json"), "cpu": load("cpu-web.json")}
+for name, r in runs.items():
+    if not r.get("png", "").startswith("data:image/png;base64,"):
+        print(f"FAIL: the {name} page gave no canvas image"); fail = 1
+webgpu_ok = runs["webgpu"].get("renderer") == "webgpu"
+for name, want in (("webgpu", "webgpu"), ("webgl2", "webgl2"), ("cpu", "cpu")):
+    got = runs[name].get("renderer")
+    if got != want:
+        print(f"FAIL: the page with {name} drew with {got}"); fail = 1
+auto = load("auto-on.json").get("renderer")
+ok = auto == "webgpu"
+fail |= not ok
+print(("ok" if ok else "FAIL") + f": with WebGPU on, the automatic choice is {auto}; with WebGPU off, it is {runs['webgl2'].get('renderer')}")
+imgs = {n: image(r["png"]) for n, r in runs.items() if r.get("png", "").startswith("data:")}
+if "webgpu" in imgs: check("WebGPU against the CPU renderer", imgs["webgpu"], cpu)
+if "webgl2" in imgs: check("WebGL 2 against the CPU renderer", imgs["webgl2"], cpu)
+if "cpu" in imgs: check("the CPU renderer in a 2D canvas against the native CPU renderer", imgs["cpu"], cpu)
+if "webgpu" in imgs and "webgl2" in imgs: check("WebGPU against WebGL 2", imgs["webgpu"], imgs["webgl2"])
+# Display P3: the page gives P3 values with an ICC profile. They go back to sRGB for the compare.
+p3 = load("p3.json").get("png", "")
+if p3.startswith("data:"):
+    from PIL import ImageCms
+    im = Image.open(io.BytesIO(base64.b64decode(p3.split(",", 1)[1])))
+    icc = im.info.get("icc_profile")
+    if not icc:
+        print("FAIL: the display-p3 canvas gave no color profile"); fail = 1
+    else:
+        srgb = ImageCms.profileToProfile(im.convert("RGB"), ImageCms.ImageCmsProfile(io.BytesIO(icc)), ImageCms.createProfile("sRGB"), renderingIntent=1)
+        check("WebGPU on a display-p3 canvas, converted to sRGB, against the CPU renderer", srgb, cpu)
+else:
+    print("FAIL: the display-p3 page gave no canvas image"); fail = 1
+lost = runs["webgpu"].get("lost", {})
+if lost.get("restored") and lost.get("png", "").startswith("data:"):
+    check("WebGPU after a device loss against the CPU renderer", image(lost["png"]), cpu)
+else:
+    print("FAIL: the WebGPU renderer did not draw again after a device loss"); fail = 1
+# The CPU time of a frame: the work of ztk and the calls of the renderer.
+# The gate of 8 ms at the 99th percentile is reported. It depends on the
+# load of the machine, so only a median over 8 ms fails.
+for scene, prefix in (("the gallery", ""), ("1 200 labels", "stress-")):
+    for name in ("webgpu", "webgl2"):
+        r = runs[name] if not prefix else load(prefix + name + ".json")
+        p = r.get("perf")
+        if not p:
+            print(f"FAIL: no frame time for {scene} with {name}"); fail = 1; continue
+        # WebGPU runs here on SwiftShader, which renders on the same CPU
+        # cores as the module, so its times are reported and do not fail.
+        ok = p["median"] < 8 or name == "webgpu"
+        fail |= not ok
+        gate = "gate met" if p["p99"] < 8 else "gate of 8 ms at the 99th percentile not met"
+        status = "ok" if p["median"] < 8 else ("report" if ok else "FAIL")
+        print(status + f" ({gate}): CPU time of a frame for {scene} with {name}, 120 frames of pointer motion: median {p['median']:.2f} ms, 99th percentile {p['p99']:.2f} ms")
+        print(f"     the module alone in the same frames: median {p['moduleMedian']:.2f} ms, 99th percentile {p['moduleP99']:.2f} ms")
+        print(f"     the draw alone, 300 draws of the last scene: median {p['drawMedian']:.2f} ms, 99th percentile {p['drawP99']:.2f} ms")
+sys.exit(fail)
 PY
 # The frame time of the module in V8 (node), with real time: the gallery and 200 frames of pointer motion.
-if command -v node >/dev/null 2>&1; then
-    node - "$root/zig-out/web/ztk.wasm" "$root/examples/gallery.tcl" "$root/examples/gallery.css" <<'JS' || fail=1
+node - "$root/zig-out/web/ztk.wasm" "$root/examples/gallery.tcl" "$root/examples/gallery.css" <<'JS' || fail=1
 const fs = require("fs");
 const [wasmPath, tclPath, cssPath] = process.argv.slice(2);
 let ex;
@@ -135,7 +224,4 @@ WebAssembly.instantiate(fs.readFileSync(wasmPath), imports).then(({ instance }) 
   process.exit(ok ? 0 : 1);
 });
 JS
-else
-    echo "SKIP: node is not on the path, so the frame time in V8 was not measured"
-fi
 exit "$fail"

@@ -23,7 +23,7 @@
   <strong>ztk playground</strong>
   <label>Example <select id="pick"></select></label>
   <button id="run">Run</button>
-  <span>A Tcl script with Tk commands, drawn by ztk in WebAssembly and WebGL 2.</span>
+  <span>A Tcl script with Tk commands, drawn by ztk in WebAssembly with WebGPU, WebGL 2, or a 2D canvas (<span id="renderer"></span>).</span>
 </header>
 <main>
   <textarea class="code" id="code" spellcheck="false" aria-label="Tcl script"></textarea>
@@ -60,13 +60,14 @@ async function run() {
   const canvas = old.cloneNode();
   old.parentElement.replaceChildren(canvas);
   logEl.textContent = "";
-  ztk = await start(canvas, { log, dark: params.has("dark") ? true : (params.has("light") ? false : undefined) });
+  ztk = await start(canvas, { log, loop: !params.has("test"), colorSpace: params.get("colorspace") || undefined, dark: params.has("dark") ? true : (params.has("light") ? false : undefined) });
   for (const name of examples) {
     const css = await fetch(`examples/${name}.css`);
     if (css.ok) ztk.addFile(name + ".css", await css.text());
   }
   const r = ztk.eval(code.value);
   window.ztkResult = r;
+  document.getElementById("renderer").textContent = ztk.renderer;
   document.title = r.ok ? "ztk: ok" : "ztk: error";
 }
 document.getElementById("run").addEventListener("click", run);
@@ -101,26 +102,53 @@ if (params.has("test")) {
   // ?probe: the CSS size and the backing store of the canvas, and its first image.
   const probe = params.has("probe") ? (() => {
     const r = canvas.getBoundingClientRect();
-    return { css: [r.width, r.height], store: [canvas.width, canvas.height], dpr: devicePixelRatio, png: canvas.toDataURL("image/png") };
+    return { css: [r.width, r.height], store: [canvas.width, canvas.height], dpr: devicePixelRatio, png: ztk.snapshot() };
   })() : undefined;
   const roles = [...ztk.tree.children].map((e) => e.getAttribute("role")).join(" ");
   const check = ztk.eval(params.get("test") === "1" ? "winfo children ." : params.get("test"));
   ztk.frame(performance.now() + 2000);
   // The frame time: the pointer moves over the window for 120 frames, so the
-  // hover transitions run. The time is the work of ztk and the WebGL calls.
+  // hover transitions run. The time is the work of ztk and the calls of the renderer.
   const times = [];
   const rr = canvas.getBoundingClientRect();
+  // The clock of the frames goes on from base, after the times above.
   const base = performance.now() + 5000;
-  for (let i = 0; i < 120; i++) {
+  const start0 = performance.now();
+  const module = [];
+  // Each frame waits for requestAnimationFrame, as in a page in use, so the
+  // GPU process has the time of a display frame for each frame. ?probe
+  // skips the times.
+  const frames = params.has("probe") ? 0 : 120;
+  for (let i = 0; i < frames; i++) {
+    await new Promise((res) => requestAnimationFrame(res));
     const opt = { clientX: rr.left + (i * 37) % rr.width, clientY: rr.top + (i * 23) % rr.height, pointerId: 1, bubbles: true };
     canvas.dispatchEvent(new PointerEvent("pointermove", opt));
     const t0 = performance.now();
-    ztk.frame(base + i * 16.7);
+    const n = ex.ztk_frame(base + performance.now() - start0);
+    const t1 = performance.now();
+    if (n >= 0) ztk.redraw();
     times.push(performance.now() - t0);
+    module.push(t1 - t0);
   }
   times.sort((a, b) => a - b);
-  const perf = { median: times[60], p99: times[Math.floor(times.length * 0.99)] };
-  out.textContent = JSON.stringify({ perf, ok: window.ztkResult.ok, frames: Number(ex.ztk_frames()), roles, check: check.result, probe, png: canvas.toDataURL("image/png") });
+  module.sort((a, b) => a - b);
+  // The time of the renderer alone: 300 draws of the last scene.
+  const draws = [];
+  for (let i = 0; i < (frames ? 300 : 0); i++) {
+    const t0 = performance.now();
+    ztk.redraw();
+    draws.push(performance.now() - t0);
+  }
+  draws.sort((a, b) => a - b);
+  const perf = { median: times[60], p99: times[Math.floor(times.length * 0.99)], drawMedian: draws[150], drawP99: draws[297], moduleMedian: module[60], moduleP99: module[118] };
+  const res = { perf, ok: window.ztkResult.ok, frames: Number(ex.ztk_frames()), roles, check: check.result, probe, renderer: ztk.renderer, png: ztk.snapshot() };
+  // ?lose: the GPU device is lost, and the renderer draws the next frame on a new device.
+  if (params.has("lose")) {
+    const restored = await ztk.loseDevice();
+    ztk.frame(base + performance.now() - start0 + 100);
+    res.lost = { restored, png: ztk.snapshot() };
+  }
+  out.textContent = JSON.stringify(res);
   document.body.appendChild(out);
 }
 </script>

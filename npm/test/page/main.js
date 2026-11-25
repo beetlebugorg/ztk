@@ -49,7 +49,7 @@ async function main() {
   res.cpuColors = colors.size > 10;
   soft.destroy();
 
-  // WebGPU is not in this version: mount rejects with a clear error.
+  // The browser of the test has no WebGPU adapter: a forced WebGPU rejects with a clear error.
   try {
     await ztk.mount(document.getElementById("soft"), { renderer: "webgpu" });
     res.webgpu = "mounted";
