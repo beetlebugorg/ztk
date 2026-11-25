@@ -162,6 +162,13 @@ pub fn transitionOf(app: *App, w: *const Widget) ?*Anim {
     return &app.anims.items[i];
 }
 
+/// The keyframe animation of a widget, or null.
+pub fn keyOf(app: *App, w: *const Widget) ?*const KeyAnim {
+    if (app.key_anims.items.len == 0) return null;
+    const i = findKey(app, w) orelse return null;
+    return &app.key_anims.items[i];
+}
+
 /// Starts or changes the transition of a widget after a style change.
 /// The caller has set `w.style` to `new`.
 pub fn start(app: *App, w: *Widget, old: *const Style, new: *const Style, now_us: i64) !void {

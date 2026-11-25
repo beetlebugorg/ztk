@@ -235,8 +235,10 @@ fn shownValue(w: *Widget) f64 {
         d.moving = false;
         return d.value;
     }
+    if (w.app.part_end) return d.value;
     w.app.anim_more = true;
     const p = easing.Timing.ease_out.eval(@as(f32, @floatFromInt(since)) / @as(f32, @floatFromInt(move_us)));
+    w.app.notePartMove(d.anim_start, .{ .duration_ms = @intCast(@divTrunc(move_us, 1000)), .timing = easing.Timing.ease_out }, p);
     return d.anim_from + (d.value - d.anim_from) * p;
 }
 
@@ -360,15 +362,31 @@ fn paintScale(w: *Widget, b: *scene.Builder) anyerror!void {
     const value_st = app.styles.compute(w, "value", &w.style, app.env);
     const th: i32 = @max(num.pxRound(@as(f64, w.style.font.size) * 0.3), 2);
     const pos = posOf(w, g, shownValue(w));
+    const at_fill = b.scene.quads.items.len;
+    var at_slider = at_fill;
     if (hz) {
         try paint.styledBox(b, .{ .x = g.x0, .y = g.y0 - @divTrunc(th, 2), .w = g.len, .h = th }, &trough);
+        at_slider = b.scene.quads.items.len;
         if (pos > 0) try paint.styledBox(b, .{ .x = g.x0, .y = g.y0 - @divTrunc(th, 2), .w = pos, .h = th }, &fill);
-        try paint.styledBox(b, .{ .x = g.x0 + pos - @divTrunc(g.knob, 2), .y = g.y0 - @divTrunc(g.knob, 2), .w = g.knob, .h = g.knob }, &slider);
     } else {
         try paint.styledBox(b, .{ .x = g.x0 - @divTrunc(th, 2), .y = g.y0, .w = th, .h = g.len }, &trough);
+        at_slider = b.scene.quads.items.len;
         if (pos > 0) try paint.styledBox(b, .{ .x = g.x0 - @divTrunc(th, 2), .y = g.y0, .w = th, .h = pos }, &fill);
+    }
+    // A drag: the render thread stretches the fill and moves the slider with the
+    // pointer, so the slider follows it while the UI thread is busy.
+    const drag = d.dragging and !d.moving;
+    const origin: f32 = @floatFromInt((if (hz) b.off.x + g.x0 else b.off.y + g.y0) + pos + d.drag_off);
+    const lo: f32 = @floatFromInt(-pos);
+    const hi: f32 = @floatFromInt(g.len - pos);
+    if (drag) try app.addDrag(b, at_slider, if (hz) 0 else 1, true, origin, lo, hi);
+    const at_knob = b.scene.quads.items.len;
+    if (hz) {
+        try paint.styledBox(b, .{ .x = g.x0 + pos - @divTrunc(g.knob, 2), .y = g.y0 - @divTrunc(g.knob, 2), .w = g.knob, .h = g.knob }, &slider);
+    } else {
         try paint.styledBox(b, .{ .x = g.x0 - @divTrunc(g.knob, 2), .y = g.y0 + pos - @divTrunc(g.knob, 2), .w = g.knob, .h = g.knob }, &slider);
     }
+    if (drag) try app.addDrag(b, at_knob, if (hz) 0 else 1, false, origin, lo, hi);
     const a = app.it.alloc();
     const ins = paint.insets(st);
     const lbl = options.get(w, "-label");

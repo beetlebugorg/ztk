@@ -294,30 +294,85 @@ pub const Builder = struct {
     }
 };
 
-/// A transition that the render thread moves. The quads `first` to
-/// `first + count` of the scene go from the quads `from` to the quads
-/// `from + count` of `Frame.anim_quads`, which are the same quads at the
-/// start and at the end of the transition.
+/// The direction of the iterations of a frame animation, as in CSS.
+pub const Direction = enum(u8) { normal, reverse, alternate, alternate_reverse };
+
+/// An animation that the render thread moves: a transition, a keyframe
+/// animation, an option animation of `ztk::animate`, or the move of a
+/// part. The quads `first` to `first + count` of the scene take their
+/// values from `stops` sets of `count` quads in `Frame.anim_quads`,
+/// which start at `from`. Set k is the paint at the offset
+/// `Frame.anim_offsets[offsets + k]` of the iteration. With `base`, one
+/// more set follows the stops: the paint with no animation, which shows
+/// before the delay with no backward fill and after the end with no
+/// forward fill.
 pub const FrameAnim = struct {
     first: u32,
     count: u32,
     from: u32,
+    stops: u32 = 2,
+    offsets: u32 = 0,
     /// The time of the start, on the clock of the UI thread.
     start_us: i64,
     delay_us: i64,
+    /// The time of one iteration.
     len_us: i64,
     timing: easing.Timing,
+    /// The count of iterations. 0 is no end.
+    iterations: f32 = 1,
+    direction: Direction = .normal,
+    fill_backwards: bool = true,
+    fill_forwards: bool = true,
+    base: bool = false,
 
-    /// The eased progress at a time.
-    pub fn progress(a: FrameAnim, time_us: i64) f32 {
+    pub const Sample = struct {
+        /// The eased progress in the iteration, or null for the base set.
+        p: ?f32,
+        done: bool,
+    };
+
+    fn reversedAt(a: FrameAnim, n: u64) bool {
+        return switch (a.direction) {
+            .normal => false,
+            .reverse => true,
+            .alternate => n % 2 == 1,
+            .alternate_reverse => n % 2 == 0,
+        };
+    }
+
+    /// The eased progress at a time, with the iterations, the direction,
+    /// and the fill.
+    pub fn sample(a: FrameAnim, time_us: i64) Sample {
         const since = time_us - a.start_us - a.delay_us;
-        if (since <= 0) return a.timing.eval(0);
-        if (since >= a.len_us) return 1;
-        return a.timing.eval(@as(f32, @floatFromInt(since)) / @as(f32, @floatFromInt(@max(a.len_us, 1))));
+        if (since < 0) {
+            if (!a.fill_backwards and a.base) return .{ .p = null, .done = false };
+            return .{ .p = a.timing.eval(if (a.reversedAt(0)) 1 else 0), .done = false };
+        }
+        const len: f64 = @floatFromInt(@max(a.len_us, 1));
+        const iters: f64 = @as(f64, @floatFromInt(since)) / len;
+        const count: f64 = a.iterations;
+        if (count > 0 and iters >= count) {
+            if (!a.fill_forwards and a.base) return .{ .p = null, .done = true };
+            const last: u64 = @intFromFloat(@max(@ceil(count) - 1, 0));
+            const frac: f32 = @floatCast(count - @floor(count));
+            const p: f32 = if (frac == 0) 1 else frac;
+            const q = if (a.reversedAt(last)) 1 - p else p;
+            // The end of a move is exact: a spring can end near 1.
+            return .{ .p = if (q == 1) 1 else a.timing.eval(q), .done = true };
+        }
+        const n: u64 = @intFromFloat(@floor(iters));
+        var p: f32 = @floatCast(iters - @floor(iters));
+        if (a.reversedAt(n)) p = 1 - p;
+        return .{ .p = a.timing.eval(p), .done = false };
+    }
+
+    /// The eased progress of a transition at a time.
+    pub fn progress(a: FrameAnim, time_us: i64) f32 {
+        return a.sample(time_us).p orelse 0;
     }
 
     pub fn done(a: FrameAnim, time_us: i64) bool {
-        return time_us - a.start_us - a.delay_us >= a.len_us;
+        return a.sample(time_us).done;
     }
 };
 
@@ -327,30 +382,81 @@ fn lerp4(a: [4]f32, b: [4]f32, t: f32) [4]f32 {
     return o;
 }
 
-/// Writes the quads of each transition of the frame for a time. Returns
-/// true when a transition still runs at that time.
+fn mixQuad(p: Quad, q: Quad, t: f32) Quad {
+    var out = q;
+    out.rect = lerp4(p.rect, q.rect, t);
+    out.radii = lerp4(p.radii, q.radii, t);
+    out.border = lerp4(p.border, q.border, t);
+    out.fill = lerp4(p.fill, q.fill, t);
+    out.fill2 = lerp4(p.fill2, q.fill2, t);
+    out.border_color = lerp4(p.border_color, q.border_color, t);
+    out.params = lerp4(p.params, q.params, t);
+    return out;
+}
+
+/// Writes the quads of each animation of the frame for a time. Returns
+/// true when an animation still runs at that time.
 pub fn applyAnims(f: *Frame, time_us: i64) bool {
     var running = false;
     const quads = f.scene.quads.items;
+    const src = f.anim_quads.items;
+    const offs = f.anim_offsets.items;
     for (f.anims.items) |a| {
-        if (a.first + a.count > quads.len or a.from + 2 * a.count > f.anim_quads.items.len) continue;
-        const t = a.progress(time_us);
-        if (!a.done(time_us)) running = true;
-        for (0..a.count) |k| {
-            const p = f.anim_quads.items[a.from + k];
-            const q = f.anim_quads.items[a.from + a.count + k];
-            var out = q;
-            out.rect = lerp4(p.rect, q.rect, t);
-            out.radii = lerp4(p.radii, q.radii, t);
-            out.border = lerp4(p.border, q.border, t);
-            out.fill = lerp4(p.fill, q.fill, t);
-            out.fill2 = lerp4(p.fill2, q.fill2, t);
-            out.border_color = lerp4(p.border_color, q.border_color, t);
-            out.params = lerp4(p.params, q.params, t);
-            quads[a.first + k] = out;
-        }
+        const sets = a.stops + @intFromBool(a.base);
+        if (a.stops < 2 or a.first + a.count > quads.len or a.from + sets * a.count > src.len or a.offsets + a.stops > offs.len) continue;
+        const s = a.sample(time_us);
+        if (!s.done) running = true;
+        const out = quads[a.first..][0..a.count];
+        const p = s.p orelse {
+            @memcpy(out, src[a.from + a.stops * a.count ..][0..a.count]);
+            continue;
+        };
+        // The two stops around the progress, and the progress between them.
+        const o = offs[a.offsets..][0..a.stops];
+        var i: u32 = 1;
+        while (i < a.stops - 1 and p > o[i]) i += 1;
+        const span = o[i] - o[i - 1];
+        // A spring or a curve can go past the ends, so the progress is not clamped.
+        const t = if (span <= 0) 1 else (p - o[i - 1]) / span;
+        const lo = src[a.from + (i - 1) * a.count ..][0..a.count];
+        const hi = src[a.from + i * a.count ..][0..a.count];
+        for (out, lo, hi) |*q, x, y| q.* = mixQuad(x, y, t);
     }
     return running;
+}
+
+/// A drag that the render thread moves with the pointer: the quads
+/// `first` to `first + count` of the scene move along one axis by the
+/// distance from `base` to the pointer, between `lo` and `hi`. A `stretch`
+/// drag moves only the far edge of each quad. The distances are logical
+/// pixels and `scale` turns them into device pixels. `rects` is the
+/// index of the rectangles of the quads at the paint in `Frame.drag_rects`.
+pub const FrameDrag = struct {
+    first: u32,
+    count: u32,
+    rects: u32,
+    axis: u1,
+    stretch: bool = false,
+    base: f32,
+    lo: f32,
+    hi: f32,
+    scale: f32,
+};
+
+/// Moves the quads of each drag for a pointer position in logical pixels
+/// of the window.
+pub fn applyDrags(f: *Frame, px: f32, py: f32) void {
+    const quads = f.scene.quads.items;
+    const rects = f.drag_rects.items;
+    for (f.drags.items) |d| {
+        if (d.first + d.count > quads.len or d.rects + d.count > rects.len) continue;
+        const ptr = if (d.axis == 0) px else py;
+        const off = std.math.clamp(ptr - d.base, d.lo, d.hi) * d.scale;
+        for (quads[d.first..][0..d.count], rects[d.rects..][0..d.count]) |*q, r| {
+            q.rect = r;
+            if (d.stretch) q.rect[2 + @as(usize, d.axis)] = @max(r[2 + @as(usize, d.axis)] + off, 0) else q.rect[d.axis] = r[d.axis] + off;
+        }
+    }
 }
 
 /// All that the render thread needs for one frame. It has no pointer into
@@ -362,6 +468,10 @@ pub const Frame = struct {
     /// The transitions that the render thread moves, and their quads.
     anims: std.ArrayListUnmanaged(FrameAnim) = .empty,
     anim_quads: std.ArrayListUnmanaged(Quad) = .empty,
+    anim_offsets: std.ArrayListUnmanaged(f32) = .empty,
+    /// The drags that the render thread moves, and the rectangles of their quads.
+    drags: std.ArrayListUnmanaged(FrameDrag) = .empty,
+    drag_rects: std.ArrayListUnmanaged([4]f32) = .empty,
     /// The time of the frame on the clock of the UI thread, and the
     /// system time when the UI thread handed it over.
     time_us: i64 = 0,
@@ -374,6 +484,9 @@ pub const Frame = struct {
         f.scene.quads.clearRetainingCapacity();
         f.anims.clearRetainingCapacity();
         f.anim_quads.clearRetainingCapacity();
+        f.anim_offsets.clearRetainingCapacity();
+        f.drags.clearRetainingCapacity();
+        f.drag_rects.clearRetainingCapacity();
     }
 
     pub fn deinit(f: *Frame, gpa: std.mem.Allocator) void {
@@ -382,5 +495,8 @@ pub const Frame = struct {
         f.scene.deinit(gpa);
         f.anims.deinit(gpa);
         f.anim_quads.deinit(gpa);
+        f.anim_offsets.deinit(gpa);
+        f.drags.deinit(gpa);
+        f.drag_rects.deinit(gpa);
     }
 };

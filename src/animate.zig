@@ -17,6 +17,8 @@ const easing = @import("easing.zig");
 const options = @import("options.zig");
 const widget_mod = @import("widget.zig");
 const anim = @import("anim.zig");
+const scene = @import("scene.zig");
+const style_mod = @import("style.zig");
 const App = @import("app.zig").App;
 const Widget = widget_mod.Widget;
 const Value = ztcl.Value;
@@ -291,6 +293,8 @@ pub fn cmdAnimate(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) z
         a.deinit(app.gpa);
         return e;
     };
+    // The next frame paints the widget, so the frame has the animation for the render thread.
+    w.invalidate(.{ .style = false, .measure = false, .layout = false, .paint = true });
     app.requestFrame();
     return .{ .str = try std.fmt.allocPrint(it.alloc(), "anim#{d}", .{a.id}) };
 }
@@ -349,6 +353,51 @@ pub fn tick(app: *App, now_us: i64) bool {
         i += 1;
     }
     return running;
+}
+
+pub const PaintMove = struct {
+    anim: scene.FrameAnim,
+    /// The eased progress at the time of the frame.
+    now: f32,
+    /// The style at the end.
+    end: style_mod.Style,
+};
+
+/// The move of the paint of a widget that one option animation of colors
+/// gives, for the render thread, or null. A color moves on a line, so the
+/// quads of the paint now and at the end give the quads at each time.
+pub fn paintMove(app: *App, w: *Widget, now_us: i64) ?PaintMove {
+    if (app.opt_anims.list.items.len == 0 or anim.reduced(app)) return null;
+    var found: ?*OptAnim = null;
+    for (app.opt_anims.list.items) |*a| if (a.widget == w) {
+        if (found != null or a.paused_at != null) return null;
+        found = a;
+    };
+    const a = found orelse return null;
+    for (a.tracks.items) |tr| if (tr.kind != .color) return null;
+    const fa: scene.FrameAnim = .{
+        .first = 0, .count = 0, .from = 0,
+        .start_us = a.start_us, .delay_us = @as(i64, a.delay_ms) * 1000, .len_us = lenUs(a), .timing = a.timing,
+        .iterations = @floatFromInt(a.repeat),
+    };
+    const s = fa.sample(now_us);
+    const p = if (now_us - fa.start_us - fa.delay_us < 0) 0 else s.p orelse return null;
+    if (s.done or @abs(1 - p) < 1e-3) return null;
+    // The style with the end colors: the options of the end on the shown style.
+    var end = anim.shown(app, w).*;
+    var saved: [16]options.Slot = undefined;
+    if (a.tracks.items.len > saved.len) return null;
+    const n = a.tracks.items.len;
+    // The slots hold the end colors for `applyOptions`, and then their own values again.
+    for (a.tracks.items, 0..) |tr, i| {
+        const slot = &w.opts[tr.spec];
+        saved[i] = slot.*;
+        slot.set = true;
+        slot.value = .{ .color = .{ .r = byte(tr.to[0]), .g = byte(tr.to[1]), .b = byte(tr.to[2]), .a = byte(tr.to[3]) } };
+    }
+    style_mod.applyOptions(w, &end);
+    for (a.tracks.items, saved[0..n]) |tr, v| w.opts[tr.spec] = v;
+    return .{ .anim = fa, .now = p, .end = end };
 }
 
 /// `ztk::clock get` and `ztk::clock set ms`. Only the headless backend can set the clock.

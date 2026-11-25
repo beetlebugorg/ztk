@@ -9,6 +9,7 @@ const event = @import("../event.zig");
 const loop = @import("../loop.zig");
 const Event = event.Event;
 const Target = @import("../render/thread.zig").Target;
+const RenderThread = @import("../render/thread.zig").RenderThread;
 
 pub const WindowOptions = struct { title: []const u8 = "", size: geom.Size = .{ .w = 200, .h = 200 } };
 
@@ -20,6 +21,14 @@ pub const Window = struct {
     user: ?*anyopaque = null,
     /// The data of the backend.
     impl: ?*anyopaque = null,
+    /// The render thread of the window, for the pointer positions that the
+    /// backend gives it from any thread. Null when the window has none.
+    render: std.atomic.Value(?*RenderThread) = .init(null),
+
+    /// Gives a pointer position to the render thread of the window.
+    pub fn feedPointer(w: *Window, x: f32, y: f32) void {
+        if (w.render.load(.acquire)) |r| r.pointer(x, y);
+    }
 };
 
 pub const Platform = struct {

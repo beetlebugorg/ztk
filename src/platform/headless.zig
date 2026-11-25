@@ -247,6 +247,7 @@ pub const Headless = struct {
         h.px = x;
         h.py = y;
         h.push(.{ .motion = .{ .window = w, .x = x, .y = y, .mods = h.currentMods(), .time_ms = h.timeMs() } });
+        w.feedPointer(x, y);
     }
 
     pub fn pointerButton(h: *Headless, w: *Window, button: u8, pressed: bool) void {

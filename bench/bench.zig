@@ -176,6 +176,15 @@ pub fn main(init: std.process.Init) !void {
             slot.* = nowNs() - t0;
         }
         report("anim-1000", buf[0..runs]);
+        // anim-held-1000: the render thread draws the last frame again with 1 000 animations moved, with no UI work.
+        if (aw.app.render.last) |f| {
+            for (buf[0..runs], 0..) |*slot, i| {
+                const t0 = nowNs();
+                std.mem.doNotOptimizeAway(ztk.scene.applyAnims(f, f.time_us + @as(i64, @intCast(i)) * 1000));
+                slot.* = nowNs() - t0;
+            }
+            report("anim-held-1000", buf[0..runs]);
+        }
     }
 
     // check-toggle-1000: 1 000 checkbuttons, one toggles and its indicator moves for each frame.

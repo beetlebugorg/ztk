@@ -74,8 +74,8 @@ fn init(w: *widget.Widget) anyerror!void {
     win.user = w;
     if (app.window) |main| win.scale = main.scale;
     const mode: render_thread.Mode = if (app.render_ready) app.render.mode else .inline_draw;
-    const r = try render_thread.RenderThread.init(app.gpa, app.render.io, mode, app.platform.target(win));
-    errdefer r.deinit();
+    const r = try app.takeRender(mode, app.platform.target(win));
+    errdefer app.giveRender(r);
     const t = try app.gpa.create(app_mod.Top);
     t.* = .{ .win = win, .render = r };
     errdefer app.gpa.destroy(t);
@@ -83,6 +83,7 @@ fn init(w: *widget.Widget) anyerror!void {
     w.data = t;
     w.mapped = true;
     w.geom = .{ .w = win.size.w, .h = win.size.h };
+    win.render.store(r, .release);
     app.requestFrame();
 }
 
@@ -95,7 +96,8 @@ fn teardown(w: *widget.Widget) void {
         break;
     };
     const t: *app_mod.Top = @ptrCast(@alignCast(w.data orelse return));
-    t.render.deinit();
+    t.win.render.store(null, .release);
+    app.giveRender(t.render);
     app.platform.destroyWindow(t.win);
     t.wm.deinit(app.gpa);
     app.gpa.destroy(t);

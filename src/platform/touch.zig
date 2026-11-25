@@ -94,6 +94,7 @@ pub const Touch = struct {
     fn motion(t: *Touch, out: *std.ArrayListUnmanaged(Event), gpa: std.mem.Allocator, window: *Window, p: [2]f32, ms: u64) !void {
         t.last = p;
         try out.append(gpa, .{ .motion = .{ .window = window, .x = p[0], .y = p[1], .mods = .{ .button1 = t.down }, .time_ms = @truncate(ms) } });
+        window.feedPointer(p[0], p[1]);
     }
 
     fn release(t: *Touch, out: *std.ArrayListUnmanaged(Event), gpa: std.mem.Allocator, window: *Window, ms: u64) !void {

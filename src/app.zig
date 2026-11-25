@@ -20,6 +20,7 @@ const scene_mod = @import("scene.zig");
 const wm_mod = @import("wm.zig");
 const render_thread = @import("render/thread.zig");
 const anim = @import("anim.zig");
+const animate_mod = @import("animate.zig");
 const stats_mod = @import("stats.zig");
 const bind = @import("bind.zig");
 const dispatch = @import("dispatch.zig");
@@ -63,6 +64,15 @@ pub const max_window: i32 = 8192;
 
 /// The largest side of a frame in device pixels.
 const max_frame: u32 = 16384;
+
+pub const PartMove = union(enum) {
+    none,
+    one: struct { anim: scene_mod.FrameAnim, now: f32 },
+    /// Parts move with other timings.
+    mixed,
+    /// `paintOwn` paints the stops: the parts note nothing.
+    blocked,
+};
 
 /// The window, the renderer, and the window manager state of a toplevel
 /// other than ".". The `data` of the toplevel widget holds it.
@@ -134,6 +144,10 @@ pub const App = struct {
     wall: *const fn () i64 = wallNow,
     animations: bool = true,
     anims: std.ArrayListUnmanaged(anim.Anim) = .empty,
+    /// Render threads with no window, for the next toplevels. A threaded
+    /// App starts one at its start, so the first toplevel opens with no
+    /// thread start, and a toplevel that closes gives its thread back.
+    render_pool: std.ArrayListUnmanaged(*render_thread.RenderThread) = .empty,
     key_anims: std.ArrayListUnmanaged(anim.KeyAnim) = .empty,
     /// The animations of `ztk::animate`.
     opt_anims: @import("animate.zig").State = .{},
@@ -148,6 +162,10 @@ pub const App = struct {
     /// The frame that the paint fills, for the transitions of the render thread.
     anim_frame: ?*scene_mod.Frame = null,
     paint_override: ?struct { widget: *const Widget, style: *const style_mod.Style } = null,
+    /// The moves of parts in the paint of one widget, for `paintOwn`.
+    part_move: PartMove = .none,
+    /// True while `paintOwn` paints the parts at the end of their moves.
+    part_end: bool = false,
     anim_last_us: i64 = -1,
     anim_requested_us: i64 = -1,
     stats: stats_mod.Stats = .{},
@@ -217,20 +235,59 @@ pub const App = struct {
             const mode: render_thread.Mode = if (app.platform.thread_safe_draw and opts.io != null) opts.render_mode else .inline_draw;
             app.render = try render_thread.RenderThread.init(gpa, opts.io orelse undefined, mode, app.platform.target(app.window.?));
             app.render_ready = true;
+            app.window.?.render.store(app.render, .release);
+            if (app.render.mode == .threaded) {
+                const spare = try render_thread.RenderThread.init(gpa, app.render.io, .threaded, idle_target);
+                app.render_pool.append(gpa, spare) catch spare.deinit();
+            }
         }
         _ = try app.styles.add(.base, "base", @embedFile("themes/base.css"));
         _ = try app.styles.add(.theme, "modern", @embedFile("themes/modern.css"));
         _ = try app.styles.add(.platform, "modern-linux", @embedFile("themes/modern-linux.css"));
     }
 
+    fn idleDraw(_: *anyopaque, _: *const scene_mod.Frame) anyerror!void {}
+
+    /// The target of a render thread in the pool. It draws nothing.
+    pub const idle_target: render_thread.Target = .{ .ctx = @constCast(@ptrCast(&max_frame)), .draw = idleDraw };
+
+    /// A render thread for a new window: one from the pool, or a new one.
+    pub fn takeRender(app: *App, mode: render_thread.Mode, target: render_thread.Target) !*render_thread.RenderThread {
+        if (mode == .threaded) if (app.render_pool.pop()) |r| {
+            r.retarget(target);
+            return r;
+        };
+        return render_thread.RenderThread.init(app.gpa, app.render.io, mode, target);
+    }
+
+    /// Gives the render thread of a closed window back to the pool, or ends it.
+    pub fn giveRender(app: *App, r: *render_thread.RenderThread) void {
+        if (r.mode == .threaded and app.render_pool.items.len < 4 and !app.closing) {
+            r.retarget(idle_target);
+            app.render_pool.append(app.gpa, r) catch r.deinit();
+            return;
+        }
+        r.deinit();
+    }
+
     pub fn deinit(app: *App) void {
         app.closing = true;
+        // The render thread draws no held frame into a window that goes away.
+        if (app.render_ready) {
+            if (app.window) |win| win.render.store(null, .release);
+            app.render.retarget(idle_target);
+        }
         if (app.root) |r| widget.destroy(r);
         // A widget that has no root (a failed init) still needs a free.
         // The window goes away here, after the render thread finished its frames.
         app.sweepAll();
-        if (app.render_ready) app.render.deinit();
+        if (app.render_ready) {
+            if (app.window) |win| win.render.store(null, .release);
+            app.render.deinit();
+        }
         app.render_ready = false;
+        for (app.render_pool.items) |r| r.deinit();
+        app.render_pool.deinit(app.gpa);
         app.widgets.deinit(app.gpa);
         app.classes.deinit(app.gpa);
         while (app.handles) |h| {
@@ -445,49 +502,182 @@ pub const App = struct {
         for (w.children.items) |c| try app.paintNode(c, b);
     }
 
-    /// Paints the quads of one widget. A widget with a transition of the
-    /// paint is painted at the end and at the start of the transition, and
-    /// the frame gets both lists, so the render thread can move the quads
-    /// for the time that it draws. When the two lists differ in their
-    /// count, the widget is painted once with the shown style.
-    fn paintOwn(app: *App, w: *widget.Widget, b: *scene_mod.Builder, f: *const fn (w: *widget.Widget, b: *scene_mod.Builder) anyerror!void) anyerror!void {
-        const a = anim.transitionOf(app, w) orelse return f(w, b);
-        if (a.layout or app.anim_frame == null) return f(w, b);
+    /// Paints the quads of one widget. A widget with an animation of its
+    /// paint (a transition, a keyframe animation, a color of `ztk::animate`,
+    /// or the move of a part) is painted for each stop of the animation,
+    /// and the frame gets each list of quads, so the render thread can
+    /// move the quads for the time that it draws. When the lists differ in
+    /// their count, the widget is painted once for the time of the frame.
+    fn paintOwn(app: *App, w: *widget.Widget, b: *scene_mod.Builder, f: PaintFn) anyerror!void {
+        if (app.anim_frame == null) return f(w, b);
+        const now = app.anim_frame.?.time_us;
+        if (anim.keyOf(app, w)) |k| {
+            if (!k.done and k.offsets.len >= 2) {
+                const sp = k.spec.spec;
+                const delay = @as(i64, sp.delay_ms) * 1000;
+                const tmpl: scene_mod.FrameAnim = .{
+                    .first = 0, .count = 0, .from = 0,
+                    .start_us = k.start_us, .delay_us = delay, .len_us = @max(sp.totalUs() - delay, 1), .timing = sp.timing,
+                    .iterations = k.spec.count, .direction = @enumFromInt(@intFromEnum(k.spec.direction)),
+                    .fill_backwards = k.spec.fill == .backwards or k.spec.fill == .both,
+                    .fill_forwards = k.spec.fill == .forwards or k.spec.fill == .both,
+                    .base = true,
+                };
+                // The stops, then the computed style for the base set.
+                const Stops = struct {
+                    k: *const anim.KeyAnim,
+                    w: *widget.Widget,
+                    fn set(a: *App, ctx: *const anyopaque, i: ?usize) void {
+                        const c: *const @This() = @ptrCast(@alignCast(ctx));
+                        const idx = i orelse {
+                            a.paint_override = null;
+                            return;
+                        };
+                        a.paint_override = .{ .widget = c.w, .style = if (idx < c.k.stops.len) &c.k.stops[idx] else &c.w.style };
+                    }
+                };
+                const ctx: Stops = .{ .k = k, .w = w };
+                if (try app.paintStops(w, b, f, k.stops.len + 1, .{ .ctx = &ctx, .set = Stops.set }, k.offsets, tmpl)) return;
+                return f(w, b);
+            }
+        }
+        if (anim.transitionOf(app, w)) |a| {
+            if (a.layout) return f(w, b);
+            // One timing moves all quads: the property with the longest time.
+            var spec: style_mod.TransSpec = .{};
+            for (a.spec.props) |p| if (p.active() and p.totalUs() > spec.totalUs()) {
+                spec = p;
+            };
+            const delay = @as(i64, spec.delay_ms) * 1000;
+            const tmpl: scene_mod.FrameAnim = .{ .first = 0, .count = 0, .from = 0, .start_us = a.start_us, .delay_us = delay, .len_us = spec.totalUs() - delay, .timing = spec.timing };
+            const Two = struct {
+                a: *const anim.Anim,
+                w: *widget.Widget,
+                fn set(ap: *App, ctx: *const anyopaque, i: ?usize) void {
+                    const c: *const @This() = @ptrCast(@alignCast(ctx));
+                    const idx = i orelse {
+                        ap.paint_override = null;
+                        return;
+                    };
+                    ap.paint_override = .{ .widget = c.w, .style = if (idx == 0) &c.a.from else &c.a.to };
+                }
+            };
+            const ctx: Two = .{ .a = a, .w = w };
+            if (try app.paintStops(w, b, f, 2, .{ .ctx = &ctx, .set = Two.set }, &.{ 0, 1 }, tmpl)) return;
+            return f(w, b);
+        }
+        if (animate_mod.paintMove(app, w, now)) |m| {
+            // The quads move with the progress, so the paint now and the paint at the end
+            // give each other time, by a line through both.
+            const End = struct {
+                style: style_mod.Style,
+                w: *widget.Widget,
+                fn set(ap: *App, ctx: *const anyopaque, i: ?usize) void {
+                    const c: *const @This() = @ptrCast(@alignCast(ctx));
+                    ap.paint_override = if (i != null and i.? == 1) .{ .widget = c.w, .style = &c.style } else null;
+                }
+            };
+            const ctx: End = .{ .style = m.end, .w = w };
+            if (try app.paintStops(w, b, f, 2, .{ .ctx = &ctx, .set = End.set }, &.{ m.now, 1 }, m.anim)) return;
+            return f(w, b);
+        }
+        // The move of a part: paint once, and when one part moves, paint its end too.
+        const first = b.scene.quads.items.len;
+        app.part_move = .none;
+        try f(w, b);
+        const pm = app.part_move;
+        app.part_move = .none;
+        if (pm != .one) return;
+        const m = pm.one;
+        if (@abs(1 - m.now) < 1e-3) return;
+        app.part_move = .blocked;
+        defer app.part_move = .none;
+        // The paint now again, and the paint at the end.
+        const Phase = struct {
+            fn set(ap: *App, _: *const anyopaque, i: ?usize) void {
+                ap.part_end = i != null and i.? == 1;
+            }
+        };
+        b.scene.quads.shrinkRetainingCapacity(first);
+        const ok = try app.paintStops(w, b, f, 2, .{ .ctx = app, .set = Phase.set }, &.{ m.now, 1 }, m.anim);
+        if (!ok) try f(w, b);
+    }
+
+    pub const PaintFn = *const fn (w: *widget.Widget, b: *scene_mod.Builder) anyerror!void;
+
+    pub const Stage = struct {
+        ctx: *const anyopaque,
+        /// Sets the state of the paint of set i, or puts the state back for null.
+        set: *const fn (app: *App, ctx: *const anyopaque, i: ?usize) void,
+    };
+
+    /// Paints a widget once for each set of an animation, and adds the
+    /// lists and the animation to the frame. The last set stays in the
+    /// scene. `tmpl` gives the timing. Returns false, with no quad added,
+    /// when the sets differ in their count of quads.
+    fn paintStops(app: *App, w: *widget.Widget, b: *scene_mod.Builder, f: PaintFn, sets: usize, stage: Stage, offsets: []const f32, tmpl: scene_mod.FrameAnim) !bool {
         const fr = app.anim_frame.?;
         const quads = &b.scene.quads;
         const first = quads.items.len;
-        app.paint_override = .{ .widget = w, .style = &a.to };
-        defer app.paint_override = null;
-        try f(w, b);
-        const n_to = quads.items.len - first;
         const mark = fr.anim_quads.items.len;
-        try fr.anim_quads.appendSlice(app.gpa, quads.items[first..]);
-        quads.shrinkRetainingCapacity(first);
-        app.paint_override = .{ .widget = w, .style = &a.from };
-        try f(w, b);
-        const n_from = quads.items.len - first;
-        if (n_from != n_to or n_to == 0) {
-            fr.anim_quads.shrinkRetainingCapacity(mark);
-            quads.shrinkRetainingCapacity(first);
-            app.paint_override = null;
-            return f(w, b);
+        const dmark = fr.drags.items.len;
+        const rmark = fr.drag_rects.items.len;
+        defer stage.set(app, stage.ctx, null);
+        var count: ?usize = null;
+        var k: usize = 0;
+        while (k < sets) : (k += 1) {
+            stage.set(app, stage.ctx, k);
+            // Only the drags of the last paint stay.
+            fr.drags.shrinkRetainingCapacity(dmark);
+            fr.drag_rects.shrinkRetainingCapacity(rmark);
+            try f(w, b);
+            const n = quads.items.len - first;
+            if (count == null) count = n;
+            if (n != count.? or n == 0) {
+                fr.anim_quads.shrinkRetainingCapacity(mark);
+                fr.drags.shrinkRetainingCapacity(dmark);
+                fr.drag_rects.shrinkRetainingCapacity(rmark);
+                quads.shrinkRetainingCapacity(first);
+                return false;
+            }
+            try fr.anim_quads.appendSlice(app.gpa, quads.items[first..]);
+            if (k + 1 < sets) quads.shrinkRetainingCapacity(first);
         }
-        // The list holds the start quads, then the end quads.
-        try fr.anim_quads.insertSlice(app.gpa, mark, quads.items[first..]);
-        // One timing moves all quads: the property with the longest time.
-        var spec: style_mod.TransSpec = .{};
-        for (a.spec.props) |p| if (p.active() and p.totalUs() > spec.totalUs()) {
-            spec = p;
-        };
-        try fr.anims.append(app.gpa, .{
-            .first = @intCast(first),
-            .count = @intCast(n_to),
-            .from = @intCast(mark),
-            .start_us = a.start_us,
-            .delay_us = @as(i64, spec.delay_ms) * 1000,
-            .len_us = spec.totalUs() - @as(i64, spec.delay_ms) * 1000,
-            .timing = spec.timing,
-        });
+        const off_at = fr.anim_offsets.items.len;
+        try fr.anim_offsets.appendSlice(app.gpa, offsets);
+        var a = tmpl;
+        a.first = @intCast(first);
+        a.count = @intCast(count.?);
+        a.from = @intCast(mark);
+        a.stops = @intCast(offsets.len);
+        a.offsets = @intCast(off_at);
+        try fr.anims.append(app.gpa, a);
+        return true;
+    }
+
+    /// Adds a drag of the quads from `first` to the end of the scene to the
+    /// frame, so the render thread moves them with the pointer. `base`,
+    /// `lo`, and `hi` are logical pixels of the window. See `scene.FrameDrag`.
+    pub fn addDrag(app: *App, b: *scene_mod.Builder, first: usize, axis: u1, stretch: bool, base: f32, lo: f32, hi: f32) !void {
+        const fr = app.anim_frame orelse return;
+        const quads = b.scene.quads.items;
+        if (first >= quads.len) return;
+        const at = fr.drag_rects.items.len;
+        for (quads[first..]) |q| try fr.drag_rects.append(app.gpa, q.rect);
+        try fr.drags.append(app.gpa, .{ .first = @intCast(first), .count = @intCast(quads.len - first), .rects = @intCast(at), .axis = axis, .stretch = stretch, .base = base, .lo = lo, .hi = hi, .scale = b.scale });
+    }
+
+    /// Notes the move of a part in the paint of a widget, for `paintOwn`.
+    pub fn notePartMove(app: *App, start_us: i64, spec: style_mod.TransSpec, now_p: f32) void {
+        const delay = @as(i64, spec.delay_ms) * 1000;
+        const a: scene_mod.FrameAnim = .{ .first = 0, .count = 0, .from = 0, .start_us = start_us, .delay_us = delay, .len_us = @max(spec.totalUs() - delay, 1), .timing = spec.timing };
+        switch (app.part_move) {
+            .none => app.part_move = .{ .one = .{ .anim = a, .now = now_p } },
+            .one => |o| if (o.anim.start_us != a.start_us or o.anim.len_us != a.len_us or o.anim.delay_us != a.delay_us or !std.meta.eql(o.anim.timing, a.timing)) {
+                app.part_move = .mixed;
+            },
+            .mixed, .blocked => {},
+        }
     }
 
     /// Delivers Map, Unmap, and Configure events for each widget whose
