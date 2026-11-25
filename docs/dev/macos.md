@@ -26,6 +26,7 @@ Each PR is small, has its own tests, and passes CI before the next one starts.
 | 7 | The clipboard of the system | `clipboard` tests against `NSPasteboard` with a private pasteboard name |
 | 8 | Input methods (`NSTextInputClient`) | Unit tests of the marked text and the commit events |
 | 9 | HiDPI changes, the dark mode, and the accent color of the system | Unit tests of the scale and appearance events |
+| 10 | Native menus: the menu bar of the app with the standard app menu, and `NSMenu` popups for `tk_popup` and `menubutton`, through the menu interface of task 12 | A window test of a menu bar and a popup that runs only with `ZTK_TEST_WINDOWS=1`, and unit tests of the map from Tk menu entries to `NSMenuItem` values |
 
 ## The platform interface
 
@@ -82,8 +83,8 @@ Rule 12 of `AGENTS.md` forbids windows on the live desktop session of the develo
 
 ## Decisions
 
-The user decided these on 2026-11-25 (a comment on the PR of this plan):
+The user decided these on 2026-11-25 (comments on the PR of this plan):
 
 1. The modifier map is the map of Tk on macOS. The `bind` manual page of Tk 8.6 lists `Command` as a name of `Mod1` and `Option` as a name of `Mod2`. A script with `<Command-c>` works on Tk and on ztk.
 2. The default backend of `ztk` on macOS is AppKit with the Metal renderer. The CPU renderer is the fallback when Metal gives no device. `--headless` selects the headless backend, as on Linux.
-3. The native menu bar and dialogs of decision D9 wait for Stage 7. Until then, a toplevel menu draws in the window on macOS too.
+3. Menus are native on each platform, and they do not wait for Stage 7 (changed on 2026-11-25, a later comment on the PR of this plan). macOS uses `NSMenu` for the menu bar of the app and for popup menus. Task 12 adds an optional menu interface to `src/platform/platform.zig` first: the menu bar of a window, a popup at a point, a change to one entry, and an event for an entry that the user picks. PR 10 fills it for AppKit. The dialogs of decision D9 still wait for Stage 7.
