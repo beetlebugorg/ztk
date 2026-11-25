@@ -224,8 +224,15 @@ pub const Class = struct {
     trace_command: []const u8 = "",
     /// The name of the variable that the widget traces, or empty.
     traced_var: ?*const fn (w: *const Widget) []const u8 = null,
+    /// A second traced variable (for example `-variable` beside `-textvariable`) and its command word.
+    traced_var2: ?*const fn (w: *const Widget) []const u8 = null,
+    trace_command2: []const u8 = "",
+    /// The accessibility role of the class (section 4.9 of the plan).
+    role: []const u8 = "",
     /// The value of `-text` while a `-textvariable` supplies it, or null.
     variable_text: ?*const fn (w: *const Widget) ?[]const u8 = null,
+    /// Runs one time after the options of the create command, also when it has none.
+    created: ?*const fn (w: *Widget) ztcl.Error!void = null,
     /// Runs after `apply` changed options. `changed` has the spec indexes.
     configured: ?*const fn (w: *Widget, changed: []const usize) ztcl.Error!void = null,
     /// A widget subcommand other than `configure` and `cget`. It returns
@@ -269,6 +276,11 @@ pub fn classCommand(comptime class: *const Class) ztcl.interp.NativeFn {
                 destroy(w);
                 return e;
             };
+            if (class.created) |f| f(w) catch |e| {
+                destroy(w);
+                return e;
+            };
+            if (!w.alive()) return it.fail("can't create window: it was deleted", .{});
             return .{ .str = pathcopy };
         }
     }.call;

@@ -60,6 +60,7 @@ const subcommand_list = "bbox, cget, configure, delete, get, icursor, index, ins
 pub const class: widget.Class = .{
     .command = "entry",
     .tk_class = "Entry",
+    .role = "text field",
     .focusable = true,
     .specs = &specs,
     .init = init,

@@ -47,6 +47,7 @@ pub const specs = [_]Spec{
 pub const class: widget.Class = .{
     .command = "label",
     .tk_class = "Label",
+    .role = "label",
     .specs = &specs,
     .init = init,
     .deinit = deinit,
@@ -81,6 +82,8 @@ pub const Data = struct {
     shown: []u8 = &.{},
     /// A button is armed by a press and invoked by the release.
     armed: bool = false,
+    /// The data of a class that builds on the label, for example the checkbutton. That class frees it.
+    ext: ?*anyopaque = null,
 };
 
 pub fn dataOf(w: *const Widget) *Data {
@@ -227,7 +230,7 @@ pub fn cmdTextvar(it: *ztcl.Interp, argv: []const ztcl.Value, _: ?*ztcl.interp.C
     defer app.leave();
     if (argv.len < 2) return ztcl.Value.empty;
     const w = app.find(try it.str(argv[1])) orelse return ztcl.Value.empty;
-    if (w.class.measure != measure) return ztcl.Value.empty;
+    if (w.class.traced_var != tracedVar) return ztcl.Value.empty;
     readVariable(w, dataOf(w));
     w.invalidate(.{ .style = false, .measure = true, .layout = true, .paint = true });
     return ztcl.Value.empty;

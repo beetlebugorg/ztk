@@ -12,7 +12,9 @@ A Tk replacement in Zig, on the [ztcl](https://github.com/beetlebugorg/ztcl) int
 
 ![A window drawn by ztk: three tiles with gradients and a list of jobs with colored badges](docs/site/shots/dashboard-light.png)
 
-ztk drew this window from [`examples/dashboard.tcl`](examples/dashboard.tcl) and its stylesheet, with the CPU renderer on the headless backend. The [docs site](https://beetlebug.org/ztk/#screenshots) has more examples, in light and dark.
+![The widget gallery drawn by ztk: buttons, check buttons, switches, radio buttons, a segmented control, and entries in cards](docs/site/shots/gallery-light.png)
+
+ztk drew these windows from [`examples/dashboard.tcl`](examples/dashboard.tcl) and [`examples/gallery.tcl`](examples/gallery.tcl) and their stylesheets, with the CPU renderer on the headless backend. The [docs site](https://beetlebug.org/ztk/#screenshots) has more examples, in light and dark.
 
 ## Status
 
@@ -22,6 +24,7 @@ What does not work: the Vulkan swapchain on a window and on a display, a window 
 
 - [The plan](docs/plan.md) has the goal, the architecture, the decisions, the performance targets, the verification strategy, and the stages.
 - [The Stage 1 tasks](docs/tasks/README.md) are the 22 small tasks of the first demo.
+- [The widget stage](docs/stage2-tasks/README.md) adds every widget of Tk 8.6. Done so far: `pack`, `place`, animation (`transition`, `@keyframes`, `ztk::animate`), `checkbutton`, and `radiobutton`. [The limits](docs/stage2-limits.md) list what these lack.
 - [The review checklist](docs/review.md) is what a reviewer checks for each task.
 - [The size of Tk](docs/tk-size.md) has the measured size of the job.
 

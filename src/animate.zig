@@ -334,8 +334,8 @@ pub fn tick(app: *App, now_us: i64) bool {
                 // The same value at the same time changes nothing, so no frame follows.
                 const cur = options.textOf(a.widget, it, tr.spec) catch continue;
                 if (std.mem.eql(u8, cur, text)) continue;
-                const pair = [_]Value{ .{ .str = a.widget.class.specs[tr.spec].name }, .{ .str = text } };
-                options.apply(a.widget, it, &pair) catch {};
+                const d: widget_mod.Dirty = if (tr.kind == .color) .{ .style = true, .measure = false, .layout = false, .paint = true } else .{};
+                options.setOne(a.widget, it, tr.spec, text, d) catch {};
                 if (!a.widget.alive()) break;
             }
         }

@@ -152,3 +152,84 @@ pub fn label(w: *const Widget, b: *scene.Builder, r: geom.Rect, text: []const u8
         try b.text(&app.atlas, &run, lx, by + i * m.line_height + m.ascent, style.color);
     }
 }
+
+const path = @import("path.zig");
+const anim = @import("anim.zig");
+
+/// Fills a shape whose points are logical pixels from the origin of the
+/// builder. The points change to device pixels in place.
+pub fn fillShape(b: *scene.Builder, s: *path.Shape, color: geom.Color, opacity: f32) !void {
+    if (b.failed) return error.NestingTooDeep;
+    for (s.pts.items) |*p| {
+        p.x = (p.x + @as(f32, @floatFromInt(b.off.x))) * b.scale;
+        p.y = (p.y + @as(f32, @floatFromInt(b.off.y))) * b.scale;
+    }
+    const c = [4]f32{
+        @as(f32, @floatFromInt(color.r)) / 255,
+        @as(f32, @floatFromInt(color.g)) / 255,
+        @as(f32, @floatFromInt(color.b)) / 255,
+        @as(f32, @floatFromInt(color.a)) / 255,
+    };
+    try path.fill(b.gpa, &b.scene.quads, s, b.clip, c, opacity);
+}
+
+/// A box in a rectangle with a style: the shadow, the fill, the border,
+/// and the outline, as `box` draws them for a widget.
+pub fn styledBox(b: *scene.Builder, r: geom.Rect, style: *const Style) !void {
+    var rad: [4]f32 = undefined;
+    const side: f32 = @floatFromInt(@min(r.w, r.h));
+    for (style.radius, 0..) |v, i| rad[i] = if (v < 0) side * (-v) / 100 else v;
+    if (style.shadow) |sh| try b.shadow(r, rad, sh);
+    try b.box(r, .{ .fill = style.background, .fill2 = style.background2, .gradient_angle_deg = style.gradient_angle_deg, .border = style.border_width, .border_color = style.border_color, .radii = rad, .opacity = style.opacity });
+    if (style.outline_width > 0 and style.outline_color.a > 0) {
+        const grow: i32 = ceilPx(style.outline_offset + style.outline_width);
+        var rr: [4]f32 = undefined;
+        for (rad, 0..) |v, i| rr[i] = v + @as(f32, @floatFromInt(grow));
+        const ow = style.outline_width;
+        try b.box(.{ .x = r.x - grow, .y = r.y - grow, .w = r.w + 2 * grow, .h = r.h + 2 * grow }, .{ .border = .{ ow, ow, ow, ow }, .border_color = style.outline_color, .radii = rr, .opacity = style.opacity });
+    }
+}
+
+/// The animation state of one part of a widget (for example
+/// `::indicator`). A class keeps one in its data for each part.
+pub const PartAnim = struct {
+    from: Style = .{},
+    to: Style = .{},
+    start_us: i64 = 0,
+    valid: bool = false,
+    /// The computed style of the part, and the facts it came from: the
+    /// state bits, the style generation, and the style of the widget.
+    cache: ?struct { target: Style, state: u16, gen: u32, base: Style, classes: usize } = null,
+};
+
+/// The shown style of a part and the progress of its move. When the
+/// computed style of the part changes, the part moves from the shown
+/// style to the new one with the longest timing of the `transition` of
+/// the part. A running move asks for the next frame.
+pub fn partStyle(w: *Widget, part: []const u8, slot: *PartAnim) struct { style: Style, t: f32 } {
+    const app = w.app;
+    const bits: u16 = @bitCast(w.state);
+    const hit = if (slot.cache) |c| c.state == bits and c.gen == app.styles.generation and c.classes == w.classes.items.len and c.base.eql(&w.style) else false;
+    if (!hit) slot.cache = .{ .target = app.styles.compute(w, part, &w.style, app.env), .state = bits, .gen = app.styles.generation, .base = w.style, .classes = w.classes.items.len };
+    const target = slot.cache.?.target;
+    const now = app.platform.nowUs();
+    var spec: style_mod.TransSpec = .{};
+    for (target.transition.props) |p| if (p.active() and p.totalUs() > spec.totalUs()) {
+        spec = p;
+    };
+    if (!slot.valid or anim.reduced(app) or !spec.active()) {
+        slot.* = .{ .from = target, .to = target, .start_us = now, .valid = true };
+        return .{ .style = target, .t = 1 };
+    }
+    if (!target.eql(&slot.to)) {
+        const p_old = spec.progress(now - slot.start_us);
+        slot.from = anim.mix(&slot.from, &slot.to, p_old);
+        slot.to = target;
+        slot.start_us = now;
+    }
+    const since = now - slot.start_us;
+    if (since >= spec.totalUs()) return .{ .style = slot.to, .t = 1 };
+    app.anim_more = true;
+    const p = spec.progress(since);
+    return .{ .style = anim.mix(&slot.from, &slot.to, p), .t = p };
+}

@@ -178,6 +178,27 @@ pub fn main(init: std.process.Init) !void {
         report("anim-1000", buf[0..runs]);
     }
 
+    // check-toggle-1000: 1 000 checkbuttons, one toggles and its indicator moves for each frame.
+    {
+        var cw: World = undefined;
+        try cw.it.init(gpa);
+        cw.head = try ztk.headless.Headless.init(gpa);
+        cw.app = try ztk.App.init(gpa, &cw.it, .{ .platform = cw.head.platform(), .io = io, .animations = true });
+        defer cw.deinit();
+        cw.head.skip_draw = true;
+        cw.eval("for {set i 0} {$i < 1000} {incr i} { checkbutton .c$i -text c$i; grid .c$i -row [expr {$i / 25}] -column [expr {$i % 25}] }; update");
+        const runs = 200;
+        for (buf[0..runs], 0..) |*slot, i| {
+            var cmd: [48]u8 = undefined;
+            const text = try std.fmt.bufPrint(&cmd, ".c{d} toggle; update", .{(i / 10) % 1000});
+            cw.head.advance(16);
+            const t0 = nowNs();
+            cw.eval(if (i % 10 == 0) text else "update");
+            slot.* = nowNs() - t0;
+        }
+        report("check-toggle-1000", buf[0..runs]);
+    }
+
     // idle-1000: App.frame with no dirty flag.
     {
         const runs = 400;
