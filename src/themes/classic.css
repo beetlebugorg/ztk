@@ -236,6 +236,11 @@ Text {
   cursor: text;
 }
 
+Text::selection {
+  background-color: var(--select);
+  color: var(--fg);
+}
+
 Listbox {
   color: var(--fg);
   background-color: var(--field-bg);

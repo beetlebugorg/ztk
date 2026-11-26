@@ -154,3 +154,106 @@ test "textw: marks and their gravity" {
         .{ ".t mark set end 1.0; .t index end", "1.0" },
     });
 }
+
+test "textw: tags, their ranges, and their options" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval("text .t; .t insert end \"hello world\\nsecond line\\nthird\"");
+    try expectEvals(&h, &.{
+        .{ ".t tag names", "sel" },
+        .{ ".t tag configure sel -background", "-background {} {} {} #c3c3c3" },
+        .{ ".t tag configure sel -relief", "-relief {} {} {} raised" },
+        .{ ".t tag add a 1.0 1.5 2.0 2.3; .t tag add b 1.3; .t tag ranges a", "1.0 1.5 2.0 2.3" },
+        .{ ".t tag names", "sel a b" },
+        .{ ".t tag names 1.3", "a b" },
+        .{ ".t tag add a 1.4 1.8; .t tag ranges a", "1.0 1.8 2.0 2.3" },
+        .{ ".t tag remove a 1.2 1.3; .t tag ranges a", "1.0 1.2 1.3 1.8 2.0 2.3" },
+        .{ ".t insert 1.1 XY; .t tag ranges a", "1.0 1.4 1.5 1.10 2.0 2.3" },
+        .{ ".t insert 1.0 ZZ; .t tag ranges a", "1.2 1.6 1.7 1.12 2.0 2.3" },
+        .{ ".t insert 1.4 QQ b; list [.t tag ranges a] [.t tag ranges b]", "{1.2 1.4 1.6 1.8 1.9 1.14 2.0 2.3} {1.4 1.6 1.9 1.10}" },
+        .{ "list [.t index a.first] [.t index a.last]", "1.2 2.3" },
+        .{ ".t tag nextrange a 1.0", "1.2 1.4" },
+        .{ ".t tag nextrange a 1.3 2.0", "1.6 1.8" },
+        .{ ".t tag nextrange a 2.1", "" },
+        .{ ".t tag prevrange a end", "2.0 2.3" },
+        .{ ".t tag prevrange a 2.1", "2.0 2.3" },
+        .{ ".t tag prevrange a 1.0", "" },
+        .{ ".t tag configure a -foreground red; .t tag configure a -foreground", "-foreground {} {} {} red" },
+        .{ ".t tag cget a -fg", "" },
+        .{ ".t tag configure zz -background blue; .t tag raise a; .t tag names", "sel b zz a" },
+        .{ ".t tag lower a b; .t tag names", "sel a b zz" },
+        .{ ".t tag raise a b; .t tag names", "sel b a zz" },
+        .{ ".t tag delete b zz nonesuch sel; .t tag names", "sel a" },
+        .{ ".t tag bind a <1> {puts hi}; .t tag bind a <Motion> {puts m}; .t tag bind a", "<Motion> <Button-1>" },
+        .{ ".t tag bind a <1>", "puts hi" },
+        .{ ".t tag add a 3.0 end; .t tag ranges a", "1.2 1.4 1.6 1.8 1.9 1.14 2.0 2.3 3.0 4.0" },
+        .{ ".t delete 1.0 2.0; .t tag ranges a", "1.0 1.3 2.0 3.0" },
+        .{ ".t tag configure a -font {Courier 12} -lmargin1 1c; .t tag cget a -lmargin1", "1c" },
+        .{ ".t tag configure a -elide 1; .t tag cget a -elide", "1" },
+        .{ ".t tag configure a -elide {}; .t tag cget a -elide", "" },
+        .{ ".t tag remove a 1.0 end; .t tag ranges a", "" },
+    });
+    try expectErrors(&h, &.{
+        .{ ".t index a.first", "text doesn't contain any characters tagged with \"a\"" },
+        .{ ".t index c.first", "bad text index \"c.first\"" },
+        .{ ".t tag configure a -bogus 1", "unknown option \"-bogus\"" },
+        .{ ".t tag configure a -fo", "unknown option \"-fo\"" },
+        .{ ".t tag configure a -wrap foo", "bad wrap \"foo\": must be char, none, word, or " },
+        .{ ".t tag configure a -elide foo", "expected boolean value but got \"foo\"" },
+        .{ ".t tag configure a -justify foo", "bad justification \"foo\": must be left, right, or center" },
+        .{ ".t tag configure a -offset foo", "bad screen distance \"foo\"" },
+        .{ ".t tag configure a -tabs {1c foo}", "bad tab alignment \"foo\": must be left, right, center, or numeric" },
+        .{ ".t tag configure a -tabstyle foo", "bad tabstyle \"foo\": must be tabular, wordprocessor, or " },
+        .{ ".t tag raise nonesuch", "tag \"nonesuch\" isn't defined in text widget" },
+        .{ ".t tag cget nonesuch -fg", "tag \"nonesuch\" isn't defined in text widget" },
+        .{ ".t tag bind a <Foo> x", "bad event type or keysym \"Foo\"" },
+        .{ ".t tag bind a <Configure> x", "requested illegal events; only key, button, motion, enter, leave, and virtual events may be used" },
+        .{ ".t tag", "wrong # args: should be \".t tag option ?arg ...?\"" },
+        .{ ".t tag bogus", "bad tag option \"bogus\": must be add, bind, cget, configure, delete, lower, names, nextrange, prevrange, raise, ranges, or remove" },
+        .{ ".t tag add a", "wrong # args: should be \".t tag add tagName index1 ?index2 index1 index2 ...?\"" },
+        .{ ".t tag remove a", "wrong # args: should be \".t tag remove tagName index1 ?index2 index1 index2 ...?\"" },
+        .{ ".t tag ranges", "wrong # args: should be \".t tag ranges tagName\"" },
+        .{ ".t tag nextrange a", "wrong # args: should be \".t tag nextrange tagName index1 ?index2?\"" },
+        .{ ".t tag cget a", "wrong # args: should be \".t tag cget tagName option\"" },
+        .{ ".t tag names 1.0 2.0", "wrong # args: should be \".t tag names ?index?\"" },
+        .{ ".t tag delete", "wrong # args: should be \".t tag delete tagName ?tagName ...?\"" },
+        .{ ".t tag raise", "wrong # args: should be \".t tag raise tagName ?aboveThis?\"" },
+    });
+}
+
+test "textw: tag bindings with Enter and Leave, and the paint of tags" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval(
+        \\set log {}
+        \\text .t -width 20 -height 4 -bd 0 -highlightthickness 0 -padx 0 -pady 0; place .t -x 0 -y 0
+        \\.t insert end "link here\nplain"
+        \\.t tag add link 1.0 1.4
+        \\.t tag configure link -foreground blue -underline 1 -background yellow
+        \\.t tag bind link <Enter> {lappend log enter}
+        \\.t tag bind link <Leave> {lappend log leave}
+        \\.t tag bind link <Button-1> {lappend log click}
+        \\bind .t <Button-1> {lappend log widget}
+        \\update
+    );
+    h.head.pointerMove(h.win, 3, 3);
+    try h.update();
+    try t.expectEqualStrings("enter", try h.eval("set log"));
+    try t.expectEqualStrings("1.0", try h.eval(".t index current"));
+    h.head.pointerButton(h.win, 1, true);
+    try h.update();
+    h.head.pointerButton(h.win, 1, false);
+    try h.update();
+    try t.expectEqualStrings("enter click widget", try h.eval("set log"));
+    h.head.pointerMove(h.win, 3, 40);
+    try h.update();
+    try t.expectEqualStrings("enter click widget leave", try h.eval("set log"));
+    try t.expectEqualStrings("2.0", try h.eval(".t index current"));
+    // An elided range has no width, so the text after it moves left.
+    const x0 = try h.eval("lindex [.t count -xpixels 1.0 1.6] 0");
+    _ = try h.eval(".t tag configure link -elide 1");
+    const x1 = try h.eval(".t count -xpixels 1.0 1.6");
+    try t.expect(!std.mem.eql(u8, x0, x1));
+}

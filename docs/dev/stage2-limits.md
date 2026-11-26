@@ -207,10 +207,12 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 
 ## text (task 15)
 
-- PR 1 has the buffer, the indexes, and the subcommands `compare`, `count`, `delete`, `get`, `index`, `insert`, `mark`, and `replace`, with the options of `wish` 8.6.16 in its order. The other subcommands give the message `the text subcommand "name" is not in ztk yet`. The tag lists of `insert` and `replace` have no effect, and `sel.first` and `sel.last` give the message of `wish` for a tag with no characters.
+- The widget has the buffer, the indexes, the marks, and the tags, with the subcommands `compare`, `count`, `delete`, `get`, `index`, `insert`, `mark`, `replace`, and `tag`, and the options of `wish` 8.6.16 in its order. The other subcommands give the message `the text subcommand "name" is not in ztk yet`.
 - `mark names` gives `insert`, `current`, and then the marks in the order of creation. `wish` gives the order of its hash table. Marks at one position are in the order of their last `mark set`.
-- The display forms of the indexes and of `count` (`display lines`, `-displaylines`) count the lines of the text, and `-xpixels` and `-ypixels` use one line height and no wrap. A character of 128 or more counts as a character of a word for `wordstart` and `wordend`.
-- The paint draws the lines from the top with no wrap and no scroll, and a caret with no blink.
+- The display forms of the indexes and of `count` (`display lines`, `-displaylines`) count the lines of the text, and `-ypixels` uses the height of each line with no wrap. `get -displaychars` and `count -displaychars` include elided text. A character of 128 or more counts as a character of a word for `wordstart` and `wordend`.
+- The paint uses the tag options `-background`, `-foreground`, `-font`, `-underline`, `-underlinefg`, `-overstrike`, `-overstrikefg`, `-offset`, and `-elide`. The other tag options are stored and checked with no effect yet: the margins, the spacing, `-justify`, `-tabs`, `-wrap`, `-relief`, `-borderwidth`, and the stipples. The paint draws the lines from the top with no wrap and no scroll, and a caret with no blink.
+- The tag `sel` shows the selection options of the widget, and the paint uses the colors of the part `::selection` until a script sets the colors of `sel` or the option `-selectbackground`. `tag delete sel` removes the ranges of `sel` and keeps the tag.
+- Tag bindings: `current` moves to the character under the pointer while no button is down. Key events run the bindings of the tags of `current`.
 
 ## Additions
 
@@ -230,4 +232,5 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - `-placeholder` and `-placeholderforeground` for `ttk::combobox` and `ttk::spinbox`. The parts `::arrow`, `::popdown`, `::item`, and `::item-active` of a combobox, and `::trough` and `::bar` of a progress bar.
 - `-emptytext` and the style class `sidebar` of a listbox, and its parts `::item`, `::selection`, `::active`, and `::empty`.
 - The parts `::tab`, `::tab-selected`, `::tab-hover`, `::tab-disabled`, `::indicator`, and `::client` of `TNotebook`, the slide of the indicator, and the fade of the page.
+- The part `::selection` of `Text`, for the tag `sel`.
 - The parts `::sash` and `::sash-active` of `Panedwindow` and `TPanedwindow`. The sash under the pointer fades to `::sash-active` in 120 ms.

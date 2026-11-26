@@ -148,6 +148,21 @@ fn measureFont(app: *App, desc: font_mod.FontDesc) ?*font_mod.Font {
     return app.fonts.get(desc, 1) catch null;
 }
 
+/// The ascent, the descent, and the line height of a font, in logical pixels.
+pub fn fontMetrics(app: *App, desc: font_mod.FontDesc) font_mod.Metrics {
+    const font = measureFont(app, desc) orelse return .{ .ascent = 0, .descent = 0, .line_height = 0 };
+    return font_mod.Fonts.metrics(font);
+}
+
+/// Draws one line of text with its baseline at `baseline`.
+pub fn textAt(app: *App, b: *scene.Builder, x: i32, baseline: i32, text: []const u8, desc: font_mod.FontDesc, color: geom.Color) !void {
+    if (text.len == 0) return;
+    const pfont = try app.fonts.get(desc, b.scale);
+    var run = try shape.shape(app.gpa, pfont, text);
+    defer run.deinit(app.gpa);
+    try b.text(&app.atlas, &run, x, baseline, color);
+}
+
 /// The size of lines of text in a font. A newline starts a new line.
 pub fn textSize(app: *App, text: []const u8, desc: font_mod.FontDesc) geom.Size {
     const font = measureFont(app, desc) orelse return .{};

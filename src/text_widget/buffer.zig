@@ -19,7 +19,8 @@
 //! mark to the end of the new text when its gravity is right. A delete
 //! moves each mark in the range to the start of the range. Each mark has
 //! a sequence number, and marks at one position are in the order of
-//! their numbers.
+//! their numbers. An edit also moves the ranges of the tags of
+//! `tags.zig`.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -98,6 +99,7 @@ pub const Buffer = struct {
     /// first, then the order of creation.
     marks: std.StringArrayHashMapUnmanaged(Mark) = .empty,
     seq: u64 = 0,
+    tags: @import("tags.zig").TagSet = .{},
 
     pub fn init(gpa: std.mem.Allocator) !Buffer {
         var b: Buffer = .{ .gpa = gpa };
@@ -112,6 +114,7 @@ pub const Buffer = struct {
         b.lines.deinit(b.gpa);
         for (b.marks.keys()) |k| b.gpa.free(k);
         b.marks.deinit(b.gpa);
+        b.tags.deinit(b.gpa);
     }
 
     /// The count of lines with text, without the empty line of `end`.
@@ -271,6 +274,7 @@ pub const Buffer = struct {
             end_pos = .{ .line = p.line + @as(u32, @intCast(nl)), .ch = last_ch };
         }
         b.moveMarksInsert(p, end_pos);
+        b.tags.onInsert(p, end_pos);
         return end_pos;
     }
 
@@ -307,6 +311,7 @@ pub const Buffer = struct {
             b.lines.replaceRangeAssumeCapacity(a.line + 1, z.line - a.line, &.{});
         }
         for (b.marks.values()) |*m| m.pos = shiftDelete(m.pos, a, z);
+        b.tags.onDelete(a, z);
     }
 
     pub fn getMark(b: *const Buffer, name: []const u8) ?Mark {
