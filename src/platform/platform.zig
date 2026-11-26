@@ -117,6 +117,17 @@ pub const TrayId = u32;
 /// The pixels are valid only during the call that gives them.
 pub const TrayIcon = struct { width: u32, height: u32, pixels: []const u8 };
 
+/// The state of the taskbar or dock button of a window (ztk#61).
+pub const Taskbar = struct {
+    progress: Progress = .none,
+    /// From 0 to 1, for `normal`, `paused`, and `failed`.
+    value: f32 = 0,
+    /// The count of the badge. 0 is no badge.
+    badge: u32 = 0,
+
+    pub const Progress = enum { none, normal, indeterminate, paused, failed };
+};
+
 /// The appearance of the system.
 pub const Appearance = struct {
     dark: bool,
@@ -154,13 +165,13 @@ pub const Cursor = enum {
     /// for a name with no shape here.
     pub fn fromTk(name: []const u8) ?Cursor {
         const map = [_]struct { []const u8, Cursor }{
-            .{ "arrow", .default },         .{ "left_ptr", .default },         .{ "top_left_arrow", .default },
-            .{ "xterm", .text },            .{ "hand1", .pointer },            .{ "hand2", .pointer },
-            .{ "watch", .wait },            .{ "crosshair", .crosshair },      .{ "cross", .crosshair },
-            .{ "tcross", .crosshair },      .{ "fleur", .move },               .{ "question_arrow", .help },
+            .{ "arrow", .default },               .{ "left_ptr", .default },            .{ "top_left_arrow", .default },
+            .{ "xterm", .text },                  .{ "hand1", .pointer },               .{ "hand2", .pointer },
+            .{ "watch", .wait },                  .{ "crosshair", .crosshair },         .{ "cross", .crosshair },
+            .{ "tcross", .crosshair },            .{ "fleur", .move },                  .{ "question_arrow", .help },
             .{ "sb_h_double_arrow", .ew_resize }, .{ "sb_v_double_arrow", .ns_resize }, .{ "X_cursor", .not_allowed },
-            .{ "size_we", .ew_resize },     .{ "size_ns", .ns_resize },        .{ "size_nw_se", .nwse_resize },
-            .{ "size_ne_sw", .nesw_resize }, .{ "size", .move },
+            .{ "size_we", .ew_resize },           .{ "size_ns", .ns_resize },           .{ "size_nw_se", .nwse_resize },
+            .{ "size_ne_sw", .nesw_resize },      .{ "size", .move },
         };
         for (map) |m| if (std.mem.eql(u8, m[0], name)) return m[1];
         return null;
@@ -284,6 +295,14 @@ pub const Platform = struct {
         traySet: ?*const fn (ptr: *anyopaque, id: TrayId, icon: TrayIcon, template: bool, tooltip: []const u8, menu: MenuId) void = null,
         /// Removes a tray icon.
         trayDrop: ?*const fn (ptr: *anyopaque, id: TrayId) void = null,
+
+        // The taskbar or dock button (ztk#61).
+
+        /// Shows the progress and the badge of `state` on the button of `w`.
+        taskbarSet: ?*const fn (ptr: *anyopaque, w: *Window, state: Taskbar) void = null,
+        /// Asks for the attention of the user with the button of `w`.
+        /// `critical` keeps the request until the window has the focus.
+        attention: ?*const fn (ptr: *anyopaque, w: *Window, critical: bool) void = null,
     };
 
     pub fn hasNativeMenus(p: Platform) bool {
@@ -319,6 +338,15 @@ pub const Platform = struct {
     }
     pub fn trayDrop(p: Platform, id: TrayId) void {
         if (p.vtable.trayDrop) |f| f(p.ptr, id);
+    }
+    pub fn hasTaskbar(p: Platform) bool {
+        return p.vtable.taskbarSet != null and p.vtable.attention != null;
+    }
+    pub fn taskbarSet(p: Platform, w: *Window, state: Taskbar) void {
+        if (p.vtable.taskbarSet) |f| f(p.ptr, w, state);
+    }
+    pub fn attention(p: Platform, w: *Window, critical: bool) void {
+        if (p.vtable.attention) |f| f(p.ptr, w, critical);
     }
     pub fn setMenuHandler(p: Platform, h: MenuHandler) void {
         if (p.vtable.setMenuHandler) |f| f(p.ptr, h);

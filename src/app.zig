@@ -182,6 +182,8 @@ pub const App = struct {
     text_input: @import("textinput.zig").State = .{},
     /// The icons of `ztk::tray`.
     trays: @import("tray.zig").State = .{},
+    /// The progress and the badge of `ztk::taskbar`.
+    taskbar: @import("platform/platform.zig").Taskbar = .{},
     /// The accent color of the system, when the backend gives one. The themes do not use it yet.
     accent: ?geom.Color = null,
     anim_last_us: i64 = -1,
@@ -304,7 +306,7 @@ pub const App = struct {
     fn idleDraw(_: *anyopaque, _: *const scene_mod.Frame) anyerror!void {}
 
     /// The target of a render thread in the pool. It draws nothing.
-    pub const idle_target: render_thread.Target = .{ .ctx = @constCast(@ptrCast(&max_frame)), .draw = idleDraw };
+    pub const idle_target: render_thread.Target = .{ .ctx = @ptrCast(@constCast(&max_frame)), .draw = idleDraw };
 
     /// A render thread for a new window: one from the pool, or a new one.
     pub fn takeRender(app: *App, mode: render_thread.Mode, target: render_thread.Target) !*render_thread.RenderThread {
@@ -593,9 +595,15 @@ pub const App = struct {
                 const sp = k.spec.spec;
                 const delay = @as(i64, sp.delay_ms) * 1000;
                 const tmpl: scene_mod.FrameAnim = .{
-                    .first = 0, .count = 0, .from = 0,
-                    .start_us = k.start_us, .delay_us = delay, .len_us = @max(sp.totalUs() - delay, 1), .timing = sp.timing,
-                    .iterations = k.spec.count, .direction = @enumFromInt(@intFromEnum(k.spec.direction)),
+                    .first = 0,
+                    .count = 0,
+                    .from = 0,
+                    .start_us = k.start_us,
+                    .delay_us = delay,
+                    .len_us = @max(sp.totalUs() - delay, 1),
+                    .timing = sp.timing,
+                    .iterations = k.spec.count,
+                    .direction = @enumFromInt(@intFromEnum(k.spec.direction)),
                     .fill_backwards = k.spec.fill == .backwards or k.spec.fill == .both,
                     .fill_forwards = k.spec.fill == .forwards or k.spec.fill == .both,
                     .base = true,

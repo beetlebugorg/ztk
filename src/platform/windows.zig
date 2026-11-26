@@ -45,6 +45,7 @@ const Cursor = plat.Cursor;
 const tsf = @import("tsf.zig");
 const winmenu = @import("winmenu.zig");
 const wintray = @import("wintray.zig");
+const wintaskbar = @import("wintaskbar.zig");
 
 pub const Renderer = enum { auto, d3d12, cpu };
 
@@ -88,6 +89,8 @@ const WinRec = struct {
     /// The menu bar of the window and the id of its menu.
     bar: ?w32.HMENU = null,
     bar_id: plat.MenuId = 0,
+    /// The state of the taskbar button, for the message of the button.
+    taskbar: plat.Taskbar = .{},
     /// The buttons that are down, bit 0 for button 1.
     buttons: u8 = 0,
 };
@@ -116,6 +119,7 @@ pub const Win32 = struct {
     menu_handler: ?plat.MenuHandler = null,
     /// The icons in the notification area.
     trays: wintray.Trays,
+    taskbar: wintaskbar.Taskbar,
     last_frame_us: i64 = 0,
     /// Counts of the frames that each output drew, for the tests.
     gpu_frames: std.atomic.Value(u32) = .init(0),
@@ -137,7 +141,7 @@ pub const Win32 = struct {
         // A manual reset keeps the tick signaled after the wait, so `poll` sees it.
         const timer = w32.CreateWaitableTimerExW(null, null, w32.CREATE_WAITABLE_TIMER_MANUAL_RESET | w32.CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, w32.TIMER_ALL_ACCESS) orelse return error.NoTimer;
         const b = try gpa.create(Win32);
-        b.* = .{ .gpa = gpa, .opts = opts, .inst = inst, .timer = timer, .menus = .{ .gpa = gpa }, .trays = wintray.Trays.init(gpa) };
+        b.* = .{ .gpa = gpa, .opts = opts, .inst = inst, .timer = timer, .menus = .{ .gpa = gpa }, .trays = wintray.Trays.init(gpa), .taskbar = wintaskbar.Taskbar.init() };
         b.tsf = tsf.Tsf.init() catch null;
         return b;
     }
@@ -145,6 +149,7 @@ pub const Win32 = struct {
     pub fn deinit(b: *Win32) void {
         // An icon goes away with the window that owns it, so the trays go first.
         b.trays.deinit();
+        b.taskbar.deinit();
         while (b.windows.items.len > 0) destroy(b, b.windows.items[b.windows.items.len - 1].win);
         b.windows.deinit(b.gpa);
         b.queue.deinit(b.gpa);
@@ -189,6 +194,8 @@ pub const Win32 = struct {
         .trayCreate = vTrayCreate,
         .traySet = vTraySet,
         .trayDrop = vTrayDrop,
+        .taskbarSet = vTaskbarSet,
+        .attention = vAttention,
     };
 
     fn self(ptr: *anyopaque) *Win32 {
@@ -517,6 +524,18 @@ pub const Win32 = struct {
         self(ptr).trays.drop(id);
     }
 
+    fn vTaskbarSet(ptr: *anyopaque, w: *Window, state: plat.Taskbar) void {
+        const b = self(ptr);
+        const rec = b.recOf(w) orelse return;
+        rec.taskbar = state;
+        b.taskbar.apply(rec.hwnd, state);
+    }
+
+    fn vAttention(ptr: *anyopaque, w: *Window, critical: bool) void {
+        const rec = self(ptr).recOf(w) orelse return;
+        wintaskbar.flash(rec.hwnd, critical);
+    }
+
     /// A message of the shell for a tray: the action in the low word of
     /// `lp`, the id in the high word, and the point of the pointer in `wp`.
     fn trayMessage(b: *Win32, rec: *WinRec, wp: w32.WPARAM, lp: w32.LPARAM) w32.LRESULT {
@@ -843,6 +862,10 @@ pub const Win32 = struct {
     fn message(b: *Win32, rec: *WinRec, msg: w32.UINT, wp: w32.WPARAM, lp: w32.LPARAM) w32.LRESULT {
         const w = rec.win;
         if (msg == wintray.callback_msg) return b.trayMessage(rec, wp, lp);
+        if (msg == b.taskbar.button_created and msg != 0) {
+            b.taskbar.apply(rec.hwnd, rec.taskbar);
+            return 0;
+        }
         if (msg == b.trays.taskbar_created and msg != 0) {
             b.trays.addAll();
             return 0;
