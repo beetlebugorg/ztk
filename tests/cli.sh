@@ -32,7 +32,11 @@ case "$out" in *"frames: 3"*"paint: count 3"*) echo "ok: the frame statistics" ;
 echo 'exit 3' >"$work/exit.tcl"
 $cap "$ztk" --headless "$work/exit.tcl" >/dev/null 2>&1; check "exit status" "$?" "3"
 printf 'set f [open out.txt w]; puts $f hi; close $f; set f [open out.txt]; puts [read -nonewline $f]; close $f\n' >"$work/f.tcl"
-check "a file in the folder of the script" "$($cap "$ztk" --headless "$work/f.tcl" 2>/dev/null)" "hi"
+mkdir -p "$work/cwd"
+check "a file in the current folder" "$(cd "$work/cwd" && $cap "$ztk" --headless "$work/f.tcl" 2>/dev/null)" "hi"
+check "the file is in the current folder" "$(test -f "$work/cwd/out.txt" && echo yes)" "yes"
+printf 'set f [open {%s/abs.txt} w]; puts $f hi; close $f; puts [file exists {%s/abs.txt}]\n' "$work" "$work" >"$work/abs.tcl"
+check "an absolute path of the host" "$($cap "$ztk" --headless "$work/abs.tcl" 2>/dev/null)" "1"
 mkdir -p "$work/root"
 $cap "$ztk" --headless --root "$work/root" "$work/f.tcl" >/dev/null 2>&1
 check "the file goes in the root" "$(test -f "$work/root/out.txt" && echo yes)" "yes"

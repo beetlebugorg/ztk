@@ -211,9 +211,12 @@ pub fn main(init: std.process.Init) !void {
     it.event_host = .{ .now = hostTicks, .sleep = hostSleep };
     try it.allow(allow_bits);
     const fs_bits = @intFromEnum(ztcl.interp.Capability.file) | @intFromEnum(ztcl.interp.Capability.channels);
+    // The file commands use the real paths of the host, as in wish, and
+    // --root keeps them in one folder.
     if (allow_bits & fs_bits != 0) {
-        const dir = root_dir orelse (std.fs.path.dirname(path) orelse ".");
-        ztcl.fsroot.setRoot(&it, dir) catch fail(err, "ztk: cannot open the root folder \"{s}\"\n", .{dir});
+        if (root_dir) |dir| {
+            ztcl.fsroot.setRoot(&it, dir) catch fail(err, "ztk: cannot open the root folder \"{s}\"\n", .{dir});
+        } else ztcl.fsroot.setHost(&it) catch fail(err, "ztk: this system has no host mode for the file commands\n", .{});
     }
 
     var head: ?*ztk.headless.Headless = null;
