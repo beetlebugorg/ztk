@@ -572,3 +572,18 @@ test "menu: the popups of a closed menu fade out and then go away" {
     try h.update();
     try t.expectEqual(@as(usize, 0), h.app.menu_pops.ng);
 }
+
+test "menu: a popup extends past the window when the screen has room" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval(setup);
+    _ = try h.eval("wm geometry . 400x300");
+    try h.update();
+    h.head.screen = .{ .x = -100, .y = -100, .w = 1000, .h = 1000 };
+    _ = try h.eval(".m post 390 290");
+    try h.update();
+    const r = @import("../widgets/menudraw.zig").rect(h.app.find(".m").?);
+    try t.expectEqual(@as(i32, 390), r.x);
+    try t.expectEqual(@as(i32, 290), r.y);
+}

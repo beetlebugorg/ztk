@@ -36,6 +36,7 @@ const Surface = struct {
     host: *Headless,
     atlas: Atlas,
     image: ?Image = null,
+    popup: bool = false,
 };
 
 const WinRec = struct { win: *Window, frame_wanted: bool = false, surface: *Surface, popup: ?plat.Popup = null };
@@ -56,6 +57,9 @@ pub const Headless = struct {
     patches_applied: u32 = 0,
     /// True: `draw` counts the frame and skips the CPU draw, for the benchmark.
     skip_draw: bool = false,
+    /// True: a popup draws with the CPU also with `skip_draw`. The web page
+    /// shows the image of a popup in a 2D canvas.
+    draw_popups: bool = false,
     /// Milliseconds that a draw waits before it reads the surface. A test uses it
     /// to hold the render thread inside a draw.
     draw_delay_ms: u32 = 0,
@@ -82,6 +86,9 @@ pub const Headless = struct {
     /// True: the platform of the backend has popup surfaces. The web build
     /// clears it before `platform`, because its page draws one canvas.
     popups: bool = true,
+    /// The screen of the popups in the coordinates of the window of ".".
+    /// Null: that window. The web build sets the viewport of the page.
+    screen: ?geom.Rect = null,
     /// One line for each menu call, for example "set 3 [command Open Ctrl+O]".
     menu_log: std.ArrayListUnmanaged(u8) = .empty,
     /// The handler of the core for `opening` and `select`, from `setMenuHandler`.
@@ -216,12 +223,14 @@ pub const Headless = struct {
         return .{};
     }
 
-    fn screenOf(h: *Headless, w: *const Window) geom.Size {
+    /// The screen of a popup chain in the coordinates of its root window:
+    /// `screen`, or else the root window.
+    fn screenOf(h: *Headless, w: *const Window) geom.Rect {
         for (h.windows.items) |r| if (r.win == w) {
-            const p = r.popup orelse return w.size;
+            const p = r.popup orelse break;
             return h.screenOf(p.parent);
         };
-        return w.size;
+        return h.screen orelse .{ .w = w.size.w, .h = w.size.h };
     }
 
     /// The place of a new popup in its parent: at its anchor, flipped
@@ -253,27 +262,31 @@ pub const Headless = struct {
         }
         const base = h.absPos(p.parent);
         const scr = h.screenOf(p.parent);
+        const x0 = scr.x;
+        const y0 = scr.y;
+        const x1 = scr.x + scr.w;
+        const y1 = scr.y + scr.h;
         // The flip mirrors the gap between the popup and the anchor.
         switch (p.side) {
-            .below => if (base.y + y + size.h > scr.h) {
+            .below => if (base.y + y + size.h > y1) {
                 const fy = a.y - (y - (a.y + a.h)) - size.h;
-                if (base.y + fy >= 0) y = fy;
+                if (base.y + fy >= y0) y = fy;
             },
-            .above => if (base.y + y < 0) {
+            .above => if (base.y + y < y0) {
                 const fy = a.y + a.h + (a.y - (y + size.h));
-                if (base.y + fy + size.h <= scr.h) y = fy;
+                if (base.y + fy + size.h <= y1) y = fy;
             },
-            .right => if (base.x + x + size.w > scr.w) {
+            .right => if (base.x + x + size.w > x1) {
                 const fx = a.x - (x - (a.x + a.w)) - size.w;
-                if (base.x + fx >= 0) x = fx;
+                if (base.x + fx >= x0) x = fx;
             },
-            .left => if (base.x + x < 0) {
+            .left => if (base.x + x < x0) {
                 const fx = a.x + a.w + (a.x - (x + size.w));
-                if (base.x + fx + size.w <= scr.w) x = fx;
+                if (base.x + fx + size.w <= x1) x = fx;
             },
         }
-        x = std.math.clamp(base.x + x, 0, @max(scr.w - size.w, 0)) - base.x;
-        y = std.math.clamp(base.y + y, 0, @max(scr.h - size.h, 0)) - base.y;
+        x = std.math.clamp(base.x + x, x0, @max(x1 - size.w, x0)) - base.x;
+        y = std.math.clamp(base.y + y, y0, @max(y1 - size.h, y0)) - base.y;
         return .{ .x = x - mg.left, .y = y - mg.top };
     }
 
@@ -406,7 +419,7 @@ pub const Headless = struct {
         }
         const surf = try h.gpa.create(Surface);
         errdefer h.gpa.destroy(surf);
-        surf.* = .{ .host = h, .atlas = Atlas.init(h.gpa) };
+        surf.* = .{ .host = h, .atlas = Atlas.init(h.gpa), .popup = opts.popup != null };
         try h.windows.append(h.gpa, .{ .win = w, .surface = surf, .popup = opts.popup });
         return w;
     }
@@ -493,7 +506,7 @@ pub const Headless = struct {
         }
         for (frame.patches.items) |p| try surf.atlas.applyPatch(p);
         h.patches_applied +%= @intCast(frame.patches.items.len);
-        if (h.skip_draw) {
+        if (h.skip_draw and !(surf.popup and h.draw_popups)) {
             h.frames_drawn += 1;
             return;
         }

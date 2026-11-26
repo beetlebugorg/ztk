@@ -439,10 +439,83 @@ export async function start(canvas, options = {}) {
     }));
   };
 
+  // The popups: a posted menu and its cascades. Each popup is a 2D canvas
+  // in a fixed layer above the page, at the place of the popup, so a menu
+  // can extend past the canvas of the window. The screen of the popups is
+  // the viewport. The image of a popup has premultiplied alpha, and a 2D
+  // canvas takes straight alpha.
+  const layer = document.createElement("div");
+  layer.style.cssText = "position:fixed;left:0;top:0;width:0;height:0;overflow:visible;z-index:2147483647;";
+  layer.dataset.ztkPopups = "";
+  document.body.appendChild(layer);
+  const pops = [];
+  let popDraws = -1;
+  let popPlace = "";
+  const popPos = (c, e) => {
+    const r = c.getBoundingClientRect();
+    return [(e.clientX - r.left) / k, (e.clientY - r.top) / k];
+  };
+  const makePop = (i) => {
+    const c = document.createElement("canvas");
+    c.style.cssText = "position:absolute;touch-action:none;";
+    c.setAttribute("aria-hidden", "true");
+    on(c, "pointermove", (e) => { mods(e); ex.ztk_popup_pointer(i, ...popPos(c, e)); });
+    on(c, "pointerdown", (e) => {
+      mods(e); ex.ztk_popup_pointer(i, ...popPos(c, e)); ex.ztk_popup_button(i, [1, 2, 3][e.button] || 1, true);
+      input.focus({ preventScroll: true }); e.preventDefault();
+    });
+    on(c, "pointerup", (e) => { mods(e); ex.ztk_popup_pointer(i, ...popPos(c, e)); ex.ztk_popup_button(i, [1, 2, 3][e.button] || 1, false); });
+    on(c, "pointerleave", () => ex.ztk_popup_leave(i));
+    on(c, "contextmenu", (e) => e.preventDefault());
+    layer.appendChild(c);
+    return c;
+  };
+  const drawPops = () => {
+    const n = ex.ztk_popups();
+    while (pops.length > n) pops.pop().remove();
+    while (pops.length < n) pops.push(makePop(pops.length));
+    if (n === 0) return;
+    const cr = canvas.getBoundingClientRect();
+    const draws = ex.ztk_draws();
+    const place = `${cr.left},${cr.top},${k}`;
+    if (draws === popDraws && place === popPlace) return;
+    const fresh = draws !== popDraws;
+    popDraws = draws;
+    popPlace = place;
+    for (let i = 0; i < n; i++) {
+      const c = pops[i];
+      const r = new Int32Array(ex.memory.buffer, ex.ztk_popup_rect(i), 6);
+      const [x, y, w, h, iw, ih] = r;
+      c.style.left = `${cr.left + x * k}px`;
+      c.style.top = `${cr.top + y * k}px`;
+      c.style.width = `${w * k}px`;
+      c.style.height = `${h * k}px`;
+      const p = ex.ztk_popup_image(i);
+      if (!fresh || !p || iw === 0 || ih === 0) continue;
+      if (c.width !== iw || c.height !== ih) { c.width = iw; c.height = ih; }
+      const px = new Uint8ClampedArray(ex.memory.buffer, p, iw * ih * 4).slice();
+      for (let j = 0; j < px.length; j += 4) {
+        const a = px[j + 3];
+        if (a !== 0 && a !== 255) { px[j] = px[j] * 255 / a; px[j + 1] = px[j + 1] * 255 / a; px[j + 2] = px[j + 2] * 255 / a; }
+      }
+      c.getContext("2d").putImageData(new ImageData(px, iw, ih), 0, 0);
+    }
+  };
+  // A press outside the window and the popups closes the popups, as a compositor does.
+  document.addEventListener("pointerdown", (e) => {
+    if (pops.length > 0 && e.target !== canvas && !layer.contains(e.target)) ex.ztk_popup_dismiss();
+  }, { capture: true, signal });
+  const setScreen = () => {
+    const r = canvas.getBoundingClientRect();
+    ex.ztk_screen(Math.round(-r.left / k), Math.round(-r.top / k), Math.round(innerWidth / k), Math.round(innerHeight / k));
+  };
+
   let raf = 0;
   const loop = (t) => {
+    setScreen();
     const n = ex.ztk_frame(t);
     if (n >= 0) draw(n);
+    drawPops();
     raf = requestAnimationFrame(loop);
   };
   // options.loop false leaves the frames to the page, for a test.
@@ -450,8 +523,10 @@ export async function start(canvas, options = {}) {
   const addFile = (name, text) => withBytes(name, (pn, nn) => withBytes(text, (pt, nt) => ex.ztk_add_file(pn, nn, pt, nt)));
   const frame = (t) => {
     if (signal.aborted) return -1;
+    setScreen();
     const n = ex.ztk_frame(t);
     if (n >= 0) draw(n);
+    drawPops();
     return n;
   };
   // The window of the script gets a new logical size.
@@ -468,6 +543,7 @@ export async function start(canvas, options = {}) {
     renderer.destroy();
     input.remove();
     tree.remove();
+    layer.remove();
   };
   // A WebGPU canvas keeps its image only until the frame is shown, so a
   // snapshot draws the last scene again and reads the canvas at once.

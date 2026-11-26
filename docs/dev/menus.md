@@ -79,6 +79,6 @@ A drawn menu opens with a fade and a short slide from its anchor, as the list of
    - 4a: the popup windows of the posted chain in the core (`src/widgets/menupop.zig`), the placement of the headless backend, and the CPU renderer with an alpha channel for a popup surface;
    - 4b: `xdg_popup` in the Wayland backend;
    - 4c: the popup layer of the web backend.
-   Until 4c, the web backend gets the drawn menus inside the page canvas. The Wayland backend has no tests with pointer input on a compositor: `tests/wayland-smoke.sh` opens a menu and a cascade in popups and checks that the program runs with no error.
+   The web page shows each popup in a 2D canvas of a fixed layer above the page, from the CPU image of the popup, and gives the input of that canvas to the popup. A press on the page outside the window and the popups closes the popups. `tests/web.sh` opens a menu in a popup canvas and clicks its entry. The Wayland backend has no tests with pointer input on a compositor: `tests/wayland-smoke.sh` opens a menu and a cascade in popups and checks that the program runs with no error.
 
 The macOS and Windows backends fill the native functions in their own PRs.
