@@ -1,5 +1,6 @@
 //! The class `ztk::terminal`: a terminal emulator widget. The state of
-//! the terminal is a `Screen` of `screen.zig`. The widget draws the
+//! the terminal is a `Screen` of `core.zig`, on libghostty-vt through
+//! `ztcl.vt`. The widget draws the
 //! cells of the screen with the fonts and the colors of ztk, so each
 //! renderer draws it.
 //!
@@ -47,7 +48,7 @@ const font_mod = @import("../text/font.zig");
 const style_mod = @import("../style.zig");
 const loop_mod = @import("../loop.zig");
 const App = @import("../app.zig").App;
-const screen_mod = @import("screen.zig");
+const screen_mod = @import("core.zig");
 const keys = @import("keys.zig");
 const boxdraw = @import("boxdraw.zig");
 const Screen = screen_mod.Screen;

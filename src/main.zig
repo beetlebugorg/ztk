@@ -8,6 +8,15 @@
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
+
+/// libghostty-vt logs the sequences that it does not handle, each with a
+/// scope of its own. The program writes only the log of the default scope.
+pub const std_options: std.Options = .{ .logFn = logFn };
+
+fn logFn(comptime level: std.log.Level, comptime scope: @EnumLiteral(), comptime format: []const u8, args: anytype) void {
+    if (scope != .default) return;
+    std.log.defaultLog(level, scope, format, args);
+}
 const Io = std.Io;
 const ztcl = @import("ztcl");
 const ztk = @import("ztk");
@@ -113,7 +122,7 @@ pub fn main(init: std.process.Init) !void {
     // The file commands and the file channels (open, read, puts to a file)
     // are on by default (decision of the user,
     // 2026-11-26). --allow turns on more.
-    var allow_bits: u32 = @intFromEnum(ztcl.interp.Capability.file) | @intFromEnum(ztcl.interp.Capability.channels);
+    var allow_bits: u32 = @backingInt(ztcl.interp.Capability.file) | @backingInt(ztcl.interp.Capability.channels);
     var root_dir: ?[]const u8 = null;
     var hotkeys = false;
     var direct_on = false;
@@ -236,7 +245,7 @@ pub fn main(init: std.process.Init) !void {
     it.clock_host = .{ .now = hostNow, .zone = hostZone };
     it.event_host = .{ .now = hostTicks, .sleep = hostSleep };
     try it.allow(allow_bits);
-    const fs_bits = @intFromEnum(ztcl.interp.Capability.file) | @intFromEnum(ztcl.interp.Capability.channels);
+    const fs_bits = @backingInt(ztcl.interp.Capability.file) | @backingInt(ztcl.interp.Capability.channels);
     // The file commands use the real paths of the host, as in wish, and
     // --root keeps them in one folder.
     if (allow_bits & fs_bits != 0) {

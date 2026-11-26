@@ -1,32 +1,24 @@
-# WIP: libghostty-vt as the core of `ztk::terminal`
+# libghostty-vt as the core of `ztk::terminal`
 
-This page is the plan and the state of the move of the terminal core of `ztk::terminal` to libghostty-vt. The work is not done. The resume steps are at the end.
+`ztk::terminal` keeps its state in libghostty-vt 1.0.2 through `ztcl.vt.Term`, the binding of ztcl (module `ztcl::vt`). `src/term/core.zig` gives the widget the fields and the methods of the old `Screen`. The user approved the dependency on 2026-11-26 and asked for a static link on each target.
 
 ## Facts checked on 2026-11-26
 
-- ztk, ztcl, and dockyard build with Zig 0.17.0 (ztk #125). libghostty-vt 1.0.x needs Zig 0.17, so the Zig version is no longer a blocker.
 - The tag `vt-1.0.2` of github.com/ghostty-org/ghostty is commit `573c4a21e02311ae87844af26b6a7a179f82858e`. The SHA-256 of its GitHub source archive is `c5c138c4a5673999b6678a4c7b48791c195ea86376cbb2221460a826eeaa16fc`. Its `build.zig.zon` has `.minimum_zig_version = "0.17.0"`. The license is MIT.
-- The build exports the Zig module `ghostty-vt` (`src/build/GhosttyZig.zig`, root `src/lib_vt.zig`). The module has `Terminal`, `Stream`, `RenderState`, `Cell`, `modes`, `sgr`, and `osc`. A Zig program uses `b.dependency("ghostty", ...).module("ghostty-vt")`, so ztk needs no C API and no prebuilt library.
-- `zig build -Demit-lib-vt -Dsimd=false -Doptimize=ReleaseFast` in the source tree passes with Zig 0.17.0 on x86_64 Linux. With `-Dsimd=false` the module needs no libc and no C++ code (the build sets `link_libc` only when `simd` is on). The shared library is 11,284,640 bytes with `-Dsimd=false` and 11,696,448 bytes with SIMD, both unstripped.
-- The build fetches its Zig packages from `deps.files.ghostty.org`. `uucode` (the Unicode tables) is the one package that the VT module always needs. The other packages of `build.zig.zon` are lazy and belong to the app.
+- ztcl pins the archive and gives the Zig module `ghostty-vt` to each of its modules with `-Dsimd=false`, `-Demit-lib-vt=true`, and `-Dvt-features=-kitty_graphics`. With these options the module has no C code, no C++ code, and no libc. The Kitty graphics feature compiles the C code of wuffs, which needs `calloc` and `free`. ztk gets the module through the dependency `ztcl`, so ztk has no dependency of its own on Ghostty.
+- The build makes no shared library. The module is Zig code in each program.
+- `src/main.zig` writes only the log of the default scope, and `src/web.zig` drops the log, since libghostty-vt logs the sequences that it does not handle.
 
-## Not measured yet
+## Measurements
 
-- The parse speed of `-Dsimd=false` against SIMD on the bench of `src/term/`.
-- The size of `zig-out/web/ztk.wasm` with the module, and whether the module builds for `wasm32-freestanding` inside ztk (its own CI builds a separate wasm module).
-- The link of the module on Windows (msvc ABI) and macOS.
+These ran on 2026-11-26 on an x86_64 Linux machine with 8 cores, with Zig 0.17.0, while other builds used the machine.
 
-## Plan
+- `zig build term-bench` (`src/term/bench.zig`, ReleaseFast, best of 5 runs, 8,388,627 bytes of generated output in chunks of 4 KiB on 80 by 24 cells): `screen.zig` 69.7 ms (114.7 MiB/s), libghostty-vt 56.5 ms (141.6 MiB/s). A second run gave 70.4 ms and 57.5 ms.
+- `zig build wasm`: `zig-out/web/ztk.wasm` is 5,462,782 bytes on main 14b29f4 (ztcl d284072) and 6,058,605 bytes on this branch (ztcl d63adc1), +595,823 bytes. The difference has libghostty-vt, the Tcl command `ztcl::vt`, and the other changes of ztcl between the two commits. In ztcl itself, `ztcl.wasm` is 477,168 bytes larger with `ztcl::vt` than with `-Dmod-vt=false` (ztcl #168). The branch has no copy of `parser.zig` and `screen.zig` in the wasm file, since the widget does not import them.
+- `zig build test`: the 5 tests of `src/tests/terminal.zig` pass on the new core with no change to a test or a golden file.
 
-1. Add `ghostty` to `build.zig.zon` at tag `vt-1.0.2` (`zig fetch --save=ghostty <archive URL>`), and pass `.simd = false` to `b.dependency`.
-2. Write `src/term/ghostty.zig`: the interface that `widget.zig` uses today (`write`, `resize`, `lineAt`, `scrollbackLen`, the cursor, the modes, the dirty rows), on `Terminal` and `RenderState` of the module.
-3. Select the core with a build option (`-Dterm-core=ztk|ghostty`, default `ztk`). Run the terminal tests on both cores.
-4. Switch the default when the tests pass on Linux, macOS, Windows, and wasm32. Remove `src/term/parser.zig` and `src/term/screen.zig` in a follow-up PR.
-5. Credit Ghostty (MIT, Mitchell Hashimoto and the Ghostty contributors) in `docs/references/terminal.md`, `docs/references/dependencies.md`, `npm/NOTICE`, and `licenses/`.
+## Not done
 
-## Resume steps
-
-1. Clone ztk, check out this branch, and rebase it on main.
-2. Use Zig 0.17.0 with its own `ZIG_LOCAL_CACHE_DIR` and `ZIG_GLOBAL_CACHE_DIR`, under the 4 GB memory cap of AGENTS.md.
-3. Do step 1 of the plan, then build `zig build test` and `zig build wasm`, and record the sizes and the times on this page.
-4. Ask the user to approve the dependency before the merge: section 6 of `plan.md` lists no third-party library.
+- `src/term/parser.zig` and `src/term/screen.zig` stay for `zig build term-bench`. A follow-up PR removes them and the benchmark.
+- The replies of DA (`ESC [c` gives `ESC [?62;22c`), DSR, and the OSC color queries 10 and 11 (black on white, as the old `Screen.theme`) come from `ztcl.vt.Term`. A check with `ztcl::vt feed` gave each reply on 2026-11-26.
+- The cursor style of DECSCUSR comes from libghostty-vt: 1 or 2 is a block, 3 or 4 an underline, and 5 or 6 a bar.
