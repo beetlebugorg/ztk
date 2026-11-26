@@ -18,7 +18,7 @@ pack .name .pw .search -padx 12 -pady 4
 
 ### Play: Cellar Door
 
-Cellar Door is a text adventure, and an entry is its prompt. Type a line and press Return: the `<Return>` binding reads `-textvariable cmd` and runs the line. The Up and Down keys of the entry step through the lines that ran, and `-validatecommand` keeps a line to 32 characters. The canvas is the map, and the hero walks from room to room. Try `help`, `look`, `go east`, `take key`, and `open gate`. On the handheld, Up and Down step through the lines, A runs the line, and B clears it. With "Play on the page" on, `throw stone` sends the stone out of the map, and it bounces off the headings and the code before it comes back.
+Cellar Door is a text adventure, and an entry is its prompt. Type a line and press Return: the `<Return>` binding reads `-textvariable cmd` and runs the line. The Up and Down keys of the entry step through the lines that ran, Tab completes the last word, and `-validatecommand` keeps a line to 32 characters. The canvas is the map, and the hero walks from room to room. Try `help`, `look`, `go east`, `take key`, and `open gate`. On the handheld, Up and Down step through the lines, A runs the line, and B clears it. With "Play on the page" on, `throw stone` sends the stone out of the map, and it bounces off the headings and the code before it comes back.
 
 <!-- widget: toy-cellardoor; shot: update -->
 ```tcl
@@ -123,6 +123,16 @@ proc toy_press {key} {
     }
     .cmd icursor end
 }
+# Tab completes the last word, and shows the choices when more than one word fits.
+proc complete {} {
+    global cmd
+    set words {look go north south east west take key stone open gate throw bag help new}
+    set last [lindex [split $cmd " "] end]
+    set fits [lsearch -all -inline -glob $words "$last*"]
+    if {[llength $fits] == 1} { set cmd "[string range $cmd 0 end-[string length $last]][lindex $fits 0] "; .cmd icursor end
+    } elseif {[llength $fits] > 1} { tell "Choices: [join $fits {, }]" }
+}
+bind .cmd <Tab> { complete; break }
 bind .cmd <Up> {toy_press up}
 bind .cmd <Down> {toy_press down}
 focus .cmd
