@@ -190,6 +190,20 @@ $tb.n tab $tb.n.advanced -state disabled
 pack $tb.n -fill x
 pack .cols.right.tabs -fill x -pady 4
 
+# Tree: a ttk::treeview with a column. A click on an arrow opens a folder, and the rows below it move.
+set tr [card .cols.right.tree "Tree"]
+ttk::treeview $tr.t -columns size -height 4
+$tr.t heading #0 -text Name -anchor w
+$tr.t heading size -text Size -anchor w
+$tr.t column size -width 70 -anchor e
+$tr.t insert {} end -id src -text src -open 1
+$tr.t insert src end -text main.zig -values {"12 KB"}
+$tr.t insert src end -text tree.zig -values {"48 KB"}
+$tr.t insert {} end -text README.md -values {"3 KB"}
+$tr.t selection set [lindex [$tr.t children src] 1]
+pack $tr.t -fill x
+pack .cols.right.tree -fill x -pady 4
+
 # Lists: a sidebar, and a list with a scrollbar and the extended selection mode.
 set ls [card .cols.left.lists "Lists"]
 listbox $ls.side -height 4 -width 12 -activestyle none -exportselection 0

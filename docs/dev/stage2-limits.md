@@ -222,6 +222,17 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - The tag `sel` shows the selection options of the widget, and the paint uses the colors of the part `::selection` until a script sets the colors of `sel` or the option `-selectbackground`. `tag delete sel` removes the ranges of `sel` and keeps the tag.
 - Tag bindings: `current` moves to the character under the pointer while no button is down. Key events run the bindings of the tags of `current`.
 
+## ttk::treeview (task 16)
+
+- The widget has the options of `wish` 8.6.16 in its order, then `-emptytext`, the item, column, heading, and tag options, and the subcommands of `ttk_treeview.n`, with the messages of `wish` for the cases of `src/tests/treeview.zig`. `drop` has no effect, and `drag column x` sets the width of the column so that its right edge is at `x`.
+- A row has the height of the font with the padding of the part `::item`, and a level of the tree is indented by 20 pixels, so `bbox` and `identify` give other pixels than `wish`. `identify element` gives `Treeitem.indicator`, `padding`, or `text`.
+- A check of `-columns`, `-displaycolumns`, `-show`, or `-padding` that fails leaves the new text in the option, and `wish` keeps the old one.
+- The tag options `-text`, `-image`, and `-anchor` are stored with no effect. `-background`, `-foreground`, and `-font` of the first tag of an item that sets them give the look of its row. The heading option `-image` is stored with no effect. An item draws its `-image` before its text.
+- `tag bind` takes key, button, motion, and virtual events. A pointer event goes to the tags of the item under the pointer, and a key or a virtual event goes to the tags of the focus item.
+- The class bindings are in Zig (`::ztk::priv::treeview`): a click, Shift and Control with a click, a double click, a click on the arrow, the drag of a heading border, a click on a heading, Up, Down, Shift with Up and Down, Left, Right, Home, End, Prior, Next, Return, space, and the wheel. `<<TreeviewSelect>>` comes in an idle call after a change of the selection. The pointer does not scroll the rows during a drag past the edge.
+- An item that opens or closes moves the rows below it in 200 ms, and its arrow turns. `bbox`, `identify`, and the other subcommands use the end state.
+- `zig build bench`, ReleaseFast, 2026-11-26, development machine: `treeview-10000-scroll` (10,000 rows in 100 open folders, wheel steps) has a median of 0.35 ms and a 99th percentile of 0.53 ms, and `treeview-open` (a folder of 99 rows opens and closes) has a median of 0.70 ms and a 99th percentile of 1.11 ms. The gate is 8 ms.
+
 ## Additions
 
 - `ztk::animate`, `ztk::clock`, the timing function `spring()`, and the flag `--time` of the `ztk` program.
@@ -239,6 +250,7 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - `-placeholder` and `-placeholderforeground` for `ttk::entry`.
 - `-placeholder` and `-placeholderforeground` for `ttk::combobox` and `ttk::spinbox`. The parts `::arrow`, `::popdown`, `::item`, and `::item-active` of a combobox, and `::trough` and `::bar` of a progress bar.
 - `-emptytext` and the style class `sidebar` of a listbox, and its parts `::item`, `::selection`, `::active`, and `::empty`.
+- `-emptytext` and the style class `sidebar` of `ttk::treeview`, and its parts `::item`, `::heading`, `::separator`, `::selection`, `::hover`, `::indicator`, and `::empty`.
 - The parts `::tab`, `::tab-selected`, `::tab-hover`, `::tab-disabled`, `::indicator`, and `::client` of `TNotebook`, the slide of the indicator, and the fade of the page.
 - The part `::selection` of `Text`, for the tag `sel`.
 - The parts `::sash` and `::sash-active` of `Panedwindow` and `TPanedwindow`. The sash under the pointer fades to `::sash-active` in 120 ms.

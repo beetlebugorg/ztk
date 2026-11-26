@@ -159,6 +159,7 @@ test {
     _ = @import("tests/scale.zig");
     _ = @import("tests/paned.zig");
     _ = @import("tests/notebook.zig");
+    _ = @import("tests/treeview.zig");
     _ = @import("tests/scrollbar.zig");
     _ = @import("tests/listbox.zig");
     _ = @import("text_widget/buffer.zig");

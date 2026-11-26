@@ -52,6 +52,7 @@ PAGES = [
     ("docs/widgets/listbox.md", "widgets/listbox/", "Widgets", "Listbox"),
     ("docs/widgets/canvas.md", "widgets/canvas/", "Widgets", "Canvas"),
     ("docs/widgets/text.md", "widgets/text/", "Widgets", "Text"),
+    ("docs/widgets/tree.md", "widgets/tree/", "Widgets", "Tree"),
     ("docs/widgets/panes.md", "widgets/panes/", "Widgets", "Panes and tabs"),
     ("docs/widgets/menus.md", "widgets/menus/", "Widgets", "Menus"),
     ("docs/widgets/terminal.md", "widgets/terminal/", "Widgets", "Terminal"),
