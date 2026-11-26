@@ -432,7 +432,7 @@ fn arrange(w: *Widget) void {
                 r.y = if (n) cell.y else if (so) cell.y + cell.h - r.h else cell.y + @divTrunc(cell.h - r.h, 2);
             }
         }
-        _ = layout.setGeom(p.w, r, w.mapped);
+        _ = layout.setGeomIn(w, p.w, r, w.mapped);
     }
 }
 

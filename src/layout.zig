@@ -72,6 +72,22 @@ pub fn setGeom(w: *Widget, r: geom.Rect, mapped: bool) bool {
     return true;
 }
 
+/// `setGeom` for a rectangle in the coordinates of `container`. A widget
+/// is placed in its parent, so the offsets of the container and of its
+/// ancestors below the parent are added, as for `pack -in` a sibling.
+pub fn setGeomIn(container: *const Widget, w: *Widget, r: geom.Rect, mapped: bool) bool {
+    var x = r.x;
+    var y = r.y;
+    var p: ?*const Widget = container;
+    const parent = w.parent orelse return setGeom(w, r, mapped);
+    while (p) |q| : (p = q.parent) {
+        if (q == parent) break;
+        x +|= q.geom.x;
+        y +|= q.geom.y;
+    }
+    return setGeom(w, .{ .x = x, .y = y, .w = r.w, .h = r.h }, mapped);
+}
+
 /// Sets the mapped flag only.
 pub fn setMapped(w: *Widget, mapped: bool) void {
     if (w.mapped == mapped) return;
