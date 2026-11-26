@@ -152,6 +152,19 @@ const WALK = `proc ::ztk_docs_walk {} {
   }
   return $out
 }`;
+const STRESS_ON = `frame .ztk_stress
+place .ztk_stress -x 0 -y 0 -relwidth 1 -relheight 1
+for {set i 0} {$i < 1000} {incr i} {
+  label .ztk_stress.l$i -text [expr {$i % 10}] -padx 0 -pady 0 -borderwidth 0
+  place .ztk_stress.l$i -x [expr {($i % 40) * 9}] -y [expr {($i / 40) * 9.6}]
+}
+proc ::ztk_stress_tick {n} {
+  if {![winfo exists .ztk_stress]} return
+  .ztk_stress.l[expr {$n % 1000}] configure -text [expr {($n / 1000) % 10}]
+  after 1 [list ::ztk_stress_tick [incr n]]
+}
+::ztk_stress_tick 0`;
+const STRESS_OFF = "destroy .ztk_stress";
 const COLORS = { pack: "var(--accent)", grid: "var(--tok-str)", place: "var(--tok-var)", panedwindow: "var(--tok-num)" };
 
 // A Tcl word for a value in the code: bare when it is plain, else in braces.
@@ -271,6 +284,17 @@ class Demo {
       this[key] = params.has(key === "xray" ? "xray" : "inspect");
       b.setAttribute("aria-pressed", String(this[key]));
     };
+    // Stress: 1,000 more labels over the window, and one of them changes
+    // in each frame, so each frame draws them all. The line under the
+    // window gives the frame time.
+    const stress = button("Stress", "Add 1,000 labels that change in each frame, and watch the frame time", () => {
+      if (!this.h) return;
+      const on = this.h.eval("winfo exists .ztk_stress").result === "1";
+      this.h.eval(on ? STRESS_OFF : STRESS_ON);
+      stress.setAttribute("aria-pressed", String(!on));
+      this.times = [];
+    });
+    stress.setAttribute("aria-pressed", "false");
     toggle("X-ray", "Show the box of each widget and the cells of each grid", "xray");
     toggle("Inspect", "Point at a widget to see its options; click it to edit them", "inspecting");
     this.hud = document.createElement("span");
@@ -577,6 +601,11 @@ if (params.has("snippettest")) {
       input.value = "hand2";
       input.dispatchEvent(new Event("change"));
       out.checks.cursor = d.h.eval(`${first.path} cget -cursor`).result;
+      const stress = [...d.fig.querySelectorAll(".ld-bar button")].find((b) => b.textContent === "Stress");
+      stress.click();
+      for (let i = 0; i < 5; i++) d.h.frame(performance.now() + i * 16);
+      out.checks.stress = d.h.eval("llength [winfo children .ztk_stress]").result;
+      stress.click();
       d.theme = "classic";
       await d.run();
       out.checks.classic = d.err.hidden ? d.h.eval("ztk::style theme").result : d.err.textContent;
