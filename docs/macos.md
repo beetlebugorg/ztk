@@ -63,4 +63,17 @@ An app for other people needs a Developer ID signature and a notarization from A
 
    `xcrun notarytool store-credentials notary` saves the profile one time.
 
+## Direct APIs of macOS
+
+The commands of `ztk::mac::*` exist on each platform and give the error `ZTK MAC UNAVAILABLE` away from macOS. `ztk::has mac` gives 1 where they work.
+
+```tcl
+menu .dock -tearoff 0
+.dock add command -label "New Window" -command newWindow
+ztk::mac::dockmenu .dock          ;# the menu of the Dock icon; no menu name removes it
+ztk::mac::tabbing . -mode preferred -group documents
+```
+
+`-mode` is `automatic` (the setting of the system), `preferred` (new windows open as tabs), or `disallowed` (no tab bar). Windows of one `-group` join one tab bar. A file dialog with `-parent` shows as a sheet of its window, and the application menu has the Services menu.
+
 The design and the plan are in [docs/dev/macos.md](https://github.com/beetlebugorg/ztk/blob/main/docs/dev/macos.md).

@@ -42,6 +42,8 @@ pub fn register(app: *App) !void {
     try it.register("ztk::hotkey", @import("hotkey.zig").cmdHotkey);
     try it.register("tkdnd::drop_target", @import("dnd.zig").cmdDropTarget);
     try it.register("ztk::has", @import("tray.zig").cmdHas);
+    try it.register("ztk::mac::dockmenu", @import("macapi.zig").cmdDockMenu);
+    try it.register("ztk::mac::tabbing", @import("macapi.zig").cmdTabbing);
     try it.register("ztk::limit", cmdLimit);
     try @import("snapshot.zig").register(it);
     try @import("inject.zig").register(it);
