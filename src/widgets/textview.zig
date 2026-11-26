@@ -52,14 +52,22 @@ pub const Heights = struct {
     }
 };
 
-fn estimate(w: *Widget, line: u32, avail: i32) i32 {
+/// The measures for the estimates: the line height and the count of
+/// characters of the width of "0" in a display line, or 0 with no wrap.
+const Est = struct { lh: i32, per: i32 };
+
+fn estMeasures(w: *Widget, avail: i32) Est {
     const lh = text.lineH(w);
     const wv = options.get(w, "-wrap").value;
-    if (wv == .word and wv.word == 1) return lh;
+    if (wv == .word and wv.word == 1) return .{ .lh = lh, .per = 0 };
     const zero = @max(paint.zeroWidth(w.app, w.style.font), 1);
-    const per = @max(@divTrunc(avail, zero), 1);
+    return .{ .lh = lh, .per = @max(@divTrunc(avail, zero), 1) };
+}
+
+fn estimate(w: *Widget, line: u32, m: Est) i32 {
+    if (m.per == 0) return m.lh;
     const n: i32 = @intCast(@min(text.data(w).buf.lineChars(line), 1 << 24));
-    return lh * @max(@divTrunc(n + per - 1, per), 1);
+    return m.lh * @max(@divTrunc(n + m.per - 1, m.per), 1);
 }
 
 /// Replaces `old` lines from `first` with `new` lines of estimates.
@@ -83,8 +91,8 @@ pub fn noteEdit(w: *Widget, first: u32, old: u32, new: u32) void {
     hs.dirty = true;
 }
 
-/// Makes the heights match the lines and the width, and the sums.
-fn ensure(w: *Widget) void {
+/// Makes the heights match the lines and the width.
+fn ensureSize(w: *Widget) void {
     const d = text.data(w);
     const hs = &d.view;
     const gpa = w.app.gpa;
@@ -97,12 +105,21 @@ fn ensure(w: *Widget) void {
         hs.max_w = 0;
         hs.dirty = true;
     }
+}
+
+/// Makes the heights match the lines and the width, and the sums.
+fn ensure(w: *Widget) void {
+    ensureSize(w);
+    const d = text.data(w);
+    const hs = &d.view;
     if (!hs.dirty) return;
-    hs.ys.resize(gpa, n + 1) catch return;
+    const n = d.buf.lineCount();
+    hs.ys.resize(w.app.gpa, n + 1) catch return;
+    const m = estMeasures(w, hs.width);
     var y: i64 = 0;
     for (hs.h.items, 0..) |h, i| {
         hs.ys.items[i] = y;
-        y += if (h >= 0) h else estimate(w, @intCast(i), avail);
+        y += if (h >= 0) h else estimate(w, @intCast(i), m);
     }
     hs.ys.items[n] = y;
     hs.dirty = false;
@@ -141,12 +158,16 @@ fn lineAt(w: *Widget, y: i64) u32 {
 /// The layout of a line. It records the height of the line.
 pub fn layoutLine(w: *Widget, line: u32, a: std.mem.Allocator) !tl.Para {
     const d = text.data(w);
-    ensure(w);
-    const p = try tl.layout(w, line, d.view.width, a);
-    if (line < d.view.h.items.len and d.view.h.items[line] != p.h) {
-        const old = d.view.h.items[line];
-        d.view.h.items[line] = p.h;
-        if (old >= 0 or p.h != estimate(w, line, d.view.width)) d.view.dirty = true;
+    ensureSize(w);
+    const hs = &d.view;
+    const p = try tl.layout(w, line, hs.width, a);
+    if (line < hs.h.items.len and hs.h.items[line] != p.h) {
+        const old = if (hs.h.items[line] >= 0) hs.h.items[line] else estimate(w, line, estMeasures(w, hs.width));
+        hs.h.items[line] = p.h;
+        // The sums after the line move by the change of its height.
+        if (!hs.dirty and old != p.h and hs.ys.items.len == hs.h.items.len + 1) {
+            for (hs.ys.items[line + 1 ..]) |*y| y.* += p.h - old;
+        }
     }
     d.view.max_w = @max(d.view.max_w, p.w);
     return p;
@@ -432,6 +453,16 @@ pub fn paintText(w: *Widget, b: *scene.Builder) anyerror!void {
             const color = optColor(w, "-insertbackground") orelse st.caret_color;
             try b.box(.{ .x = cx, .y = y + dl.y, .w = @max(text.int(w, "-insertwidth"), 1), .h = dl.h }, .{ .fill = color });
         }
+        // The text of an input method shows at the caret, underlined.
+        const ti = &app.text_input;
+        if (ins.line == line and ti.preedit_widget == w and ti.preedit.items.len > 0) {
+            const dl = para.lines[tl.lineOf(para, ins.ch)];
+            const cx = c.x + tl.xOf(w, dl, line, ins.ch, a) - xoff;
+            const pw = paint.textSize(app, ti.preedit.items, w.style.font).w;
+            try b.box(.{ .x = cx, .y = y + dl.y, .w = pw, .h = dl.h }, .{ .fill = st.background });
+            try paint.textAt(app, b, cx, y + dl.y + dl.ascent, ti.preedit.items, w.style.font, st.color);
+            try b.box(.{ .x = cx, .y = y + dl.y + dl.ascent + 2, .w = pw, .h = 1 }, .{ .fill = st.color });
+        }
         y += para.h;
         _ = arena.reset(.retain_capacity);
     }
@@ -441,4 +472,67 @@ pub fn paintText(w: *Widget, b: *scene.Builder) anyerror!void {
     report(w);
     try scroll.paintDrag(w, b, &d.vx, first_quad, 0);
     try scroll.paintDrag(w, b, &d.vy, first_quad, 1);
+}
+
+// ---- Moves by display lines ----
+
+/// The start (`end` false) or the end of the display line of a position.
+pub fn displayEdge(w: *Widget, p: Pos, end: bool) Pos {
+    const d = text.data(w);
+    if (p.line >= d.buf.lineCount()) return p;
+    var arena = std.heap.ArenaAllocator.init(w.app.gpa);
+    defer arena.deinit();
+    const para = layoutLine(w, p.line, arena.allocator()) catch return p;
+    const k = tl.lineOf(para, p.ch);
+    const dl = para.lines[k];
+    if (!end) return .{ .line = p.line, .ch = dl.c0 };
+    // The end of a wrapped display line is before its last character,
+    // so the caret stays on that display line.
+    const last = k + 1 < para.lines.len;
+    return .{ .line = p.line, .ch = if (last and dl.c1 > dl.c0) dl.c1 - 1 else dl.c1 };
+}
+
+/// The position `n` display lines above (n < 0) or below a position, at
+/// the x offset `goal`.
+pub fn moveLines(w: *Widget, p: Pos, n: i32, goal: i32) Pos {
+    const d = text.data(w);
+    var arena = std.heap.ArenaAllocator.init(w.app.gpa);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var line = @min(p.line, d.buf.lineCount() - 1);
+    var para = layoutLine(w, line, a) catch return p;
+    var k: i64 = @intCast(tl.lineOf(para, if (p.line >= d.buf.lineCount()) d.buf.lineChars(line) else p.ch));
+    var left = n;
+    while (left != 0) {
+        if (left < 0) {
+            if (k > 0) {
+                k -= 1;
+            } else if (line > 0) {
+                line -= 1;
+                para = layoutLine(w, line, a) catch return p;
+                k = @as(i64, @intCast(para.lines.len)) - 1;
+            } else break;
+            left += 1;
+        } else {
+            if (k + 1 < para.lines.len) {
+                k += 1;
+            } else if (line + 1 < d.buf.lineCount()) {
+                line += 1;
+                para = layoutLine(w, line, a) catch return p;
+                k = 0;
+            } else break;
+            left -= 1;
+        }
+    }
+    const dl = para.lines[@intCast(k)];
+    var ch = tl.charAtX(w, dl, line, goal, a);
+    // The end of a wrapped display line is before its last character.
+    if (@as(usize, @intCast(k)) + 1 < para.lines.len and ch >= dl.c1 and dl.c1 > dl.c0) ch = dl.c1 - 1;
+    return .{ .line = line, .ch = ch };
+}
+
+/// The count of display lines that fill the window.
+pub fn pageLines(w: *Widget) i32 {
+    const c = text.content(w);
+    return @max(@divTrunc(c.h, text.lineH(w)) - 1, 1);
 }

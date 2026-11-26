@@ -32,4 +32,8 @@ Radiobutton.tool:checked {
   font-family: monospace;
   font-size: 12px;
   color: var(--muted);
+  background-color: transparent;
+  border-width: 0px;
+  border-radius: 0px;
+  padding: 0px;
 }

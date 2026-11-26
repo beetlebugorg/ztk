@@ -298,3 +298,101 @@ test "textw: the view, wrap, see, bbox, and dlineinfo" {
         .{ ".t yview scroll 1 foo", "bad argument \"foo\": must be units, pages, or pixels" },
     });
 }
+
+test "textw: undo, redo, edit, and the flag of edit modified" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval("text .t");
+    // The expected texts are from wish 8.6.16.
+    try expectEvals(&h, &.{
+        .{ ".t edit undo", "" },
+        .{ ".t edit modified", "0" },
+        .{ ".t edit canundo", "0" },
+        .{ ".t configure -undo 1; .t insert end abc; .t insert end def; .t edit canundo", "1" },
+        .{ ".t edit undo; .t get 1.0 end-1c", "" },
+        .{ ".t edit canredo", "1" },
+        .{ ".t edit redo; .t get 1.0 end-1c", "abcdef" },
+        .{ ".t edit separator; .t delete 1.0 1.2; .t insert 1.0 XY; .t edit undo; .t get 1.0 end-1c", "cdef" },
+        .{ ".t index insert", "1.0" },
+        .{ ".t edit undo; .t get 1.0 end-1c", "abcdef" },
+        .{ ".t edit undo; .t get 1.0 end-1c", "" },
+        .{ ".t edit redo; .t get 1.0 end-1c", "abcdef" },
+        .{ ".t edit reset; .t edit canundo", "0" },
+        .{ ".t edit modified", "1" },
+        .{ ".t configure -autoseparators 0; .t edit reset; .t insert end 1; .t insert end 2; .t delete 1.0; .t edit undo; .t get 1.0 end-1c", "abcdef" },
+        .{ ".t configure -autoseparators 1 -maxundo 2; .t edit reset; .t delete 1.0 end; foreach c {a b c d} {.t insert end $c; .t edit separator}; .t edit undo; .t edit undo; catch {.t edit undo} r; list $r [.t get 1.0 end-1c]", "{nothing to undo} ab" },
+        .{ "update; set n 0; bind .t <<Modified>> {incr n}; .t edit modified 0; update; .t insert end x; update; list $n [.t edit modified]", "2 1" },
+    });
+    try expectErrors(&h, &.{
+        .{ ".t edit", "wrong # args: should be \".t edit option ?arg ...?\"" },
+        .{ ".t edit bogus", "bad edit option \"bogus\": must be canundo, canredo, modified, redo, reset, separator, or undo" },
+        .{ ".t edit modified 1 2", "wrong # args: should be \".t edit modified ?boolean?\"" },
+        .{ ".t edit modified foo", "expected boolean value but got \"foo\"" },
+        .{ ".t edit undo 1", "wrong # args: should be \".t edit undo\"" },
+        .{ ".t edit reset; .t edit redo", "nothing to redo" },
+    });
+}
+
+test "textw: the class bindings for keys, clicks, and the selection" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval(
+        \\text .t -width 30 -height 5 -undo 1 -bd 0 -highlightthickness 0 -padx 0 -pady 0
+        \\place .t -x 0 -y 0
+        \\focus .t
+        \\set sels 0
+        \\bind .t <<Selection>> {incr sels}
+        \\update
+    );
+    try h.head.typeText(h.win, "hello world");
+    try h.head.press(h.win, "Return");
+    try h.head.typeText(h.win, "two");
+    try h.update();
+    try t.expectEqualStrings("hello world\ntwo\n", try h.eval(".t get 1.0 end"));
+    try t.expectEqualStrings("2.3", try h.eval(".t index insert"));
+    try h.head.press(h.win, "Up");
+    try h.head.press(h.win, "Home");
+    try h.head.press(h.win, "Right");
+    try h.head.press(h.win, "BackSpace");
+    try h.update();
+    try t.expectEqualStrings("ello world", try h.eval(".t get 1.0 1.end"));
+    try h.head.press(h.win, "End");
+    h.head.setMods(.{ .shift = true });
+    try h.head.press(h.win, "Left");
+    try h.head.press(h.win, "Left");
+    h.head.setMods(.{});
+    try h.update();
+    try t.expectEqualStrings("1.8 1.10", try h.eval(".t tag ranges sel"));
+    // A typed character replaces the selection.
+    try h.head.typeText(h.win, "X");
+    try h.update();
+    try t.expectEqualStrings("ello worX", try h.eval(".t get 1.0 1.end"));
+    try t.expectEqualStrings("1", try h.eval("expr {$sels > 0}"));
+    // Control-z undoes the typed text and the delete of the selection.
+    h.head.setMods(.{ .control = true });
+    try h.head.press(h.win, "z");
+    h.head.setMods(.{});
+    try h.update();
+    try t.expectEqualStrings("ello world", try h.eval(".t get 1.0 1.end"));
+    // A double click selects a word.
+    _ = try h.eval(".t tag remove sel 1.0 end; update");
+    const box = try h.eval("lrange [.t bbox 1.1] 0 1");
+    var it = std.mem.tokenizeScalar(u8, box, ' ');
+    const bx = try std.fmt.parseFloat(f32, it.next().?);
+    const by = try std.fmt.parseFloat(f32, it.next().?);
+    h.head.pointerMove(h.win, bx + 1, by + 2);
+    h.head.pointerButton(h.win, 1, true);
+    h.head.pointerButton(h.win, 1, false);
+    h.head.pointerButton(h.win, 1, true);
+    h.head.pointerButton(h.win, 1, false);
+    try h.update();
+    try t.expectEqualStrings("1.0 1.4", try h.eval(".t tag ranges sel"));
+    try t.expectEqualStrings("1", try h.eval("expr {[lsearch [.t mark names] tk::anchor1] >= 0}"));
+    // The disabled state blocks the keys.
+    _ = try h.eval(".t configure -state disabled");
+    try h.head.typeText(h.win, "q");
+    try h.update();
+    try t.expectEqualStrings("ello world", try h.eval(".t get 1.0 1.end"));
+}

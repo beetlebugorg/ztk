@@ -1,6 +1,6 @@
 //! The state of the input method, for the backend and for the widgets.
 //! After each flush, `sync` gives the backend the text widget that has
-//! the focus (an entry, a spinbox, or a combobox) and its rectangle in
+//! the focus (an entry, a spinbox, a combobox, or a text) and its rectangle in
 //! logical pixels of its window, or turns the input method off. The
 //! backend hears only of a change. The rectangle is the box of the
 //! widget: the caret position is known only to the paint code of the
@@ -34,10 +34,10 @@ pub const State = struct {
     }
 };
 
-/// True for a widget for typed text: an entry, a spinbox, or a combobox.
+/// True for a widget for typed text: an entry, a spinbox, a combobox, or a text.
 pub fn isTextWidget(w: *const Widget) bool {
     const r = w.class.role;
-    return std.mem.eql(u8, r, "text field") or std.mem.eql(u8, r, "spin button") or std.mem.eql(u8, r, "combo box");
+    return std.mem.eql(u8, r, "text field") or std.mem.eql(u8, r, "spin button") or std.mem.eql(u8, r, "combo box") or std.mem.eql(u8, r, "text area");
 }
 
 /// The box of a widget in logical pixels of its toplevel.
