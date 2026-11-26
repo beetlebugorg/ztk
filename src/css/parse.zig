@@ -594,7 +594,7 @@ const Parser = struct {
             return;
         }
         const value = trimWs(t[i + 1 ..]);
-        // `!important` is not supported in Stage 1.
+        // `!important` is not supported: the declaration gets a diagnostic.
         if (value.len >= 2) {
             var k = value.len;
             while (k > 0 and value[k - 1] == .whitespace) k -= 1;

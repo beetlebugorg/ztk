@@ -36,7 +36,7 @@ const usage =
     \\  --rotate 0|90|180|270    with --direct: the rotation of the panel
     \\  --touch-debounce MS      with --direct: the debounce time of a touch panel
     \\  --tty DEVICE             with --direct: the VT, for example /dev/tty1 (default: the terminal of the input)
-    \\  --output NAME            with --direct: auto, vulkan, or framebuffer (Stage 1: framebuffer)
+    \\  --output NAME            with --direct: auto, vulkan, or framebuffer (vulkan is not available yet)
     \\  --dark                   the dark color scheme
     \\  --allow a,b              more capabilities of ztcl, with the names of the ztcl runner (file and channels are on)
     \\  --root DIR               the folder of the file commands (default: the folder of the script)
@@ -157,7 +157,7 @@ pub fn main(init: std.process.Init) !void {
         if (std.mem.eql(u8, a, "--headless")) {
             headless = true;
         } else if (std.mem.eql(u8, a, "--cpu")) {
-            // Stage 1 draws with the CPU renderer on Wayland, so the flag has no other effect.
+            // The Wayland backend renders with the CPU renderer, so the flag has no other effect.
         } else if (std.mem.eql(u8, a, "--allow") or std.mem.eql(u8, a, "--root")) {
             if (i + 1 >= args.len) fail(err, "ztk: {s} needs a value\n", .{a});
             i += 1;

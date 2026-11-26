@@ -1,6 +1,6 @@
-//! The Vulkan output on a display (`VK_KHR_display`). Stage 1 has only
+//! The Vulkan output on a display (`VK_KHR_display`). The file has only
 //! the listing of displays and modes. `list` changes no state. The
-//! swapchain on a display plane is not part of this stage, and the test
+//! swapchain on a display plane does not exist yet, and the test
 //! on the development machine never makes a display surface, because the
 //! compositor of the user owns the displays there. See docs/dev/tasks/BLOCKED.md.
 //! SPDX-License-Identifier: BSD-2-Clause

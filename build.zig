@@ -64,7 +64,7 @@ pub fn build(b: *std.Build) void {
     const ztcl_dep = b.dependency("ztcl", .{ .target = target, .optimize = optimize });
     const ztcl = ztcl_dep.module("ztcl");
 
-    // The Wayland, direct, and Vulkan code exists for Linux only in Stage 1.
+    // The Wayland, direct, and Vulkan code exists for Linux only.
     const is_linux = target.result.os.tag == .linux;
     const is_macos = target.result.os.tag == .macos;
     const backends = b.option([]const u8, "backends", "The backends to build, separated by commas: wayland, direct, appkit, headless (default: wayland, direct, and headless on Linux, appkit and headless on macOS, headless elsewhere)") orelse

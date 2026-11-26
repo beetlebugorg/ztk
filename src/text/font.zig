@@ -1,6 +1,6 @@
 //! Fonts and font descriptions. `Fonts` holds the faces that the program
 //! adds, and a cache of `Font` values, one for each face, size, and
-//! scale. Stage 1 has two faces from the package (Regular and Bold). A
+//! scale. The package has two faces (Regular and Bold). A
 //! weight of 600 or more selects Bold. Each family name selects one of
 //! them. With a text engine of the system (`system.zig`, DirectWrite on
 //! Windows), `get` opens a face of the system for the description, and

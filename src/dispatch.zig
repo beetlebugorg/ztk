@@ -375,7 +375,8 @@ fn genOption(name: []const u8) ?[]const u8 {
     return found;
 }
 
-/// `event option ?arg ...?`. Only `generate` works in Stage 1.
+/// `event option ?arg ...?`. Only `generate` works. `add`, `delete`, and
+/// `info` give an error.
 pub fn cmdEvent(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
     const app = App.of(it);
     app.enter();
