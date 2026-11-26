@@ -194,15 +194,6 @@ pub fn build(b: *std.Build) void {
     bench_run.setCwd(b.path("."));
     b.step("bench", "Run the benchmark (ReleaseFast)").dependOn(&bench_run.step);
 
-    // The parse benchmark of the old and the new terminal core.
-    const term_bench = b.addExecutable(.{ .name = "ztk-term-bench", .root_module = b.createModule(.{
-        .root_source_file = b.path("src/term/bench.zig"),
-        .target = target,
-        .optimize = .fast,
-        .imports = &.{.{ .name = "ztcl", .module = bench_ztcl }},
-    }) });
-    b.step("term-bench", "Compare the parse speed of the terminal cores (ReleaseFast)").dependOn(&b.addRunArtifact(term_bench).step);
-
     const tests = b.addTest(.{
         .use_llvm = use_llvm,
         .use_lld = use_lld,
