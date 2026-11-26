@@ -18,7 +18,8 @@
 //! The device is on the first adapter of `EnumAdapterByGpuPreference`.
 //! When that adapter has no Direct3D 12 device, or with `warp` set, it is
 //! on the WARP adapter, the software rasterizer of Windows. Image quads
-//! (kind 3) are discarded in the pixel shader, as in the Vulkan renderer.
+//! (kind 3) read the RGBA image page of the atlas from a third buffer with
+//! the bilinear filter of the CPU renderer, as the Vulkan renderer does.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -88,6 +89,9 @@ pub const D3D12 = struct {
     pipeline: *api.PipelineState,
     instances: Buffer = .{},
     atlas: Buffer = .{},
+    /// The RGBA image page of the atlas, 4 bytes for each texel.
+    images: Buffer = .{},
+    images_generation: ?u32 = null,
     readback: Buffer = .{},
     atlas_generation: ?u32 = null,
     target: ?*Target = null,
@@ -138,6 +142,8 @@ pub const D3D12 = struct {
         try v.createBuffer(&v.instances, 64 * 1024, api.HEAP_TYPE_UPLOAD);
         errdefer v.destroyBuffer(&v.instances);
         try v.createBuffer(&v.atlas, page_bytes, api.HEAP_TYPE_UPLOAD);
+        errdefer v.destroyBuffer(&v.atlas);
+        try v.createBuffer(&v.images, page_bytes * 4, api.HEAP_TYPE_UPLOAD);
         return v;
     }
 
@@ -145,6 +151,7 @@ pub const D3D12 = struct {
         v.waitIdle();
         v.destroyBuffer(&v.instances);
         v.destroyBuffer(&v.atlas);
+        v.destroyBuffer(&v.images);
         v.destroyBuffer(&v.readback);
         api.release(v.pipeline);
         api.release(v.root);
@@ -250,6 +257,7 @@ pub const D3D12 = struct {
             .{ .ParameterType = api.ROOT_PARAMETER_TYPE_32BIT_CONSTANTS, .u = .{ .Constants = .{ .ShaderRegister = 0, .Num32BitValues = 2 } } },
             .{ .ParameterType = api.ROOT_PARAMETER_TYPE_SRV, .u = .{ .Descriptor = .{ .ShaderRegister = 0 } } },
             .{ .ParameterType = api.ROOT_PARAMETER_TYPE_SRV, .u = .{ .Descriptor = .{ .ShaderRegister = 1 } } },
+            .{ .ParameterType = api.ROOT_PARAMETER_TYPE_SRV, .u = .{ .Descriptor = .{ .ShaderRegister = 2 } } },
         };
         const rs_desc: api.ROOT_SIGNATURE_DESC = .{ .NumParameters = params.len, .pParameters = &params };
         var blob: ?*api.Blob = null;
@@ -444,10 +452,14 @@ pub const D3D12 = struct {
 
     /// Copies the atlas page to its buffer when its generation changed.
     fn syncAtlas(v: *D3D12, atlas: *const Atlas) void {
-        if (v.atlas_generation) |g| if (g == atlas.generation) return;
-        const page = atlas.page();
-        if (page.len > 0) @memcpy(v.atlas.mapped.?[0..page.len], page);
-        v.atlas_generation = atlas.generation;
+        syncPage(&v.atlas, &v.atlas_generation, atlas.generation, atlas.page());
+        syncPage(&v.images, &v.images_generation, atlas.images.generation, atlas.imagePage());
+    }
+
+    fn syncPage(buf: *Buffer, seen: *?u32, generation: u32, page: []const u8) void {
+        if (seen.*) |g| if (g == generation) return;
+        if (page.len > 0) @memcpy(buf.mapped.?[0..page.len], page);
+        seen.* = generation;
     }
 
     /// Draws a scene to the current target.
@@ -478,6 +490,7 @@ pub const D3D12 = struct {
             call(void, v.list, slot.list_set_root_constants, .{ @as(u32, 0), @as(u32, 2), &size, @as(u32, 0) });
             call(void, v.list, slot.list_set_root_srv, .{ @as(u32, 1), gpuAddress(&v.instances) });
             call(void, v.list, slot.list_set_root_srv, .{ @as(u32, 2), gpuAddress(&v.atlas) });
+            call(void, v.list, slot.list_set_root_srv, .{ @as(u32, 3), gpuAddress(&v.images) });
             const vp: api.VIEWPORT = .{ .Width = @floatFromInt(t.width), .Height = @floatFromInt(t.height) };
             call(void, v.list, slot.list_set_viewports, .{ @as(u32, 1), &vp });
             const sc: api.RECT = .{ .right = @intCast(t.width), .bottom = @intCast(t.height) };
