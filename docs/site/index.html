@@ -32,7 +32,7 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
 <section class="hero">
   <div class="wrap">
     <div>
-      <span class="pill"><b>Experimental</b> BSD-2-Clause · Zig 0.16</span>
+      <span class="pill"><b>Experimental</b> BSD-2-Clause · Zig 0.17</span>
       <h1>The GUI toolkit <em>AI can see</em>.</h1>
       <p class="sub">ztk is Tk rebuilt in Zig. An agent writes a short Tcl script, and then it can see the window (<code>ztk::snapshot</code>), read each widget and its box (<code>ztk::tree</code>), and click and type in it (<code>ztk::inject</code>). <code>ztk --headless</code> runs it with no display. The window on the right is running: edit its code.</p>
       <div class="actions">
@@ -61,10 +61,10 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
     <h2>Build it, see it, check it, ship it.</h2>
     <p class="lede">An agent gets the same view of the app as a person. The tools are commands of ztk, so a check is a Tcl script that runs in CI.</p>
     <div class="grid g3">
-      <div class="card"><span class="tag">Works</span><h3>See</h3><p class="muted"><code>ztk::snapshot .</code> gives a PNG of the window. <code>ztk --headless --screenshot</code> writes one with no display. It draws with the CPU renderer on each platform.</p></div>
+      <div class="card"><span class="tag">Works</span><h3>See</h3><p class="muted"><code>ztk::snapshot .</code> gives a PNG of the window. <code>ztk --headless --screenshot</code> writes one with no display. It renders with the CPU renderer on each platform.</p></div>
       <div class="card"><span class="tag">Works</span><h3>Read and drive</h3><p class="muted"><code>ztk::tree</code> lists each widget with its class and its box. <code>ztk::inject</code> sends a click, a key, or text through the hit test and the focus, as a real backend does.</p></div>
       <div class="card"><span class="tag">Works</span><h3>Trust</h3><p class="muted">A script has the commands of Tk and of the ztcl core. Host access needs <code>--allow</code>. In a browser a script has no file, network, or process access. The code is short, so a person can read it.</p></div>
-      <div class="card"><span class="tag plan">Planned</span><h3>Ship</h3><p class="muted">A native binary for Linux, macOS, and Windows from the page, with the build of ztcl.</p></div>
+      <div class="card"><span class="tag plan">In progress</span><h3>Ship</h3><p class="muted">A native binary for Linux, macOS, and Windows from the page, with the build of ztcl.</p></div>
       <div class="card"><span class="tag">Works</span><h3>Files for agents</h3><p class="muted"><a href="llms.txt">llms.txt</a>, <a href="llms-full.txt">llms-full.txt</a>, an <a href="api.json">API index</a>, and a <a href="agents/">skill</a> with a check script that CI runs.</p></div>
       <div class="card"><span class="tag">Works</span><h3>Watch it get built</h3><p class="muted">A <a href="replay/">replay</a> of an agent that builds an app, step by step. The app is live at each step, and the check of each step runs in it.</p></div>
     </div>
@@ -117,9 +117,9 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
 
 <section class="section alt" id="screenshots">
   <div class="wrap">
-    <p class="eyebrow">What it draws</p>
-    <h2>Tk scripts, drawn by ztk.</h2>
-    <p class="lede">When a card scrolls into view, its script runs live in its place: ztk in WebAssembly, drawn with WebGPU where the browser has it and WebGL 2 elsewhere. Click, type, drag, and toggle in it. Each script also runs in <code>wish</code> 8.6, and the cards follow the color scheme of your system.</p>
+    <p class="eyebrow">What it renders</p>
+    <h2>Tk scripts, rendered by ztk.</h2>
+    <p class="lede">When a card scrolls into view, its script runs live in its place: ztk in WebAssembly, rendered with WebGPU where the browser has it and WebGL 2 elsewhere. Click, type, drag, and toggle in it. Each script also runs in <code>wish</code> 8.6, and the cards follow the color scheme of your system.</p>
     <div class="shots">
       <figure class="shot full" data-example="spreadsheet">
         <a class="frame" href="https://github.com/beetlebugorg/ztk/blob/main/examples/spreadsheet.tcl">
@@ -202,7 +202,7 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
   <div class="wrap">
     <p class="eyebrow">Fluid</p>
     <h2>Smooth frames, even with a busy script.</h2>
-    <p class="lede">The script makes a scene of quads, and a render thread draws it. The render thread also moves transitions, switches, sliders, and scrollbars by its own clock, so they keep moving while your script works.</p>
+    <p class="lede">The script makes a scene of quads, and a render thread renders it. The render thread also moves transitions, switches, sliders, and scrollbars by its own clock, so they keep moving while your script works.</p>
     <div class="split">
       <figure class="chart">
         <h3>CPU time of one frame, 99th percentile</h3>
@@ -218,7 +218,7 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
       </figure>
       <div>
         <h3>No frames when idle</h3>
-        <p class="muted">A window with no change draws no frame and wakes no thread.</p>
+        <p class="muted">A window with no change renders no frame and wakes no thread.</p>
         <h3 style="margin-top:28px">Fast to start</h3>
         <p class="muted">1.6 ms from start to the first frame on the headless backend, and 3.0 ms on Wayland. The demo uses 11.2 MB of private memory.</p>
         <h3 style="margin-top:28px">Animation in the API</h3>
@@ -233,12 +233,12 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
   <div class="wrap">
     <p class="eyebrow">Native GPU rendering</p>
     <h2>One renderer for each platform API.</h2>
-    <p class="lede">Each platform draws with its own GPU API, with no translation layer between ztk and the driver. ztk does not use MoltenVK, ANGLE, or DXVK. A CPU renderer gives the same image on each machine, and the tests compare the GPU output with it.</p>
+    <p class="lede">Each platform renders with its own GPU API, with no translation layer between ztk and the driver. ztk does not use MoltenVK, ANGLE, or DXVK. A CPU renderer gives the same image on each machine, and the tests compare the GPU output with it.</p>
     <div class="grid g3">
-      <div class="card"><span class="tag">Works</span><h3>CPU renderer</h3><p class="muted">The reference renderer. It draws the demo into a Wayland shared memory buffer and into a framebuffer.</p></div>
+      <div class="card"><span class="tag">Works</span><h3>CPU renderer</h3><p class="muted">The reference renderer. It renders the demo into a Wayland shared memory buffer and into a framebuffer.</p></div>
       <div class="card"><span class="tag">Works offscreen</span><h3>Vulkan on Linux</h3><p class="muted">The Vulkan renderer matches the CPU renderer on two GPUs, within 2 levels. The swapchain on a window is not written yet.</p></div>
-      <div class="card"><span class="tag plan">Planned</span><h3>Metal on macOS</h3><p class="muted">With AppKit, Metal, and Core Text from the system.</p></div>
-      <div class="card"><span class="tag plan">Planned</span><h3>Direct3D 12 on Windows</h3><p class="muted">With <code>user32</code>, <code>d3d12</code>, <code>dxgi</code>, and <code>dwrite</code> from the system.</p></div>
+      <div class="card"><span class="tag">Works</span><h3>AppKit and Metal on macOS</h3><p class="muted">Native windows rendered with Metal, the system menu bar with <code>NSMenu</code>, input methods, the clipboard, file dialogs, the Dock, the tray, and dark mode and the accent color.</p></div>
+      <div class="card"><span class="tag">Works</span><h3>Win32 and Direct3D 12 on Windows</h3><p class="muted">Native windows with a Direct3D 12 swapchain, text with DirectWrite, native menus, input methods with TSF, the clipboard, file dialogs, the taskbar, the tray, and dark mode.</p></div>
       <div class="card"><span class="tag">Works</span><h3>WebGPU and WebGL 2 on the web</h3><p class="muted">WebGPU with WGSL shaders where the browser gives an adapter, else WebGL 2, else the CPU renderer into a 2D canvas. No library is in the WebAssembly file.</p></div>
       <div class="card"><span class="tag plan">Planned</span><h3>X11 on Linux</h3><p class="muted">With <code>libxcb</code> and Vulkan.</p></div>
     </div>
@@ -296,7 +296,7 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
     </div>
     <h3 style="margin-top:48px">Backends</h3>
     <div class="grid g3" style="margin-top:16px">
-      <div class="card"><span class="tag">Works</span><h3>Headless</h3><p class="muted">For tests and for the oracle that compares ztk with <code>wish</code>. The headless program compiles for Linux, macOS, and Windows. Only Linux runs are checked.</p></div>
+      <div class="card"><span class="tag">Works</span><h3>Headless</h3><p class="muted">For tests and for the oracle that compares ztk with <code>wish</code>. It runs on Linux, macOS, and Windows. Pull requests check Linux, and the full run checks macOS and Windows every 6 hours.</p></div>
       <div class="card"><span class="tag">Works</span><h3>Wayland</h3><p class="muted">The CPU renderer into shared memory. Checked on a private headless compositor. A run on a live desktop is not tried yet.</p></div>
       <div class="card"><span class="tag plan">Not tried on a device</span><h3>Direct</h3><p class="muted">For a Linux device with no display server: the framebuffer and <code>evdev</code>. Tests use fake hosts. <code>--direct</code> needs the flag <code>--direct-unsafe-test-device</code>.</p></div>
     </div>
@@ -307,7 +307,7 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
   <div class="wrap">
     <div class="callout">
       <p class="eyebrow">Status</p>
-      <p><b>Experimental.</b> ztk is not yet a drop-in Tk: <code>listbox</code>, <code>text</code>, <code>menu</code>, and more widgets are still to come, and macOS and Windows have only the headless backend. The code and the docs were written largely with AI coding agents, under human direction, so review the code before you depend on it. <a href="differences/">Differences from Tk</a> lists the gaps, and the <a href="https://github.com/beetlebugorg/ztk/blob/main/docs/dev/plan.md#11-stages">plan</a> has the roadmap.</p>
+      <p><b>Experimental.</b> ztk is not yet a drop-in Tk. The widgets of Tk 8.6 are in (with <code>text</code>, <code>ttk::treeview</code>, <code>ttk::notebook</code>, and native menus), and AppKit and Win32 backends render native windows. Still to come: the native look of each platform (<a href="https://github.com/beetlebugorg/ztk/issues/154">#154</a>), Vulkan on a window, X11, and the dialogs that ztk draws. The code and the docs were written largely with AI coding agents, under human direction, so review the code before you depend on it. <a href="differences/">Differences from Tk</a> lists the gaps, and the <a href="https://github.com/beetlebugorg/ztk/blob/main/docs/dev/plan.md#11-stages">plan</a> has the roadmap.</p>
     </div>
   </div>
 </section>
@@ -338,7 +338,7 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
   </span>
 </div></footer>
 <script type="module">
-// The live demos: each card of "What it draws" runs its script in ztk
+// The live demos: each card of "What it renders" runs its script in ztk
 // (WebAssembly, with WebGPU or WebGL 2) when it scrolls into view, or at the first tap
 // on a touch screen. The screenshot is the poster until the first frame.
 // The page compiles the module one time; each card has its own instance.
