@@ -202,6 +202,8 @@ pub const App = struct {
     menu_root: ?*Widget = null,
     /// The toplevel that shows the posted chain.
     menu_top: ?*Widget = null,
+    /// The menu button that posted the chain, or null.
+    menu_button: ?*Widget = null,
     /// The menu widget of each native menu id, and the next id.
     menu_ids: std.AutoHashMapUnmanaged(u32, *Widget) = .empty,
     menu_next: u32 = 1,

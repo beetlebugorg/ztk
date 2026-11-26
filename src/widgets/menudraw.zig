@@ -247,6 +247,10 @@ pub fn unpostAll(app: *App) void {
     const r = app.menu_root orelse return;
     app.menu_root = null;
     app.menu_top = null;
+    if (app.menu_button) |b| {
+        app.menu_button = null;
+        repaint(b);
+    }
     if (app.grab.widget == r) app.grab.widget = null;
     if (r.alive()) unpostChain(r);
 }
@@ -254,9 +258,11 @@ pub fn unpostAll(app: *App) void {
 /// Removes a menu that is going away from the chain.
 pub fn forget(w: *Widget) void {
     const app = w.app;
+    if (app.menu_button == w) app.menu_button = null;
     if (app.menu_root == w) {
         app.menu_root = null;
         app.menu_top = null;
+        app.menu_button = null;
         if (app.grab.widget == w) app.grab.widget = null;
         return;
     }
