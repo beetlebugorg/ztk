@@ -170,3 +170,21 @@ test "memory: 100000 motion events do not grow the arena" {
     std.debug.print("memory: arena after the first compact {d} bytes, after the last {d} bytes\n", .{ after_first, last });
     try t.expect(last <= after_first + (1 << 20));
 }
+
+test "headless: the clock of a test moves by the timeout, and the real clock sleeps" {
+    const Headless = @import("../platform/headless.zig").Headless;
+    const h = try Headless.init(std.testing.allocator);
+    defer h.deinit();
+    const p = h.platform();
+    const t0 = p.vtable.nowUs(p.ptr);
+    p.vtable.wait(p.ptr, 20_000);
+    try std.testing.expectEqual(t0 + 20_000, p.vtable.nowUs(p.ptr));
+
+    // The real clock sleeps 10 ms at most in one wait.
+    h.real_clock = true;
+    const r0 = p.vtable.nowUs(p.ptr);
+    p.vtable.wait(p.ptr, 20_000);
+    const slept = p.vtable.nowUs(p.ptr) - r0;
+    try std.testing.expect(slept >= 10_000);
+    try std.testing.expect(slept < 20_000 + 500_000);
+}
