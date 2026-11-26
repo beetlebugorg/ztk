@@ -46,6 +46,7 @@ PAGES = [
     ("docs/replay.md", "replay/", "Start", "Watch it get built"),
     ("docs/widgets/README.md", "widgets/", "Widgets", "All widgets"),
     ("docs/toys.md", "toys/", "Widgets", "Toys"),
+    ("docs/build/backspin.md", "toys/backspin/", "Widgets", "Backspin, part by part"),
     ("docs/widgets/basic.md", "widgets/basic/", "Widgets", "Frames, labels, and buttons"),
     ("docs/widgets/toggles.md", "widgets/toggles/", "Widgets", "Check and radio buttons"),
     ("docs/widgets/entry.md", "widgets/entry/", "Widgets", "Entry and spinbox"),
@@ -172,6 +173,30 @@ class Build:
                 t.content = (f'<div class="replay" data-src="{root}assets/replays/{m.group(1)}.json"><h2 class="rp-title">{html.escape(rec["title"])}</h2></div>'
                              + self.live_figure({"live": True, "name": None, "id": f"live-replay-{m.group(1)}"}, first, root)
                              + f'<script type="module" src="{root}assets/replay.js"></script>\n')
+                continue
+            m = re.match(r"^<!-- stage: (toy-[a-z0-9-]+) -->$", t.content.strip()) if t.type == "inline" else None
+            if m:
+                # A build replay of a toy on a stage of fixed size (assets/stage.js):
+                # the steps, the code of the step, and the handheld of the toy.
+                name = m.group(1)
+                rec = json.loads((SITE_DIR / "replays" / f"{name}.json").read_text(encoding="utf-8"))
+                first = next(s["script"] for s in rec["steps"] if "script" in s)
+                root = rel(page, "")
+                tokens[i - 1].type = tokens[i + 1].type = "html_block"
+                tokens[i - 1].content, tokens[i + 1].content = "", ""
+                t.type, t.children = "html_block", None
+                fig = self.live_figure({"live": True, "name": name, "id": f"live-stage-{name}"}, first, root)
+                t.content = (f'<section class="stage" data-src="{root}assets/replays/{name}.json" tabindex="0" '
+                             f'aria-label="{html.escape(rec["title"])}. Left and Right step, Space plays.">'
+                             '<div class="st-bar"><button type="button" class="st-prev" aria-label="Previous step">&#9664;</button>'
+                             '<button type="button" class="st-play">Play</button>'
+                             '<button type="button" class="st-next" aria-label="Next step">&#9654;</button>'
+                             '<input type="range" class="st-range" min="0" max="0" value="0" aria-label="Step">'
+                             '<span class="st-label" aria-live="polite"></span></div>'
+                             '<ol class="st-steps" aria-label="The prompts and the answers"></ol>'
+                             '<div class="st-code" aria-label="The code of the step"><pre><code></code></pre></div>'
+                             f'<div class="st-view">{fig}<div class="st-mark" aria-hidden="true"><span></span></div></div>'
+                             f'</section><script type="module" src="{root}assets/stage.js"></script>\n')
                 continue
             if t.type == "inline" and t.content.strip() == "<!-- widget-grid -->":
                 tokens[i - 1].type = tokens[i + 1].type = "html_block"
@@ -489,7 +514,7 @@ class Build:
             (folder / "index.html").write_text(self.document(page, title, body), encoding="utf-8")
         (out / "index.html").write_text(landing, encoding="utf-8")
         (out / "assets").mkdir()
-        for name in ("site.css", "favicon.svg", "live.js", "replay.js", "toys.js"):
+        for name in ("site.css", "favicon.svg", "live.js", "replay.js", "stage.js", "toys.js"):
             shutil.copy(SITE_DIR / name, out / "assets" / name)
         # The screenshots of the examples (tools/shots.sh).
         shutil.copytree(SITE_DIR / "shots", out / "assets" / "shots")

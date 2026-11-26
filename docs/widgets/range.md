@@ -15,7 +15,7 @@ pack .vol -fill x -padx 12 -pady 8
 
 ### Play: Backspin
 
-Backspin is a paddle match to 7 points, and the scale is your paddle. Drag the slider, or click the scale and press Up and Down: the paddle on the left goes to the value of the scale (`-variable pos`). A fast move of the scale at a hit puts spin on the ball. Click the court or press Space to serve. The rival gets faster in a long rally, and the ball gets faster with each hit. On the handheld, Up and Down call `.s set`, as the arrow keys of the scale do. With "Play on the page" on, a hit while the scale moves fast is a smash: the ball leaves the court, bounces off the headings and the code of this page, and comes back on the side of the rival. Escape or a scroll brings it back at once.
+Backspin is a paddle match to 7 points, and the scale is your paddle. Drag the slider, or click the scale and press Up and Down: the paddle on the left goes to the value of the scale (`-variable pos`). A fast move of the scale at a hit puts spin on the ball. Click the court or press Space to serve. The rival gets faster in a long rally, and the ball gets faster with each hit. On the handheld, Up and Down call `.s set`, as the arrow keys of the scale do. With "Play on the page" on, a hit while the scale moves fast is a smash: the ball leaves the court, bounces off the headings and the code of this page, and comes back on the side of the rival. Escape or a scroll brings it back at once. [Watch it get built](../build/backspin.md), part by part.
 
 <!-- widget: toy-backspin; shot: update -->
 ```tcl
