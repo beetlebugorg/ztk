@@ -153,6 +153,8 @@ pub const FileDialogResult = struct {
         gpa.free(r.paths);
     }
 };
+/// The id of one global shortcut. 0 is no shortcut.
+pub const HotkeyId = u32;
 
 /// The state of the taskbar or dock button of a window (ztk#61).
 pub const Taskbar = struct {
@@ -352,6 +354,15 @@ pub const Platform = struct {
         recentAdd: ?*const fn (ptr: *anyopaque, path: []const u8) bool = null,
         /// Empties the recent documents of the app, and only of the app.
         recentClear: ?*const fn (ptr: *anyopaque) void = null,
+        // The global shortcuts (ztk#63).
+
+        /// Registers a shortcut that works when the app has no focus: the
+        /// key `keysym` with the modifiers `shift`, `control`, `mod1` (Alt),
+        /// and `mod4` (the logo key) of `mods`. Its presses come as `hotkey`
+        /// events for `w`. Gives 0 when the system refuses it, for example
+        /// when another app has the shortcut.
+        hotkeyAdd: ?*const fn (ptr: *anyopaque, w: *Window, mods: event.Mods, keysym: u32) HotkeyId = null,
+        hotkeyRemove: ?*const fn (ptr: *anyopaque, id: HotkeyId) void = null,
     };
 
     pub fn hasRecent(p: Platform) bool {
@@ -407,6 +418,16 @@ pub const Platform = struct {
     }
     pub fn attention(p: Platform, w: *Window, critical: bool) void {
         if (p.vtable.attention) |f| f(p.ptr, w, critical);
+    }
+    pub fn hasHotkeys(p: Platform) bool {
+        return p.vtable.hotkeyAdd != null and p.vtable.hotkeyRemove != null;
+    }
+    pub fn hotkeyAdd(p: Platform, w: *Window, mods: event.Mods, keysym: u32) HotkeyId {
+        const f = p.vtable.hotkeyAdd orelse return 0;
+        return f(p.ptr, w, mods, keysym);
+    }
+    pub fn hotkeyRemove(p: Platform, id: HotkeyId) void {
+        if (p.vtable.hotkeyRemove) |f| f(p.ptr, id);
     }
     pub fn setMenuHandler(p: Platform, h: MenuHandler) void {
         if (p.vtable.setMenuHandler) |f| f(p.ptr, h);

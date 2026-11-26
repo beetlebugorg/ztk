@@ -81,6 +81,8 @@ test {
     _ = @import("tests/filedialog.zig");
     _ = @import("tests/taskbar.zig");
     _ = @import("tests/recent.zig");
+    _ = @import("tests/hotkey.zig");
+    _ = @import("hotkey.zig");
     _ = @import("textinput.zig");
     _ = @import("peres.zig");
     _ = @import("tests/peres.zig");
@@ -127,6 +129,7 @@ test {
         _ = @import("platform/wintray.zig");
         _ = @import("platform/wintaskbar.zig");
         _ = @import("platform/winrecent.zig");
+        _ = @import("platform/winhotkey.zig");
     }
     _ = anim;
     _ = checks;
