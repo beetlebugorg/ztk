@@ -29,9 +29,9 @@ const buffer = @import("../text_widget/buffer.zig");
 const index = @import("../text_widget/index.zig");
 const tags_mod = @import("../text_widget/tags.zig");
 const texttag = @import("texttag.zig");
+const textview = @import("textview.zig");
+const scroll = @import("../scroll.zig");
 const bind = @import("../bind.zig");
-const style_mod = @import("../style.zig");
-const font_mod = @import("../text/font.zig");
 const Spec = options.Spec;
 const Widget = widget.Widget;
 const Value = ztcl.Value;
@@ -100,7 +100,7 @@ pub const class: widget.Class = .{
     .deinit = deinit,
     .configured = configured,
     .measure = measure,
-    .paint = paintText,
+    .paint = textview.paintText,
     .event = texttag.tagEvent,
     .subcommand = subcommand,
     .bad_option_list = "bbox, cget, compare, configure, count, debug, delete, dlineinfo, dump, edit, get, image, index, insert, mark, peer, pendingsync, replace, scan, search, see, sync, tag, window, xview, or yview",
@@ -115,6 +115,11 @@ pub const Data = struct {
     pointer_in: bool = false,
     cur_tags: std.ArrayListUnmanaged([]u8) = .empty,
     sel_anim: paint.PartAnim = .{},
+    /// The heights of the lines, and the views.
+    view: textview.Heights = .{},
+    vx: scroll.View = .{},
+    vy: scroll.View = .{},
+    caret_on: bool = true,
 };
 
 pub fn data(w: *const Widget) *Data {
@@ -169,19 +174,21 @@ fn deinit(w: *Widget) void {
     const d = data(w);
     d.buf.deinit();
     d.bindings.deinit();
+    d.view.deinit(w.app.gpa);
+    scroll.forget(w);
     for (d.cur_tags.items) |n| w.app.gpa.free(n);
     d.cur_tags.deinit(w.app.gpa);
     w.app.gpa.destroy(d);
     w.data = null;
 }
 
-fn int(w: *const Widget, comptime name: []const u8) i32 {
+pub fn int(w: *const Widget, comptime name: []const u8) i32 {
     const v = options.get(w, name).value;
     const x: i64 = if (v == .int) v.int else if (v == .pixels) v.pixels else 0;
     return @intCast(std.math.clamp(x, -(1 << 20), 1 << 20));
 }
 
-fn disabled(w: *const Widget) bool {
+pub fn disabled(w: *const Widget) bool {
     const v = options.get(w, "-state").value;
     return v == .word and v.word == 0;
 }
@@ -192,14 +199,14 @@ fn repaint(w: *Widget) void {
 
 // ---- Geometry ----
 
-fn content(w: *Widget) geom.Rect {
+pub fn content(w: *Widget) geom.Rect {
     const ins = paint.insets(&w.style);
     const px = int(w, "-padx");
     const py = int(w, "-pady");
     return .{ .x = ins.left + px, .y = ins.top + py, .w = @max(w.geom.w - ins.horizontal() - 2 * px, 0), .h = @max(w.geom.h - ins.vertical() - 2 * py, 0) };
 }
 
-fn lineH(w: *Widget) i32 {
+pub fn lineH(w: *Widget) i32 {
     return @max(paint.lineHeight(w.app, w.style.font), 1);
 }
 
@@ -211,183 +218,19 @@ fn measure(w: *Widget) geom.Size {
     return .{ .w = num.add(cw, ins.horizontal() + 2 * int(w, "-padx")), .h = num.add(ch, ins.vertical() + 2 * int(w, "-pady")) };
 }
 
-/// The look of a run of characters with one set of tags.
-pub const Attrs = struct {
-    fg: ?geom.Color = null,
-    bg: ?geom.Color = null,
-    font: font_mod.FontDesc = .{},
-    underline: bool = false,
-    overstrike: bool = false,
-    underline_fg: ?geom.Color = null,
-    overstrike_fg: ?geom.Color = null,
-    offset: i32 = 0,
-    elide: bool = false,
-};
-
-/// A run of one line: characters `c0` to `c1` and bytes `b0` to `b1`, at
-/// `x` with the width `w`.
-pub const Seg = struct { c0: u32, c1: u32, b0: usize, b1: usize, x: i32, w: i32, attrs: Attrs, ascent: i32 };
-
-pub const LineLayout = struct { h: i32, ascent: i32, segs: []Seg };
-
-/// The colors of the part `::selection`, for `sel` with no colors of its own.
-fn selColors(w: *Widget) [2]?geom.Color {
-    const d = data(w);
-    if (!w.state.focus) {
-        const inact = options.get(w, "-inactiveselectbackground");
-        if (inact.set) return .{ if (inact.value == .color) inact.value.color else null, null };
-    }
-    const ss = paint.partStyle(w, "selection", &d.sel_anim).style;
-    return .{ ss.background, ss.color };
-}
-
-fn applyTag(w: *Widget, at: *Attrs, tag: *const tags_mod.Tag, sel_colors: [2]?geom.Color) void {
-    const T = tags_mod.Opt;
-    const is_sel = std.mem.eql(u8, tag.name, "sel");
-    switch (tag.get(T.background)) {
-        .color => |c| at.bg = c,
-        else => if (is_sel) if (sel_colors[0]) |c| {
-            at.bg = c;
-        },
-    }
-    switch (tag.get(T.foreground)) {
-        .color => |c| at.fg = c,
-        else => if (is_sel) if (sel_colors[1]) |c| {
-            at.fg = c;
-        },
-    }
-    if (tag.isSet(T.font)) {
-        if (font_mod.Fonts.parseTk(tag.text[@intFromEnum(T.font)], w.style.font, w.app.scaling)) |f| at.font = f;
-    }
-    if (tag.get(T.underline) == .boolean) at.underline = tag.get(T.underline).boolean;
-    if (tag.get(T.overstrike) == .boolean) at.overstrike = tag.get(T.overstrike).boolean;
-    if (tag.get(T.underlinefg) == .color) at.underline_fg = tag.get(T.underlinefg).color;
-    if (tag.get(T.overstrikefg) == .color) at.overstrike_fg = tag.get(T.overstrikefg).color;
-    if (tag.get(T.offset) == .pixels) at.offset = tag.get(T.offset).pixels;
-    if (tag.get(T.elide) == .boolean) at.elide = tag.get(T.elide).boolean;
-}
-
-/// Splits a line into runs at the edges of the tags, and measures them.
-pub fn layoutLine(w: *Widget, line: u32, a: std.mem.Allocator) !LineLayout {
-    w.app.ensureStyle(w);
-    const d = data(w);
-    const app = w.app;
-    const s = d.buf.lineText(line);
-    const n = d.buf.lineChars(line);
-    var edges: std.ArrayList(u32) = .empty;
-    try edges.append(a, 0);
-    const start: Pos = .{ .line = line, .ch = 0 };
-    const order = d.buf.tags.order.items;
-    for (order) |tag| {
-        var k = tag.after(start);
-        while (k < tag.ranges.items.len) : (k += 1) {
-            const r = tag.ranges.items[k];
-            if (r.a.line > line) break;
-            if (r.a.line == line) try edges.append(a, r.a.ch);
-            if (r.z.line == line) try edges.append(a, r.z.ch);
-        }
-    }
-    try edges.append(a, n);
-    std.mem.sort(u32, edges.items, {}, std.sort.asc(u32));
-    const sel_colors = selColors(w);
-    var segs: std.ArrayList(Seg) = .empty;
-    const base = paint.fontMetrics(app, w.style.font);
-    var asc: i32 = base.ascent;
-    var desc: i32 = base.line_height - base.ascent;
-    var x: i32 = 0;
-    var b0: usize = 0;
-    var prev: u32 = 0;
-    for (edges.items[1..]) |e| {
-        if (e <= prev) continue;
-        const c0 = prev;
-        prev = e;
-        var at: Attrs = .{ .font = w.style.font };
-        for (order) |tag| if (tag.has(.{ .line = line, .ch = c0 })) applyTag(w, &at, tag, sel_colors);
-        const b1 = if (e >= n) s.len else b0 + buffer.byteOf(s[b0..], e - c0);
-        const m = paint.fontMetrics(app, at.font);
-        const width = if (at.elide) 0 else paint.textSize(app, s[b0..b1], at.font).w;
-        if (!at.elide) {
-            asc = @max(asc, m.ascent - at.offset);
-            desc = @max(desc, m.line_height - m.ascent + at.offset);
-        }
-        try segs.append(a, .{ .c0 = c0, .c1 = e, .b0 = b0, .b1 = b1, .x = x, .w = width, .attrs = at, .ascent = m.ascent });
-        x += width;
-        b0 = b1;
-    }
-    return .{ .h = @max(asc + desc, 1), .ascent = asc, .segs = segs.items };
-}
-
-/// The x offset of a character in its line, from the left of the text.
-fn charX(w: *Widget, p: Pos) i32 {
-    var sf = std.heap.stackFallback(4096, w.app.gpa);
-    var arena = std.heap.ArenaAllocator.init(sf.get());
-    defer arena.deinit();
-    const lay = layoutLine(w, p.line, arena.allocator()) catch return 0;
-    return xInLayout(w, lay, p);
-}
-
-fn xInLayout(w: *Widget, lay: LineLayout, p: Pos) i32 {
-    const s = data(w).buf.lineText(p.line);
-    for (lay.segs) |sg| {
-        if (p.ch >= sg.c1 and sg.c1 != sg.c0) continue;
-        if (sg.attrs.elide) return sg.x;
-        const off = buffer.byteOf(s[sg.b0..sg.b1], p.ch - sg.c0);
-        return sg.x + paint.textSize(w.app, s[sg.b0 .. sg.b0 + off], sg.attrs.font).w;
-    }
-    return if (lay.segs.len > 0) lay.segs[lay.segs.len - 1].x + lay.segs[lay.segs.len - 1].w else 0;
-}
-
-/// The line at a y offset of the content, from the top line, and the y
-/// of the top of that line.
-fn lineAtY(w: *Widget, y: i64, a: std.mem.Allocator) !struct { line: u32, y: i32 } {
-    const d = data(w);
-    var line = d.top;
-    var top: i32 = 0;
-    while (line + 1 < d.buf.lineCount()) : (line += 1) {
-        const h = (try layoutLine(w, line, a)).h;
-        if (y < top + h) break;
-        top += h;
-    }
-    return .{ .line = line, .y = top };
-}
-
-/// The position nearest to a point of the widget.
+/// The position that covers a point of the widget.
 pub fn nearestChar(w: *Widget, x: i64, y: i64) Pos {
-    w.app.ensureStyle(w);
-    const d = data(w);
-    const c = content(w);
-    var sf = std.heap.stackFallback(4096, w.app.gpa);
-    var arena = std.heap.ArenaAllocator.init(sf.get());
-    defer arena.deinit();
-    const a = arena.allocator();
-    if (y < c.y) {
-        return .{ .line = d.top, .ch = charAtX(w, d.top, x - c.x, a) };
-    }
-    const at = lineAtY(w, y - c.y, a) catch return .{ .line = d.top };
-    return .{ .line = at.line, .ch = charAtX(w, at.line, x - c.x, a) };
+    return textview.nearest(w, x, y);
 }
 
-fn charAtX(w: *Widget, line: u32, rx: i64, a: std.mem.Allocator) u32 {
-    const d = data(w);
-    const lay = layoutLine(w, line, a) catch return 0;
-    const s = d.buf.lineText(line);
-    for (lay.segs) |sg| {
-        if (sg.attrs.elide) continue;
-        if (rx >= sg.x + sg.w) continue;
-        // The character that covers the x offset, as `text.n` gives for `@x,y`.
-        var ch = sg.c0;
-        while (ch < sg.c1) : (ch += 1) {
-            const off = buffer.byteOf(s[sg.b0..sg.b1], ch - sg.c0 + 1);
-            const nx = sg.x + paint.textSize(w.app, s[sg.b0 .. sg.b0 + off], sg.attrs.font).w;
-            if (rx < nx) return ch;
-        }
-        return sg.c1;
-    }
-    return d.buf.lineChars(line);
-}
-
-/// The tags or their options changed.
+/// The tags or their options changed: the heights of the lines can
+/// change.
 pub fn tagsChanged(w: *Widget) void {
+    data(w).view.width = -1;
+    repaint(w);
+}
+
+pub fn repaintView(w: *Widget) void {
     repaint(w);
 }
 
@@ -461,6 +304,7 @@ fn insertChars(w: *Widget, at: Pos, args: []const Value, it: *ztcl.Interp) ztcl.
         if (s.len == 0) continue;
         const from = p;
         p = d.buf.insert(p, s) catch return error.OutOfMemory;
+        textview.noteEdit(w, from.line, 1, p.line - from.line + 1);
         // With a tag list, the new text has the tags of the list only.
         if (i + 1 < args.len) {
             const names = try it.list(args[i + 1]);
@@ -486,6 +330,7 @@ fn deleteRange(w: *Widget, a0: Pos, z0: Pos) void {
         if (a.line >= d.buf.lineCount()) a = z;
     }
     d.buf.delete(a, z);
+    textview.noteEdit(w, a.line, z.line - a.line + 1, 1);
 }
 
 fn changed(w: *Widget) void {
@@ -559,11 +404,15 @@ fn countOne(w: *Widget, which: usize, p: Pos, z: Pos) i64 {
             if (z.lt(p)) return -@as(i64, @intCast(d.buf.charsBetween(z, p)));
             return @intCast(d.buf.charsBetween(p, z));
         },
-        3, 5 => return @as(i64, z.line) - @as(i64, p.line),
-        7 => return @as(i64, charX(w, z)) - charX(w, p),
+        3 => return textview.displayLines(w, p, z),
+        5 => return @as(i64, z.line) - @as(i64, p.line),
+        7 => {
+            w.app.ensureStyle(w);
+            return @as(i64, textview.xOf(w, z)) - textview.xOf(w, p);
+        },
         8 => {
             w.app.ensureStyle(w);
-            return (@as(i64, z.line) - @as(i64, p.line)) * lineH(w);
+            return textview.yOf(w, z) - textview.yOf(w, p);
         },
         else => return 0,
     }
@@ -703,59 +552,28 @@ fn subcommand(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!?Val
         try insertChars(w, data(w).buf.clamp(p), argv[4..], it);
         return Value.empty;
     }
-    const later = [_][]const u8{ "bbox", "debug", "dlineinfo", "dump", "edit", "image", "peer", "pendingsync", "scan", "search", "see", "sync", "window", "xview", "yview" };
+    if (eq(u8, sub, "xview") or eq(u8, sub, "yview")) return try textview.cmdView(w, it, argv, if (sub[0] == 'x') 0 else 1);
+    if (eq(u8, sub, "see")) {
+        if (argv.len != 3) return it.fail("wrong # args: should be \"{s} see index\"", .{w.path});
+        textview.see(w, try getIndex(w, it, argv[2]));
+        return Value.empty;
+    }
+    if (eq(u8, sub, "bbox") or eq(u8, sub, "dlineinfo")) {
+        if (argv.len != 3) return it.fail("wrong # args: should be \"{s} {s} index\"", .{ w.path, sub });
+        return try textview.cmdBox(w, it, try getIndex(w, it, argv[2]), sub[0] == 'd');
+    }
+    if (eq(u8, sub, "sync")) return Value.empty;
+    if (eq(u8, sub, "pendingsync")) return .{ .int = 0 };
+    const later = [_][]const u8{ "debug", "dump", "edit", "image", "peer", "scan", "search", "window" };
     for (later) |n| if (eq(u8, sub, n)) return it.fail("the text subcommand \"{s}\" is not in ztk yet", .{n});
     return null;
-}
-
-// ---- Paint ----
-
-fn optColor(w: *const Widget, comptime name: []const u8) ?geom.Color {
-    const s = options.get(w, name);
-    return if (s.set and s.value == .color) s.value.color else null;
-}
-
-fn paintText(w: *Widget, b: *scene.Builder) anyerror!void {
-    const app = w.app;
-    const st = anim.shown(app, w);
-    try paint.box(w, b, st);
-    const d = data(w);
-    const c = content(w);
-    if (c.w <= 0 or c.h <= 0) return;
-    b.pushClip(c);
-    defer b.popClip();
-    var arena = std.heap.ArenaAllocator.init(app.gpa);
-    defer arena.deinit();
-    const a = arena.allocator();
-    const ins = d.buf.getMark("insert").?.pos;
-    const show_caret = w.state.focus and !disabled(w);
-    var line = d.top;
-    var y = c.y;
-    while (line < d.buf.lineCount() and y < c.y + c.h) : (line += 1) {
-        const lay = try layoutLine(w, line, a);
-        const s = d.buf.lineText(line);
-        const base_y = y + lay.ascent;
-        for (lay.segs) |sg| {
-            if (sg.attrs.elide or sg.c0 == sg.c1) continue;
-            const x = c.x + sg.x;
-            if (x > c.x + c.w) break;
-            if (sg.attrs.bg) |bg| try b.box(.{ .x = x, .y = y, .w = sg.w, .h = lay.h }, .{ .fill = bg });
-            const fg = sg.attrs.fg orelse st.color;
-            const by = base_y + sg.attrs.offset * -1;
-            try paint.textAt(app, b, x, by, s[sg.b0..sg.b1], sg.attrs.font, fg);
-            if (sg.attrs.underline) try b.box(.{ .x = x, .y = by + 1, .w = sg.w, .h = 1 }, .{ .fill = sg.attrs.underline_fg orelse fg });
-            if (sg.attrs.overstrike) try b.box(.{ .x = x, .y = by - @divTrunc(sg.ascent * 3, 10), .w = sg.w, .h = 1 }, .{ .fill = sg.attrs.overstrike_fg orelse fg });
-        }
-        if (show_caret and ins.line == line) {
-            const cx = c.x + xInLayout(w, lay, ins);
-            const color = optColor(w, "-insertbackground") orelse st.caret_color;
-            try b.box(.{ .x = cx, .y = y, .w = @max(int(w, "-insertwidth"), 1), .h = lay.h }, .{ .fill = color });
-        }
-        y += lay.h;
-    }
 }
 
 pub fn register(app: *App) !void {
     try app.it.register("text", widget.classCommand(&class));
     try app.classes.put(app.gpa, "text", &class);
+    _ = try app.it.eval(
+        \\bind Text <MouseWheel> {%W yview scroll [expr {-%D / 40.0}] units}
+        \\bind Text <Shift-MouseWheel> {%W xview scroll [expr {-%D / 30.0}] units}
+    );
 }
