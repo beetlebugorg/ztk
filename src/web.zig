@@ -339,3 +339,44 @@ export fn ztk_popup_dismiss() void {
     const win = popupWin(0) orelse return;
     head.close(win);
 }
+
+// The build of one program file for "Download your app" (`appbin.zig`,
+// web/ztcl-build.js). The page adds each file with `ztk_build_add`, then
+// calls `ztk_build` with a runtime. The output or the error text stays in
+// the memory of the module until `ztk_build_reset`.
+const appbin = @import("appbin.zig");
+var build_arena: std.heap.ArenaAllocator = .init(gpa);
+var build_files: std.ArrayList(appbin.File) = .empty;
+var build_out: []const u8 = "";
+
+export fn ztk_build_add(name_ptr: [*]const u8, name_len: usize, ptr: [*]const u8, len: usize) bool {
+    const a = build_arena.allocator();
+    const f: appbin.File = .{ .name = a.dupe(u8, name_ptr[0..name_len]) catch return false, .data = a.dupe(u8, ptr[0..len]) catch return false };
+    build_files.append(a, f) catch return false;
+    return true;
+}
+
+/// Gives 0 and the program file, or 1 and the text of the error. The
+/// first file is the main script.
+export fn ztk_build(rt_ptr: [*]const u8, rt_len: usize, allow_ptr: [*]const u8, allow_len: usize, name_ptr: [*]const u8, name_len: usize) i32 {
+    const a = build_arena.allocator();
+    build_out = appbin.build(a, rt_ptr[0..rt_len], build_files.items, allow_ptr[0..allow_len], null, name_ptr[0..name_len]) catch |e| {
+        build_out = appbin.describe(e);
+        return 1;
+    };
+    return 0;
+}
+
+export fn ztk_build_ptr() [*]const u8 {
+    return build_out.ptr;
+}
+
+export fn ztk_build_len() usize {
+    return build_out.len;
+}
+
+export fn ztk_build_reset() void {
+    build_files = .empty;
+    build_out = "";
+    _ = build_arena.reset(.free_all);
+}

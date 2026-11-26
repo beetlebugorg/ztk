@@ -59,3 +59,16 @@ ztk [flags] script.tcl [arguments]
 | `--cpu` | Uses the CPU renderer on Wayland. |
 
 `ZTK_NO_ANIMATION=1` turns the animations off and shows each end state at once. The program gives a script the file commands and the file channels of ztcl (`file`, `open`, `read`, `puts` to a file) by default, with the real paths of the host, as in `wish`. A relative path counts from the current folder. `--root DIR` keeps the file commands in one folder, which a script sees as `/`. The other host access (`socket`, `exec`, and the others) needs `--allow`. `ztk::style load` reads style sheets from the folder of the script.
+
+## An app in one file
+
+`ztk bundle` with an output name that has no `.app` writes one program file: a copy of the `ztk` program with the app in it.
+
+```sh
+ztk bundle -o notes notes.tcl lib/ images/
+ztk bundle -o notes.exe --target x86_64-windows --runner ztk.exe notes.tcl
+```
+
+The first file is the main script. Each other file or folder goes in the app below its path, and the script reads it at `//zipfs:/app/`. For example, `images/a.png` is `//zipfs:/app/images/a.png`, and `ztk::style load` finds a style sheet of the app there too. `--allow` sets the capabilities of the app, and the default is `file,channels`. The program reads no flag: each word of its command line goes to `$argv`.
+
+The default target is the computer that runs `ztk bundle`, with the `ztk` program itself as the copy. For another target, give the `ztk` program of that target with `--runner`, or put it in `lib/ztk/runtime/TARGET/` next to the folder of `ztk`. The targets are `x86_64-linux`, `aarch64-linux`, `x86_64-macos`, `aarch64-macos`, `x86_64-windows`, and `aarch64-windows`. A macOS file gets an ad hoc signature. The form of the file is the form of `ztcl build` of ztcl.

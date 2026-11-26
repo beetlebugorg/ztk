@@ -128,6 +128,9 @@ pub fn build(b: *std.Build) void {
             .{ .name = "ztk", .module = ztk },
         },
     }) });
+    // Space after the load commands, for the code signature that
+    // `ztk bundle --target` adds to a Mach-O file.
+    if (is_macos) exe.headerpad_size = 0x1000;
     b.installArtifact(exe);
 
     // The WebAssembly build for the browser: the core, the headless backend, and src/web.zig.
