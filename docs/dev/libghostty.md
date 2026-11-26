@@ -19,6 +19,6 @@ These ran on 2026-11-26 on an x86_64 Linux machine with 8 cores, with Zig 0.17.0
 
 ## Not done
 
-- `src/term/parser.zig` and `src/term/screen.zig` stay for `zig build term-bench`. A follow-up PR removes them and the benchmark.
+- The follow-up PR removed `src/term/parser.zig`, `src/term/screen.zig`, `src/term/width.zig`, and `zig build term-bench`.
 - The replies of DA (`ESC [c` gives `ESC [?62;22c`), DSR, and the OSC color queries 10 and 11 (black on white, as the old `Screen.theme`) come from `ztcl.vt.Term`. A check with `ztcl::vt feed` gave each reply on 2026-11-26.
 - The cursor style of DECSCUSR comes from libghostty-vt: 1 or 2 is a block, 3 or 4 an underline, and 5 or 6 a bar.

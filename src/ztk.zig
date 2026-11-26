@@ -175,7 +175,6 @@ test {
     _ = @import("text_widget/tags.zig");
     _ = @import("text_widget/undo.zig");
     _ = @import("tests/textw.zig");
-    _ = @import("term/screen.zig");
     _ = @import("term/core.zig");
     _ = @import("term/keys.zig");
     _ = @import("term/boxdraw.zig");
