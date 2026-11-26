@@ -310,3 +310,32 @@ figure.chart { margin: 0; }
   .shot .frame { min-height: 0; padding: 20px 16px; }
 }
 .prose img { display: block; max-width: min(100%, 480px); height: auto; margin: 8px 0 20px; border-radius: 10px; border: 1px solid var(--line); }
+
+/* Live snippets (assets/live.js): the code as an editor next to the running window. */
+.o { color: var(--accent); }
+.live-demo { margin: 8px 0 28px; display: grid; grid-template-columns: minmax(0, 1fr) auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.live-demo .ld-code { position: relative; min-width: 0; border-right: 1px solid var(--line); background: var(--code-bg); }
+.live-demo .ld-code pre, .live-demo .ld-code textarea { margin: 0; padding: 14px 16px; border: 0; border-radius: 0; background: none; font: 13px/1.55 var(--mono); tab-size: 4; white-space: pre-wrap; overflow-wrap: anywhere; box-sizing: border-box; }
+.live-demo .ld-code textarea { position: absolute; inset: 0; width: 100%; height: 100%; resize: none; overflow: hidden; color: transparent; caret-color: var(--text); outline: none; }
+.live-demo .ld-code textarea::selection { background: var(--accent-soft); color: transparent; }
+.live-demo .ld-code:focus-within { box-shadow: inset 0 0 0 2px var(--accent); }
+.live-demo .ld-view { display: grid; place-items: center; padding: 16px; background: var(--bg-soft); position: relative; }
+.live-demo .ld-frame { width: 360px; max-width: 100%; aspect-ratio: 3 / 2; border-radius: 8px; overflow: hidden; border: 1px solid var(--line-strong); box-shadow: var(--shadow); display: grid; place-items: center; background: var(--surface); }
+.live-demo .ld-frame img { display: block; width: 100%; height: auto; }
+.live-demo .ld-frame canvas { display: block; touch-action: none; }
+.live-demo .ld-empty { color: var(--text-3); font-size: 14px; }
+.live-demo .ld-bar { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--line); font-size: 13px; color: var(--text-3); }
+.live-demo .ld-bar button, .live-demo .ld-bar select, .live-demo .ld-bar a { font: inherit; color: var(--text-2); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 6px; padding: 3px 10px; cursor: pointer; text-decoration: none; }
+.live-demo .ld-bar button:hover, .live-demo .ld-bar a:hover { color: var(--accent); border-color: var(--accent); }
+.live-demo .ld-tag { font-weight: 650; color: var(--text-3); }
+.live-demo[data-live="1"] .ld-tag { color: var(--accent); }
+.live-demo[data-live="loading"] .ld-tag::after { content: " (loading)"; font-weight: 400; }
+.live-demo .ld-hud { margin-left: auto; font: 12px var(--mono); }
+.live-demo .ld-err { grid-column: 1 / -1; margin: 0; padding: 10px 14px; font: 12.5px/1.5 var(--mono); white-space: pre-wrap; color: var(--warn); background: var(--warn-soft); border-top: 1px solid var(--line); max-height: 10em; overflow: auto; }
+@media (max-width: 1100px) {
+  .live-demo { grid-template-columns: minmax(0, 1fr); }
+  .live-demo .ld-code { border-right: 0; border-bottom: 1px solid var(--line); order: 2; }
+  .live-demo .ld-view { order: 1; }
+  .live-demo .ld-bar { order: 3; }
+  .live-demo .ld-err { order: 4; }
+}

@@ -49,8 +49,11 @@ if (params.get("size")) {
 }
 const log = (t) => { logEl.textContent += t + "\n"; };
 let ztk = null;
+// A link with #code=TEXT (base64url of UTF-8) opens that code, for the
+// live snippets of the docs site.
+const shared = location.hash.startsWith("#code=") ? new TextDecoder().decode(Uint8Array.from(atob(location.hash.slice(6).replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0))) : null;
 async function load(name) {
-  const tcl = await (await fetch(`examples/${name}.tcl`)).text();
+  const tcl = shared != null && name === "" ? shared : await (await fetch(`examples/${name}.tcl`)).text();
   code.value = tcl;
   return name;
 }
@@ -72,6 +75,10 @@ async function run() {
 }
 document.getElementById("run").addEventListener("click", run);
 pick.addEventListener("change", async () => { await load(pick.value); await run(); });
+if (shared != null) {
+  pick.add(new Option("shared code", ""));
+  pick.value = "";
+}
 await load(pick.value);
 await run();
 window.ztk = ztk;
