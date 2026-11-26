@@ -31,6 +31,8 @@ cbuffer Push : register(b0) {
 
 StructuredBuffer<Quad> quads : register(t0);
 ByteAddressBuffer atlas : register(t1);
+// The RGBA image page of the atlas: 4 bytes for each texel, R first.
+ByteAddressBuffer images : register(t2);
 
 static const uint page_size = 1024;
 
@@ -126,6 +128,12 @@ float atlasAt(int2 t) {
     return float((word >> ((at & 3u) * 8u)) & 0xffu) / 255.0;
 }
 
+// The texel of the image page at `t`, straight RGBA from 0 to 1.
+float4 imageAt(int2 t) {
+    uint word = images.Load((uint(t.y) * page_size + uint(t.x)) * 4u);
+    return float4(float(word & 0xffu), float((word >> 8u) & 0xffu), float((word >> 16u) & 0xffu), float(word >> 24u)) / 255.0;
+}
+
 float4 ps_main(VOut i) : SV_Target {
     Quad q = quads[i.index];
     float2 p = i.pos.xy;
@@ -149,6 +157,15 @@ float4 ps_main(VOut i) : SV_Target {
         float cov = atlasAt(t);
         float a = q.fill.a * cov * opacity;
         o = float4(q.fill.rgb * a, a);
+    } else if (q.kind == 3u) {
+        // The bilinear filter of the CPU renderer, on four texels of the image page.
+        float2 u = clamp(q.uv.xy + (p - q.rect.xy) * (q.uv.zw / q.rect.zw) - 0.5, 0.0, 1022.0);
+        float2 f = u - floor(u);
+        int2 t = int2(floor(u));
+        float4 c = lerp(lerp(imageAt(t), imageAt(t + int2(1, 0)), f.x),
+                        lerp(imageAt(t + int2(0, 1)), imageAt(t + int2(1, 1)), f.x), f.y);
+        float a = c.a * opacity;
+        o = float4(c.rgb * a, a);
     } else {
         discard;
     }

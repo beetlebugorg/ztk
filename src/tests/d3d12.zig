@@ -236,3 +236,49 @@ test "d3d12-speed: 10,000 quads" {
     const ns = t0.untilNow(t.io, .awake).toNanoseconds();
     std.debug.print("d3d12-speed: {d:.3} ms for one draw of 10000 quads on {s} ({s})\n", .{ @as(f64, @floatFromInt(ns)) / 1e6 / @as(f64, @floatFromInt(runs)), v.deviceName(), @tagName(@import("builtin").mode) });
 }
+
+/// Image quads at the size of the image, scaled up, and with an opacity.
+fn imageScene(v: *dx.D3D12) !void {
+    var atlas = atlas_mod.Atlas.init(t.allocator);
+    defer atlas.deinit();
+    // A 6 by 4 image with a color ramp and a ramp of alpha.
+    var px: [6 * 4 * 4]u8 = undefined;
+    for (0..4) |y| for (0..6) |x| {
+        const o = (y * 6 + x) * 4;
+        px[o..][0..4].* = .{ @intCast(x * 50), @intCast(y * 80), 200, @intCast(255 - x * 30) };
+    };
+    const uv = (try atlas.image(1, 6, 4, &px)).?;
+    var s: Scene = .{};
+    defer s.deinit(t.allocator);
+    s.reset(80, 40);
+    s.clear = .{ 0.9, 0.9, 0.9, 1 };
+    var b = scene_mod.Builder.init(t.allocator, &s, 1);
+    try b.image(.{ .x = 2, .y = 2, .w = 6, .h = 4 }, uv, 1);
+    try b.image(.{ .x = 12, .y = 2, .w = 18, .h = 12 }, uv, 1);
+    try b.image(.{ .x = 40, .y = 2, .w = 30, .h = 30 }, uv, 0.5);
+    try compare(v, "image-quads", &s, &atlas);
+}
+
+test "d3d12: image quads equal the CPU renderer" {
+    const v = open(.{}) orelse return;
+    defer v.deinit();
+    try imageScene(v);
+}
+
+test "d3d12: image quads equal the CPU renderer on the WARP adapter" {
+    const v = open(.{ .warp = true }) orelse return;
+    defer v.deinit();
+    try imageScene(v);
+}
+
+test "d3d12: the scene of the label-photo golden equals the CPU renderer" {
+    const v = open(.{}) orelse return;
+    defer v.deinit();
+    var h: testing_h.Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval("wm geometry . 60x40");
+    _ = try h.eval("image create photo dot -width 4 -height 2; dot put {{#ff0000 #00ff00 #0000ff #ffffff} {#000000 #000000 #000000 #000000}}; ttk::label .l -image dot -padding 0; place .l -x 10 -y 10");
+    try h.update();
+    try compare(v, "label-photo", h.app.lastScene(), &h.app.atlas);
+}
