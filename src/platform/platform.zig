@@ -117,6 +117,17 @@ pub const TrayId = u32;
 /// The pixels are valid only during the call that gives them.
 pub const TrayIcon = struct { width: u32, height: u32, pixels: []const u8 };
 
+/// The kinds of data that a window accepts from the drops of other apps.
+pub const DropTypes = packed struct(u8) {
+    files: bool = false,
+    text: bool = false,
+    _pad: u6 = 0,
+
+    pub fn any(t: DropTypes) bool {
+        return t.files or t.text;
+    }
+};
+
 /// The options of a native file dialog. The strings are UTF-8 and are
 /// valid only during the call.
 pub const FileDialog = struct {
@@ -325,6 +336,11 @@ pub const Platform = struct {
         traySet: ?*const fn (ptr: *anyopaque, id: TrayId, icon: TrayIcon, template: bool, tooltip: []const u8, menu: MenuId) void = null,
         /// Removes a tray icon.
         trayDrop: ?*const fn (ptr: *anyopaque, id: TrayId) void = null,
+
+        /// Sets the kinds of data that `w` accepts from the drops of other
+        /// apps (ztk#62). No kind stops the drops. The drags come as `drop`
+        /// events.
+        dropTypes: ?*const fn (ptr: *anyopaque, w: *Window, types: DropTypes) void = null,
     };
 
     pub fn hasNativeMenus(p: Platform) bool {
@@ -360,6 +376,12 @@ pub const Platform = struct {
     }
     pub fn trayDrop(p: Platform, id: TrayId) void {
         if (p.vtable.trayDrop) |f| f(p.ptr, id);
+    }
+    pub fn hasDrops(p: Platform) bool {
+        return p.vtable.dropTypes != null;
+    }
+    pub fn dropTypes(p: Platform, w: *Window, types: DropTypes) void {
+        if (p.vtable.dropTypes) |f| f(p.ptr, w, types);
     }
     pub fn setMenuHandler(p: Platform, h: MenuHandler) void {
         if (p.vtable.setMenuHandler) |f| f(p.ptr, h);

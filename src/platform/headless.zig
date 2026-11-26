@@ -81,6 +81,8 @@ pub const Headless = struct {
     /// The trays: the last call of `traySet` for each, and the count of the ids.
     trays: std.ArrayListUnmanaged(TrayRec) = .empty,
     tray_next: u32 = 1,
+    /// The kinds of drops of the last `dropTypes`.
+    drop_types: plat.DropTypes = .{},
     /// The file dialog: the paths that the next dialog gives (null: a cancel),
     /// the filter that it gives, and the options of the last call.
     dialog_answer: ?[]const []const u8 = null,
@@ -164,6 +166,7 @@ pub const Headless = struct {
         .trayCreate = vTrayCreate,
         .traySet = vTraySet,
         .trayDrop = vTrayDrop,
+        .dropTypes = vDropTypes,
     };
 
     pub const TrayRec = struct { id: plat.TrayId, width: u32 = 0, template: bool = false, tooltip: std.ArrayListUnmanaged(u8) = .empty, menu: plat.MenuId = 0 };
@@ -204,6 +207,16 @@ pub const Headless = struct {
     /// Queues an action of the user on a tray.
     pub fn trayAction(h: *Headless, w: *Window, id: plat.TrayId, action: event.TrayAction) void {
         h.push(.{ .tray = .{ .window = w, .id = id, .action = action } });
+    }
+
+    fn vDropTypes(ptr: *anyopaque, _: *Window, types: plat.DropTypes) void {
+        self(ptr).drop_types = types;
+    }
+
+    /// Queues a phase of a drag of another app. The strings must live
+    /// until the next poll.
+    pub fn dragAt(h: *Headless, w: *Window, phase: event.DropPhase, x: f32, y: f32, files: []const u8, text: []const u8) void {
+        h.push(.{ .drop = .{ .window = w, .phase = phase, .x = x, .y = y, .files = files, .text = text } });
     }
 
     fn vSetMenuHandler(ptr: *anyopaque, mh: plat.MenuHandler) void {

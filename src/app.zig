@@ -182,6 +182,8 @@ pub const App = struct {
     text_input: @import("textinput.zig").State = .{},
     /// The icons of `ztk::tray`.
     trays: @import("tray.zig").State = .{},
+    /// The drop targets of `tkdnd::drop_target`.
+    dnd: @import("dnd.zig").State = .{},
     /// The accent color of the system, when the backend gives one. The themes do not use it yet.
     accent: ?geom.Color = null,
     anim_last_us: i64 = -1,
@@ -304,7 +306,7 @@ pub const App = struct {
     fn idleDraw(_: *anyopaque, _: *const scene_mod.Frame) anyerror!void {}
 
     /// The target of a render thread in the pool. It draws nothing.
-    pub const idle_target: render_thread.Target = .{ .ctx = @constCast(@ptrCast(&max_frame)), .draw = idleDraw };
+    pub const idle_target: render_thread.Target = .{ .ctx = @ptrCast(@constCast(&max_frame)), .draw = idleDraw };
 
     /// A render thread for a new window: one from the pool, or a new one.
     pub fn takeRender(app: *App, mode: render_thread.Mode, target: render_thread.Target) !*render_thread.RenderThread {
@@ -350,6 +352,7 @@ pub const App = struct {
         app.clipboard.deinit(app.gpa);
         app.text_input.deinit(app.gpa);
         app.trays.deinit(app);
+        app.dnd.deinit(app);
         while (app.handles) |h| {
             app.handles = h.next;
             app.gpa.destroy(h);
@@ -593,9 +596,15 @@ pub const App = struct {
                 const sp = k.spec.spec;
                 const delay = @as(i64, sp.delay_ms) * 1000;
                 const tmpl: scene_mod.FrameAnim = .{
-                    .first = 0, .count = 0, .from = 0,
-                    .start_us = k.start_us, .delay_us = delay, .len_us = @max(sp.totalUs() - delay, 1), .timing = sp.timing,
-                    .iterations = k.spec.count, .direction = @enumFromInt(@intFromEnum(k.spec.direction)),
+                    .first = 0,
+                    .count = 0,
+                    .from = 0,
+                    .start_us = k.start_us,
+                    .delay_us = delay,
+                    .len_us = @max(sp.totalUs() - delay, 1),
+                    .timing = sp.timing,
+                    .iterations = k.spec.count,
+                    .direction = @enumFromInt(@intFromEnum(k.spec.direction)),
                     .fill_backwards = k.spec.fill == .backwards or k.spec.fill == .both,
                     .fill_forwards = k.spec.fill == .forwards or k.spec.fill == .both,
                     .base = true,
@@ -961,6 +970,7 @@ pub const App = struct {
             .motion, .button, .leave, .key, .scroll, .preedit, .commit => dispatch.handleIn(app, ev, top),
             .appearance => app.followSystem(),
             .tray => |tr| @import("tray.zig").handleEvent(app, tr.id, tr.action),
+            .drop => |dr| @import("dnd.zig").handleEvent(app, dr, top),
             .menu => |m| @import("widgets/menu.zig").handleEvent(app, m.menu, m.entry, m.action),
             .app_command => {},
         }

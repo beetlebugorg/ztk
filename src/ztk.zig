@@ -77,6 +77,7 @@ test {
     _ = @import("tests/ime.zig");
     _ = @import("tests/appearance.zig");
     _ = @import("tests/tray.zig");
+    _ = @import("tests/dnd.zig");
     _ = @import("tests/filedialog.zig");
     _ = @import("textinput.zig");
     _ = @import("tests/tree.zig");
@@ -117,6 +118,7 @@ test {
         _ = @import("platform/winkeys.zig");
         _ = @import("platform/winmenu.zig");
         _ = @import("platform/wintray.zig");
+        _ = @import("platform/windrop.zig");
     }
     _ = anim;
     _ = checks;

@@ -87,7 +87,7 @@ fn rootOrigin(w: *const Widget) struct { x: i32, y: i32 } {
     return .{ .x = x, .y = y };
 }
 
-fn nextSerial(app: *App) u32 {
+pub fn nextSerial(app: *App) u32 {
     app.dispatch.serial += 1;
     return app.dispatch.serial;
 }

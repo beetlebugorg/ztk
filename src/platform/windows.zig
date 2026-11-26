@@ -45,6 +45,7 @@ const Cursor = plat.Cursor;
 const tsf = @import("tsf.zig");
 const winmenu = @import("winmenu.zig");
 const wintray = @import("wintray.zig");
+const windrop = @import("windrop.zig");
 const windialog = @import("windialog.zig");
 
 pub const Renderer = enum { auto, d3d12, cpu };
@@ -89,6 +90,8 @@ const WinRec = struct {
     /// The menu bar of the window and the id of its menu.
     bar: ?w32.HMENU = null,
     bar_id: plat.MenuId = 0,
+    /// The OLE drop target of the window, when it takes drops.
+    drop: ?*windrop.Target = null,
     /// The buttons that are down, bit 0 for button 1.
     buttons: u8 = 0,
 };
@@ -190,6 +193,7 @@ pub const Win32 = struct {
         .trayCreate = vTrayCreate,
         .traySet = vTraySet,
         .trayDrop = vTrayDrop,
+        .dropTypes = vDropTypes,
         .fileDialog = vFileDialog,
     };
 
@@ -205,7 +209,7 @@ pub const Win32 = struct {
         b.queue.append(b.gpa, e) catch {};
     }
 
-    fn recOf(b: *Win32, w: *Window) ?*WinRec {
+    pub fn recOf(b: *Win32, w: *Window) ?*WinRec {
         for (b.windows.items) |r| if (r.win == w) return r;
         return null;
     }
@@ -264,6 +268,8 @@ pub const Win32 = struct {
 
     fn destroy(b: *Win32, w: *Window) void {
         const rec = b.recOf(w) orelse return;
+        if (rec.drop != null) windrop.disable(rec.hwnd);
+        rec.drop = null;
         var i: usize = 0;
         while (i < b.queue.items.len) {
             if (b.queue.items[i].window() == w) _ = b.queue.orderedRemove(i) else i += 1;
@@ -517,6 +523,31 @@ pub const Win32 = struct {
 
     fn vTrayDrop(ptr: *anyopaque, id: plat.TrayId) void {
         self(ptr).trays.drop(id);
+    }
+
+    fn vDropTypes(ptr: *anyopaque, w: *Window, types: plat.DropTypes) void {
+        const b = self(ptr);
+        const rec = b.recOf(w) orelse return;
+        if (!types.any()) {
+            if (rec.drop != null) windrop.disable(rec.hwnd);
+            rec.drop = null;
+            return;
+        }
+        if (rec.drop) |t| {
+            t.types = types;
+            return;
+        }
+        rec.drop = windrop.enable(&b.gpa, rec.hwnd, &rec.win.scale, types, rec, dropSink);
+    }
+
+    /// A phase of a drag from the drop target: the strings get a copy
+    /// that lives until the next poll.
+    fn dropSink(ctx: *anyopaque, phase: event.DropPhase, x: f32, y: f32, files: [*]const u8, files_len: usize, text: [*]const u8, text_len: usize) callconv(.c) void {
+        const rec: *WinRec = @ptrCast(@alignCast(ctx));
+        const b = rec.host;
+        const f = if (files_len > 0) b.keepText(files[0..files_len]) orelse return else "";
+        const s = if (text_len > 0) b.keepText(text[0..text_len]) orelse return else "";
+        b.push(.{ .drop = .{ .window = rec.win, .phase = phase, .x = x, .y = y, .files = f, .text = s } });
     }
 
     /// A message of the shell for a tray: the action in the low word of
