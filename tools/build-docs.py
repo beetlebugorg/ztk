@@ -11,6 +11,12 @@ one of these files. The build needs markdown-it-py
 (tools/docs-requirements.txt). It stops with an error for a link to a
 missing page or a missing anchor, and for a missing image, also on the
 landing page.
+
+A line `<!-- live -->` or `<!-- widget: NAME; shot: SCRIPT -->` before a
+`tcl` block makes the block a live snippet (docs/dev/interactive-docs.md).
+The build writes a figure with the code and the shot widget-NAME-light.png
+and widget-NAME-dark.png, and the page loads assets/live.js. An image
+paragraph of the same shot just before the marker goes into the figure.
 """
 
 import html
@@ -95,16 +101,24 @@ def rel(from_page, to_page):
     return "./" if path == "." else path.rstrip("/") + "/"
 
 
+MARK = re.compile(r"^<!-- (live|widget: ([a-z0-9-]+);.*) -->$")
+
+
 class Build:
     live = None
 
     def __init__(self):
         self.md = MarkdownIt("commonmark", {"html": False}).enable("table").enable("strikethrough")
+        plain = self.md.renderer.rules.get("fence")
+        def fence(tokens, idx, options, env):
+            t = tokens[idx]
+            return self.live_figure(t.meta, t.content, env["root"]) if t.meta.get("live") else plain(tokens, idx, options, env)
+        self.md.renderer.rules["fence"] = fence
         self.anchors = {}
         self.links = []
 
     def render(self, src, page):
-        tokens = self.md.parse((ROOT / src).read_text(encoding="utf-8"))
+        tokens = self.live_blocks(src, self.md.parse((ROOT / src).read_text(encoding="utf-8")))
         ids, seen, title = set(), {}, None
         for i, token in enumerate(tokens):
             if token.type == "heading_open":
@@ -122,10 +136,46 @@ class Build:
                         child.attrSet("href", self.link(src, page, child.attrGet("href")))
                     if child.type == "image":
                         child.attrSet("src", self.image(src, page, child.attrGet("src")))
+        for token in tokens:
+            if token.type == "fence" and token.meta.get("live"):
+                anchor = token.meta["id"]
+                if anchor in ids:
+                    raise SystemExit(f"{src}: two live snippets have the id {anchor}")
+                ids.add(anchor)
         self.anchors[page] = ids
-        body = self.md.renderer.render(tokens, self.md.options, {})
+        body = self.md.renderer.render(tokens, self.md.options, {"root": rel(page, "")})
         body = body.replace("<table>", '<div class="table"><table>').replace("</table>", "</table></div>")
         return title or src, self.alerts(body)
+
+    def live_blocks(self, src, tokens):
+        """Marks each `tcl` block after a live marker, and drops the marker
+        and an image paragraph of the same shot just before it."""
+        out, i, count = [], 0, 0
+        while i < len(tokens):
+            t = tokens[i]
+            m = MARK.match(tokens[i + 1].content.strip()) if t.type == "paragraph_open" and i + 1 < len(tokens) else None
+            if not m:
+                out.append(t)
+                i += 1
+                continue
+            fence = tokens[i + 3] if i + 3 < len(tokens) else None
+            if fence is None or fence.type != "fence" or fence.info.strip() != "tcl":
+                raise SystemExit(f"{src}: a live marker is not just before a tcl block")
+            name = m.group(2)
+            count += 1
+            meta = {"live": True, "name": name, "id": f"live-{name}" if name else f"live-{count}", "alt": "",
+                    "still": m.group(1).endswith("shot: update")}
+            if name:
+                shot = f"widget-{name}-light.png"
+                if len(out) >= 3 and out[-3].type == "paragraph_open" and out[-2].children and len(out[-2].children) == 1 \
+                        and out[-2].children[0].type == "image" and out[-2].children[0].attrGet("src").endswith(shot):
+                    meta["alt"] = inline_text(out[-2].children[0]) or out[-2].children[0].content
+                    del out[-3:]
+                meta["shot"] = (SITE_DIR / "shots" / shot).is_file()
+            fence.meta = meta
+            out.append(fence)
+            i += 4
+        return out
 
     def link(self, src, page, href):
         if re.match(r"^[a-z][a-z0-9+.-]*:", href) or href.startswith("//"):
@@ -163,6 +213,26 @@ class Build:
             css = "alert warning" if kind in ("warning", "caution", "important") else "alert"
             return f'<div class="{css}"><p>{rest.strip()}</p></div>'
         return re.sub(r"<blockquote>\s*<p>\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(.*?)</p>\s*</blockquote>", replace, body, flags=re.S)
+
+    @staticmethod
+    def live_figure(meta, code, root):
+        """The HTML of a live snippet. assets/live.js turns the pre into an
+        editor and the picture into the running window."""
+        name = meta["name"]
+        if meta.get("shot"):
+            alt = html.escape(meta["alt"] or f"The widget {name}", quote=True)
+            pic = (f'<picture><source srcset="{root}assets/shots/widget-{name}-dark.png" media="(prefers-color-scheme: dark)">'
+                   f'<img src="{root}assets/shots/widget-{name}-light.png" width="360" height="240" alt="{alt}" loading="lazy"></picture>')
+        else:
+            pic = '<span class="ld-empty">The live window shows here.</span>'
+        data = f' data-name="{html.escape(name)}"' if name else ""
+        # A shot of a plain run ("shot: update") equals the first frame of the snippet.
+        data += ' data-still="1"' if meta.get("still") and meta.get("shot") else ""
+        return (f'<figure class="live-demo" id="{meta["id"]}"{data}>'
+                f'<div class="ld-code"><pre><code class="language-tcl">{html.escape(code)}</code></pre></div>'
+                f'<div class="ld-view"><div class="ld-frame">{pic}</div></div>'
+                f'<figcaption class="ld-bar"><span class="ld-tag">Live</span></figcaption>'
+                f'<div class="ld-err" role="status" hidden></div></figure>\n')
 
     def nav(self, page):
         out, group = [], None
@@ -202,6 +272,7 @@ class Build:
     def document(self, page, title, body):
         root = rel(page, "")
         name = f"{html.escape(title)} · ztk"
+        script = f'\n<script type="module" src="{root}assets/live.js"></script>' if 'class="live-demo"' in body else ""
         desc = "A Tk replacement in Zig, on the ztcl interpreter, with a GPU renderer and CSS styles."
         return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -209,7 +280,7 @@ class Build:
 <title>{name}</title><meta name="description" content="{desc}">
 <link rel="canonical" href="{SITE}{page}">
 <link rel="icon" href="{root}assets/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="{root}assets/site.css"></head>
+<link rel="stylesheet" href="{root}assets/site.css">{script}</head>
 <body><a class="skip" href="#content">Skip to the content</a>
 <header class="top"><div class="wrap"><a class="logo" href="{root}"><span class="glyph" aria-hidden="true">tk</span>ztk</a>
 <nav class="toplinks" aria-label="Site"><a href="{root}overview/" aria-current="page">Docs</a><a class="sib" href="https://beetlebug.org/ztcl/">ztcl</a><a href="{REPO}">GitHub</a></nav></div></header>
@@ -260,7 +331,7 @@ class Build:
             (folder / "index.html").write_text(self.document(page, title, body), encoding="utf-8")
         (out / "index.html").write_text(landing, encoding="utf-8")
         (out / "assets").mkdir()
-        for name in ("site.css", "favicon.svg"):
+        for name in ("site.css", "favicon.svg", "live.js"):
             shutil.copy(SITE_DIR / name, out / "assets" / name)
         # The screenshots of the examples (tools/shots.sh).
         shutil.copytree(SITE_DIR / "shots", out / "assets" / "shots")
