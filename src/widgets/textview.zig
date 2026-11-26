@@ -422,8 +422,7 @@ pub fn paintText(w: *Widget, b: *scene.Builder) anyerror!void {
         // smooth scroll, so the UI thread paints each frame of it.
         if (app.part_move != .blocked) app.part_move = .mixed;
     }
-    // The embedded windows follow the view.
-    if (textembed.windowCount(w) > 0 and (d.arranged_at[0] != d.vx.shown(w) or d.arranged_at[1] != d.vy.shown(w))) textembed.arrangeAt(w, true);
+
     const first_quad = b.scene.quads.items.len;
     b.pushClip(c);
     var arena = std.heap.ArenaAllocator.init(app.gpa);
@@ -486,6 +485,9 @@ pub fn paintText(w: *Widget, b: *scene.Builder) anyerror!void {
     b.popClip();
     // The layout of the lines in the window can change their heights.
     sync(w);
+    // The embedded windows go to the boxes of this layout and of the
+    // shown view: the heights of the lines above them can change in it.
+    if (textembed.windowCount(w) > 0) textembed.arrangeAt(w, true);
     report(w);
     try scroll.paintDrag(w, b, &d.vx, first_quad, 0);
     try scroll.paintDrag(w, b, &d.vy, first_quad, 1);

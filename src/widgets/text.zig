@@ -143,8 +143,6 @@ pub const Data = struct {
     /// The embedded windows and images, and the idle call of `-create`.
     embeds: std.ArrayListUnmanaged(*textembed.Embed) = .empty,
     create_idle: ?u64 = null,
-    /// The scroll offsets of the last arrange of the embedded windows.
-    arranged_at: [2]f64 = .{ -1, -1 },
 };
 
 pub fn data(w: *const Widget) *Data {

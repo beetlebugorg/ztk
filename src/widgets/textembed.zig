@@ -543,7 +543,6 @@ pub fn arrangeAt(container: *Widget, shown: bool) void {
     const yoff = if (shown) d.vy.shown(container) else d.vy.pos;
     const xf = if (shown) d.vx.shown(container) else d.vx.pos;
     const xoff: i32 = num.pxRound(xf);
-    d.arranged_at = .{ xf, yoff };
     for (d.embeds.items) |e| {
         const child = e.win orelse continue;
         if (!child.alive()) continue;
