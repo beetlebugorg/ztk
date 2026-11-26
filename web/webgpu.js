@@ -20,6 +20,11 @@
 // each renderer asks for a new device, makes its pipeline again, sets the
 // atlas version back so that the next draw uploads the atlas again, and
 // calls its `restored` function, which draws the last scene again.
+//
+// The renderer calls its `failed` function when the GPU gives an error
+// or when no new device comes after a loss. The page then renders with
+// WebGL 2 (web/ztk.js). An error in the pipeline at the start makes
+// createWebGPU reject before it gets the context of the canvas.
 
 const QUAD_BYTES = 160;
 const ATLAS = 1024;
@@ -214,12 +219,11 @@ function srgbToP3(c) {
 /// Makes the WebGPU renderer for a canvas, or gives null when no adapter
 /// exists. `ex` has the exports of ztk.wasm. `options.colorSpace` forces
 /// "srgb" or "display-p3". `options.restored` runs after a device loss,
-/// when the renderer can draw again.
+/// when the renderer can draw again. `options.failed(reason)` runs when
+/// the renderer cannot draw.
 export async function createWebGPU(canvas, ex, options = {}) {
   let device = await gpuDevice();
   if (!device) return null;
-  const ctx = canvas.getContext("webgpu");
-  if (!ctx) return null;
   const format = navigator.gpu.getPreferredCanvasFormat();
   const p3 = (options.colorSpace ?? (globalThis.matchMedia?.("(color-gamut: p3)").matches ? "display-p3" : "srgb")) === "display-p3";
   let pipeline, uniforms, atlasTex, imageTex, quadBuf, quadCap = 0, bindGroup = null;
@@ -249,7 +253,16 @@ export async function createWebGPU(canvas, ex, options = {}) {
     configured = "";
     ready = true;
   };
+  device.pushErrorScope("validation");
+  device.pushErrorScope("internal");
   build();
+  const errors = [await device.popErrorScope(), await device.popErrorScope()].filter(Boolean);
+  if (errors.length > 0) throw new Error(`the pipeline gave an error: ${errors[0].message}`);
+  const ctx = canvas.getContext("webgpu");
+  if (!ctx) return null;
+  const onError = (e) => { if (!closed) options.failed?.(`gave an error: ${e.error?.message}`); };
+  let errorDevice = device;
+  errorDevice.addEventListener("uncapturederror", onError);
 
   const configure = (w, h) => {
     const key = `${w}x${h}`;
@@ -263,7 +276,14 @@ export async function createWebGPU(canvas, ex, options = {}) {
     ready = false;
     restoring = (async () => {
       device = await gpuDevice();
-      if (!device || closed) return false;
+      if (closed) return false;
+      if (!device) {
+        options.failed?.("lost its device");
+        return false;
+      }
+      errorDevice.removeEventListener("uncapturederror", onError);
+      errorDevice = device;
+      errorDevice.addEventListener("uncapturederror", onError);
       build();
       options.restored?.();
       return true;
@@ -341,6 +361,7 @@ export async function createWebGPU(canvas, ex, options = {}) {
     destroy() {
       closed = true;
       lossListeners.delete(onLoss);
+      errorDevice.removeEventListener("uncapturederror", onError);
       try { ctx.unconfigure(); } catch (_) { /* the device can be lost */ }
       quadBuf?.destroy();
       uniforms?.destroy();
