@@ -28,6 +28,8 @@ const usage =
     \\  --tty DEVICE             with --direct: the VT, for example /dev/tty1 (default: the terminal of the input)
     \\  --output NAME            with --direct: auto, vulkan, or framebuffer (Stage 1: framebuffer)
     \\  --dark                   the dark color scheme
+    \\  --allow a,b              more capabilities of ztcl, with the names of the ztcl runner (file and channels are on)
+    \\  --root DIR               the folder of the file commands (default: the folder of the script)
     \\  --version
     \\
 ;
@@ -50,6 +52,29 @@ pub const panic = std.debug.FullPanic(onPanic);
 fn onPanic(msg: []const u8, first_trace_addr: ?usize) noreturn {
     ztk.console.restoreNow();
     std.debug.defaultPanic(msg, first_trace_addr);
+}
+
+/// The Io of the clock and event hosts of ztcl, set at the start of main.
+var host_io: Io = undefined;
+
+fn hostNow(_: ?*anyopaque) i64 {
+    const t = Io.Clock.real.now(host_io);
+    return @intCast(@divFloor(t.toNanoseconds(), 1000));
+}
+
+fn hostTicks(_: ?*anyopaque) i64 {
+    const t = Io.Clock.awake.now(host_io);
+    return @intCast(@divFloor(t.toNanoseconds(), 1000));
+}
+
+fn hostSleep(_: ?*anyopaque, micros: i64) void {
+    Io.sleep(host_io, .fromNanoseconds(micros * 1000), .awake) catch {};
+}
+
+/// The TZif file of a zone for `clock`, from the zone files of the system.
+fn hostZone(_: ?*anyopaque, name: []const u8, a: std.mem.Allocator) ?[]const u8 {
+    const path = std.fmt.allocPrint(a, "/usr/share/zoneinfo/{s}", .{name}) catch return null;
+    return Io.Dir.cwd().readFileAlloc(host_io, path, a, .limited(1 << 20)) catch null;
 }
 
 var exit_out: ?*Io.Writer = null;
@@ -84,6 +109,11 @@ pub fn main(init: std.process.Init) !void {
 
     var headless = false;
     var dark = false;
+    // The file commands and the file channels (open, read, puts to a file)
+    // are on by default (decision of the user,
+    // 2026-11-26). --allow turns on more.
+    var allow_bits: u32 = @intFromEnum(ztcl.interp.Capability.file) | @intFromEnum(ztcl.interp.Capability.channels);
+    var root_dir: ?[]const u8 = null;
     var direct_on = false;
     var direct_opts: ztk.direct.Options = .{};
     var max_frames: ?u64 = null;
@@ -99,6 +129,12 @@ pub fn main(init: std.process.Init) !void {
             headless = true;
         } else if (std.mem.eql(u8, a, "--cpu")) {
             // Stage 1 draws with the CPU renderer on Wayland, so the flag has no other effect.
+        } else if (std.mem.eql(u8, a, "--allow") or std.mem.eql(u8, a, "--root")) {
+            if (i + 1 >= args.len) fail(err, "ztk: {s} needs a value\n", .{a});
+            i += 1;
+            if (a[2] == 'r') {
+                root_dir = args[i];
+            } else allow_bits |= ztcl.interp.Capability.parse(args[i]) orelse fail(err, "ztk: unknown capability in \"{s}\"\n", .{args[i]});
         } else if (std.mem.eql(u8, a, "--dark")) {
             dark = true;
         } else if (std.mem.eql(u8, a, "--direct")) {
@@ -168,6 +204,17 @@ pub fn main(init: std.process.Init) !void {
     try it.init(init.gpa);
     defer it.deinit();
     it.output = .{ .ctx = out, .write = write };
+    // The capabilities of the program: the file commands by default, as a
+    // desktop program needs them, and more from --allow.
+    host_io = io;
+    it.clock_host = .{ .now = hostNow, .zone = hostZone };
+    it.event_host = .{ .now = hostTicks, .sleep = hostSleep };
+    try it.allow(allow_bits);
+    const fs_bits = @intFromEnum(ztcl.interp.Capability.file) | @intFromEnum(ztcl.interp.Capability.channels);
+    if (allow_bits & fs_bits != 0) {
+        const dir = root_dir orelse (std.fs.path.dirname(path) orelse ".");
+        ztcl.fsroot.setRoot(&it, dir) catch fail(err, "ztk: cannot open the root folder \"{s}\"\n", .{dir});
+    }
 
     var head: ?*ztk.headless.Headless = null;
     var wl: if (ztk.wayland_enabled) ?*ztk.wayland.Wayland else void = if (ztk.wayland_enabled) null else {};
