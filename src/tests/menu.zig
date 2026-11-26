@@ -286,3 +286,82 @@ test "menu: a drawn menu fades in" {
     try h.update();
     try t.expectEqual(@as(f32, 1), md.openness(@import("../widgets/menu.zig").data(m), h.app.platform.nowUs()));
 }
+
+const bar_setup =
+    \\wm geometry . 400x300
+    \\menu .bar -tearoff 0
+    \\. configure -menu .bar
+    \\foreach {m l} {file File edit Edit help Help} {
+    \\    .bar add cascade -label $l -menu .bar.$m -underline 0
+    \\    menu .bar.$m -tearoff 0
+    \\    .bar.$m add command -label ${l}1 -command [list lappend ::log ${l}1]
+    \\}
+    \\frame .f; pack .f -fill both -expand 1
+    \\set log {}
+;
+
+test "menu: a drawn menu bar is a row above the content" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval(bar_setup);
+    try h.update();
+    const md = @import("../widgets/menudraw.zig");
+    const bar = h.app.find(".bar").?;
+    const bh = md.barHeight(bar);
+    try t.expect(bh > 10);
+    const f = h.app.find(".f").?;
+    try t.expectEqual(bh, f.geom.y);
+    try t.expectEqual(@as(i32, 300) - bh, f.geom.h);
+    // A press on the second entry opens its cascade below it.
+    h.head.pointerMove(h.win, @floatFromInt(md.barX(bar, 1) + 4), 5);
+    h.head.pointerButton(h.win, 1, true);
+    h.head.pointerButton(h.win, 1, false);
+    try h.update();
+    try t.expect(h.app.menu_root == bar);
+    const edit = h.app.find(".bar.edit").?;
+    try t.expect(md.cascadeOf(bar) == edit);
+    try t.expectEqual(bh, md.rect(edit).y);
+    // Motion to the first entry moves the open cascade.
+    h.head.pointerMove(h.win, @floatFromInt(md.barX(bar, 0) + 4), 5);
+    try h.update();
+    try t.expect(md.cascadeOf(bar) == h.app.find(".bar.file").?);
+    // A release on an entry of the cascade invokes it.
+    const r = md.rect(h.app.find(".bar.file").?);
+    h.head.pointerMove(h.win, @floatFromInt(r.x + 10), @floatFromInt(r.y + 10));
+    h.head.pointerButton(h.win, 1, true);
+    h.head.pointerButton(h.win, 1, false);
+    try h.update();
+    try expectEval(&h, "set log", "File1");
+    try t.expect(h.app.menu_root == null);
+}
+
+test "menu: F10, Alt with a letter, and the arrows move on the menu bar" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval(bar_setup);
+    try h.update();
+    const md = @import("../widgets/menudraw.zig");
+    const bar = h.app.find(".bar").?;
+    _ = try h.eval("focus .f; event generate . <Key-F10>");
+    try t.expect(md.cascadeOf(bar) == h.app.find(".bar.file").?);
+    try h.head.press(h.win, "Right");
+    try h.update();
+    try t.expect(md.cascadeOf(bar) == h.app.find(".bar.edit").?);
+    try h.head.press(h.win, "Left");
+    try h.head.press(h.win, "Left");
+    try h.update();
+    // The wrap goes to the last entry.
+    try t.expect(md.cascadeOf(bar) == h.app.find(".bar.help").?);
+    try h.head.press(h.win, "Return");
+    try h.update();
+    try expectEval(&h, "set log", "Help1");
+    try t.expect(h.app.menu_root == null);
+    _ = try h.eval("event generate . <Alt-KeyPress-e>");
+    try t.expect(md.cascadeOf(bar) == h.app.find(".bar.edit").?);
+    try h.head.press(h.win, "Escape");
+    try h.update();
+    try t.expect(h.app.menu_root == null);
+    try t.expect(h.app.grab.widget == null);
+}

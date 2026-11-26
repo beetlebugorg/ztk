@@ -351,3 +351,21 @@ Menu::accelerator {
 Menu::indicator {
   color: var(--fg);
 }
+
+/* The menu bar row, as Tk draws it on X11. */
+Menu::bar {
+  background-color: var(--bg);
+  border: 1px outset var(--bg);
+  padding: 1px;
+}
+
+Menu::bar-item {
+  color: var(--fg);
+  padding: 2px 6px;
+}
+
+Menu::bar-item-active {
+  color: var(--fg);
+  background-color: var(--select);
+  padding: 2px 6px;
+}

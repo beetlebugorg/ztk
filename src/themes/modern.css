@@ -567,3 +567,24 @@ Menu::accelerator {
 Menu::indicator {
   color: var(--fg);
 }
+
+/* The menu bar row of a toplevel with a drawn menu bar. */
+Menu::bar {
+  background-color: var(--bg);
+  border-style: solid;
+  border-color: var(--border);
+  border-width: 0px 0px 1px 0px;
+  padding: 2px 4px 3px 4px;
+}
+
+Menu::bar-item {
+  color: var(--fg);
+  padding: 3px 8px;
+}
+
+Menu::bar-item-active {
+  color: var(--accent-fg);
+  background-color: var(--accent);
+  border-radius: 5px;
+  padding: 3px 8px;
+}

@@ -267,6 +267,12 @@ fn configured(w: *Widget, _: []const usize) ztcl.Error!void {
 pub fn changed(w: *Widget) void {
     const d = data(w);
     if (d.native_id != 0) syncNative(w, 0) catch {};
+    // A drawn bar: each toplevel lays out and paints again, because the row can change its height.
+    if (d.is_bar and !w.app.platform.hasNativeMenus()) {
+        const all: widget.Dirty = .{ .style = false, .measure = true, .layout = true, .paint = true };
+        if (w.app.root) |r| r.invalidate(all);
+        for (w.app.tops.items) |t| if (t.alive()) t.invalidate(all);
+    }
 }
 
 // ---- Indexes ----
