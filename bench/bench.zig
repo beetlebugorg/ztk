@@ -508,6 +508,50 @@ pub fn main(init: std.process.Init) !void {
         report("text-1mb-type", buf[0..runs]);
     }
 
+    // treeview-10000-scroll: a ttk::treeview with 10,000 rows in 100 open
+    // folders and two columns scrolls by wheel steps, one step for each frame.
+    // treeview-open: a folder of 100 rows in the window opens and closes,
+    // and each frame of the move of the rows is measured.
+    {
+        var tv: World = undefined;
+        try tv.it.init(gpa);
+        tv.head = try ztk.headless.Headless.init(gpa);
+        tv.app = try ztk.App.init(gpa, &tv.it, .{ .platform = tv.head.platform(), .io = io, .animations = true });
+        defer tv.deinit();
+        tv.head.skip_draw = true;
+        tv.eval(
+            \\ttk::treeview .t -columns {size date} -height 30
+            \\pack .t -fill both -expand 1
+            \\for {set f 0} {$f < 100} {incr f} {
+            \\  .t insert {} end -id f$f -text "Folder $f" -open 1
+            \\  for {set i 0} {$i < 99} {incr i} { .t insert f$f end -text "File $i" -values [list [expr {$i * 7}] 2026-11-26] }
+            \\}
+            \\.t yview moveto 0.5
+            \\update
+        );
+        const win = tv.app.window.?;
+        tv.head.pointerMove(win, 100, 100);
+        tv.eval("update");
+        const runs = 200;
+        for (buf[0..runs], 0..) |*slot, i| {
+            tv.head.advance(16);
+            tv.head.pointerScroll(win, 0, if ((i / 100) % 2 == 0) 3 else -3);
+            const t0 = nowNs();
+            tv.eval("update");
+            slot.* = nowNs() - t0;
+        }
+        report("treeview-10000-scroll", buf[0..runs]);
+        tv.eval(".t see f50; .t yview moveto [lindex [.t yview] 0]; update");
+        for (buf[0..runs], 0..) |*slot, i| {
+            if (i % 20 == 0) tv.eval(if ((i / 20) % 2 == 0) ".t item f50 -open 0" else ".t item f50 -open 1");
+            tv.head.advance(16);
+            const t0 = nowNs();
+            tv.eval("update");
+            slot.* = nowNs() - t0;
+        }
+        report("treeview-open", buf[0..runs]);
+    }
+
     // sheet-10000-scroll: examples/spreadsheet.tcl with 10 000 rows of numbers and a formula in
     // each row scrolls by fine wheel steps, one step for each frame, with transitions on. The
     // grid makes the items of a new block of rows every 16 rows.

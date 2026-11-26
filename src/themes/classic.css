@@ -241,6 +241,38 @@ Text::selection {
   color: var(--fg);
 }
 
+Treeview {
+  color: var(--fg);
+  background-color: var(--field-bg);
+  border: 1px inset var(--bg);
+}
+
+Treeview::item {
+  padding: 1px 2px;
+}
+
+Treeview::heading {
+  background-color: var(--bg);
+  padding: 2px 4px;
+}
+
+Treeview::separator {
+  background-color: var(--muted);
+}
+
+Treeview::selection {
+  background-color: var(--select);
+  color: var(--fg);
+}
+
+Treeview::indicator {
+  color: var(--fg);
+}
+
+Treeview::empty {
+  color: var(--muted);
+}
+
 Listbox {
   color: var(--fg);
   background-color: var(--field-bg);
