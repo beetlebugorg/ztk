@@ -100,6 +100,7 @@ test {
     if (appkit_enabled) _ = appkit;
     if (appkit_enabled) _ = @import("platform/pasteboard.zig");
     if (appkit_enabled) _ = @import("platform/nsmenu.zig");
+    if (appkit_enabled) _ = @import("platform/mactray.zig");
     if (direct_enabled) {
         _ = @import("sys/linux.zig");
         _ = @import("tests/direct.zig");
