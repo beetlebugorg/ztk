@@ -46,6 +46,7 @@ const tsf = @import("tsf.zig");
 const winmenu = @import("winmenu.zig");
 const wintray = @import("wintray.zig");
 const windialog = @import("windialog.zig");
+const winrecent = @import("winrecent.zig");
 
 pub const Renderer = enum { auto, d3d12, cpu };
 
@@ -191,6 +192,8 @@ pub const Win32 = struct {
         .traySet = vTraySet,
         .trayDrop = vTrayDrop,
         .fileDialog = vFileDialog,
+        .recentAdd = vRecentAdd,
+        .recentClear = vRecentClear,
     };
 
     fn self(ptr: *anyopaque) *Win32 {
@@ -517,6 +520,14 @@ pub const Win32 = struct {
 
     fn vTrayDrop(ptr: *anyopaque, id: plat.TrayId) void {
         self(ptr).trays.drop(id);
+    }
+
+    fn vRecentAdd(_: *anyopaque, path: []const u8) bool {
+        return winrecent.add(path);
+    }
+
+    fn vRecentClear(_: *anyopaque) void {
+        winrecent.clear();
     }
 
     /// A message of the shell for a tray: the action in the low word of
