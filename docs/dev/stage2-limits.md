@@ -240,7 +240,7 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - `tk_chooseColor` has 24 swatches, sliders for red, green, and blue, and a hex field. It has no hue and saturation area.
 - A dialog fades in with the keyframes `dialog-in` of the part box of `Dialog`: the background fades, and the widgets in the dialog show at once. The dialog does not scale in.
 - `ztk::toast` slides with `after` steps of 16 ms on the UI thread, so a busy script stops the slide. `ztk::animate reduce 1` shows the end place at once.
-- `winfo rgb` is new in this task, and `raise` and `lower` of widgets do not exist yet.
+- `winfo rgb` is new in this task.
 - `zig build bench`, ReleaseFast, 2026-11-26, development machine: `dialog-open` (a message box opens over the window, and each frame of its fade is measured) has a median of 0.02 ms and a 99th percentile of 0.75 ms. The gate is 8 ms.
 
 ## Additions
