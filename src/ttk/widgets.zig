@@ -140,6 +140,7 @@ const entry_subs = [_][]const u8{ "bbox", "cget", "configure", "delete", "get", 
 
 /// A `ttk` class from a classic class. With an empty `elem`, `identify`
 /// goes to the subcommand of the classic class, with no `element` word.
+/// With `elem` "*", the subcommand of the classic class gets all the words.
 pub fn derive(comptime base: widget.Class, comptime cmd: []const u8, comptime tk: []const u8, comptime specs: []const Spec, comptime subs: []const []const u8, comptime elem: []const u8) widget.Class {
     var c = base;
     c.command = cmd;
@@ -287,7 +288,7 @@ fn Subs(comptime base: ?*const fn (w: *Widget, it: *ztcl.Interp, argv: []const V
             const name = subs[i];
             if (std.mem.eql(u8, name, "state")) return try stateCmd(w, it, argv, false);
             if (std.mem.eql(u8, name, "instate")) return try stateCmd(w, it, argv, true);
-            if (std.mem.eql(u8, name, "identify")) {
+            if (std.mem.eql(u8, name, "identify") and comptime !std.mem.eql(u8, elem, "*")) {
                 if (elem.len > 0) return try identify(w, it, argv, elem);
                 if (argv.len != 4 and argv.len != 5) return it.fail("wrong # args: should be \"{s} identify ?what? x y\"", .{w.path});
                 if (argv.len == 5 and !std.mem.eql(u8, try it.str(argv[2]), "element")) return it.fail("bad option \"{s}\": must be element", .{try it.str(argv[2])});

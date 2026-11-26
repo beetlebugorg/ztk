@@ -330,6 +330,38 @@ pub fn main(init: std.process.Init) !void {
         report("menu-open", buf[0..runs]);
     }
 
+    // sash-drag: the pointer drags the sash of a panedwindow with 500 widgets
+    // in each pane, one motion for each frame, with transitions on. Each motion
+    // changes the sizes of the two panes, so each frame has their layout.
+    {
+        var pw: World = undefined;
+        try pw.it.init(gpa);
+        pw.head = try ztk.headless.Headless.init(gpa);
+        pw.app = try ztk.App.init(gpa, &pw.it, .{ .platform = pw.head.platform(), .io = io, .animations = true });
+        defer pw.deinit();
+        pw.head.skip_draw = true;
+        pw.eval("panedwindow .p; foreach n {a b} { frame .p.$n; for {set i 0} {$i < 500} {incr i} { label .p.$n.l$i -text $n$i; grid .p.$n.l$i -row [expr {$i / 20}] -column [expr {$i % 20}] } }; .p add .p.a .p.b -stretch always; pack .p -fill both -expand 1; wm geometry . 1600x900; update");
+        const p = pw.app.find(".p").?;
+        const win = pw.app.window.?;
+        const sv = try pw.it.eval("lindex [.p sash coord 0] 0");
+        const sx: f32 = @floatFromInt(p.geom.x + @as(i32, @intCast(try pw.it.int(sv))) + 1);
+        const sy: f32 = @floatFromInt(p.geom.y + 200);
+        pw.head.pointerMove(win, sx, sy);
+        pw.head.pointerButton(win, 1, true);
+        pw.eval("update");
+        const runs = 200;
+        for (buf[0..runs], 0..) |*slot, i| {
+            pw.head.advance(16);
+            const k: f32 = @floatFromInt(i % 100);
+            pw.head.pointerMove(win, sx + (if ((i / 100) % 2 == 0) k else 100 - k) * 3, sy);
+            const t0 = nowNs();
+            pw.eval("update");
+            slot.* = nowNs() - t0;
+        }
+        pw.head.pointerButton(win, 1, false);
+        report("sash-drag", buf[0..runs]);
+    }
+
     // listbox-scroll-10000: fine wheel steps scroll a listbox of 10,000 rows, one step
     // for each frame, with transitions on, and a press selects a row each 20 frames.
     {

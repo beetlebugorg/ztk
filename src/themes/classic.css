@@ -20,7 +20,7 @@
   font-size: 12px;
 }
 
-Frame, Toplevel, Message {
+Frame, Toplevel, Message, Panedwindow {
   background-color: var(--bg);
 }
 
@@ -393,4 +393,14 @@ Terminal {
 Terminal::selection {
   background-color: var(--select);
   color: var(--fg);
+}
+
+/* The sash of a paned window has the color of the surface, and a drag
+   shows it darker. */
+Panedwindow::sash, TPanedwindow::sash {
+  background-color: var(--trough);
+}
+
+Panedwindow::sash-active, TPanedwindow::sash-active {
+  background-color: var(--muted);
 }

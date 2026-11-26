@@ -357,6 +357,21 @@ Canvas::selection {
   color: var(--accent-fg);
 }
 
+/* A paned window. Each sash is a thin line, and the sash under the
+   pointer or in a drag fades to a wider accent bar. */
+Panedwindow {
+  background-color: var(--bg);
+}
+
+Panedwindow::sash, TPanedwindow::sash {
+  background-color: var(--border);
+}
+
+Panedwindow::sash-active, TPanedwindow::sash-active {
+  background-color: var(--accent);
+  border-radius: 2px;
+}
+
 /* A list of rows in a field. The selection background eases from row to
    row. The sidebar style has no field, and its selection is a round
    accent row. */

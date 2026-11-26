@@ -769,7 +769,7 @@ fn configure(it: *ztcl.Interp, app: *App, args: []const Value) ztcl.Error!Value 
         var up: ?*Widget = container;
         while (up) |x| {
             if (x == w) return it.fail("can't put {s} inside {s}, would cause management loop", .{ w.path, container.path });
-            up = if (x.manager_data != null and x.manager != null) cellOf(x).?.in else null;
+            up = if (x.manager == &manager and x.manager_data != null) cellOf(x).?.in else null;
         }
     }
 

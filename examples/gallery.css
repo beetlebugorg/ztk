@@ -20,7 +20,7 @@
   border-radius: 10px;
 }
 
-.group Label, .group Checkbutton, .group Radiobutton, .group Frame {
+.group Label, .group Checkbutton, .group Radiobutton, .group Frame, .group Panedwindow {
   background-color: var(--field-bg);
 }
 

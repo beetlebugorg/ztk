@@ -164,10 +164,12 @@ fn dropStaleGrab(app: *App, mods: event.Mods) void {
     if (g.alive()) setPressed(g, false);
 }
 
-/// The pointer shape over a widget: the first `-cursor` option that is set
+/// The pointer shape over a widget: the shape of the part under the
+/// pointer from the class, then the first `-cursor` option that is set
 /// on the widget or an ancestor, as in Tk, and else the `cursor` style of
 /// the widget.
 pub fn cursorOf(w: *const Widget) Cursor {
+    if (w.class.cursor) |f| if (f(w)) |shape| return shape;
     var cur: ?*const Widget = w;
     while (cur) |c| : (cur = c.parent) {
         const slot = options.maybe(c, "-cursor") orelse continue;
