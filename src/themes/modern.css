@@ -423,6 +423,11 @@ Text:disabled {
   color: var(--muted);
 }
 
+Text::selection {
+  background-color: var(--accent);
+  color: var(--accent-fg);
+}
+
 /* A list of rows in a field. The selection background eases from row to
    row. The sidebar style has no field, and its selection is a round
    accent row. */

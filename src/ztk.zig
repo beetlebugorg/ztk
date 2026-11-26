@@ -146,6 +146,7 @@ test {
     _ = @import("tests/listbox.zig");
     _ = @import("text_widget/buffer.zig");
     _ = @import("text_widget/index.zig");
+    _ = @import("text_widget/tags.zig");
     _ = @import("tests/textw.zig");
     _ = @import("term/screen.zig");
     _ = @import("term/keys.zig");
