@@ -935,7 +935,7 @@ pub const App = struct {
         return app.platform.live or app.loop.nextTimeoutUs() != null;
     }
 
-    fn handleEvent(app: *App, ev: event.Event) void {
+    pub fn handleEvent(app: *App, ev: event.Event) void {
         if (ev == .app_command) return app.appCommand(ev.app_command.command);
         // A window that is gone has no events. Compare the pointer only.
         if (@import("widgets/menupop.zig").handleEvent(app, ev)) return;
