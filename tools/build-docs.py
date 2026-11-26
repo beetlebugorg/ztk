@@ -47,6 +47,7 @@ PAGES = [
     ("docs/widgets/README.md", "widgets/", "Widgets", "All widgets"),
     ("docs/toys.md", "toys/", "Widgets", "Toys"),
     ("docs/build/backspin.md", "toys/backspin/", "Widgets", "Backspin, part by part"),
+    ("docs/build/tinmoon.md", "toys/tinmoon/", "Widgets", "Tin Moon, part by part"),
     ("docs/widgets/basic.md", "widgets/basic/", "Widgets", "Frames, labels, and buttons"),
     ("docs/widgets/toggles.md", "widgets/toggles/", "Widgets", "Check and radio buttons"),
     ("docs/widgets/entry.md", "widgets/entry/", "Widgets", "Entry and spinbox"),
