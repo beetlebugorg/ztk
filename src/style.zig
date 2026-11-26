@@ -570,6 +570,13 @@ pub fn parsePadding(text: []const u8) ?geom.Insets {
 
 /// The options that the script set on the widget: the origin `widget`.
 pub fn applyOptions(w: *const Widget, st: *Style) void {
+    // The stylesheet gives each class a proportional family. A `-font`
+    // with the default TkFixedFont (text, terminal) that the script did
+    // not set keeps the size and the weight of the stylesheet, and gets
+    // the monospace family.
+    for (w.class.specs, w.opts) |sp, slot| {
+        if (!slot.set and std.mem.eql(u8, sp.name, "-font") and std.mem.eql(u8, sp.default, "TkFixedFont")) st.font.family = "monospace";
+    }
     for (w.class.specs, w.opts) |sp, slot| {
         if (!slot.set or sp.type == .synonym) continue;
         const n = sp.name;

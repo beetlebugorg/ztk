@@ -539,3 +539,14 @@ test "textw: the display forms of the index modifiers" {
         .{ ".t index {2.1 + 1 display lines}", "3.1" },
     });
 }
+
+test "text: the default font is monospace" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    // TkFixedFont gives i and m one width. A proportional -font does not.
+    _ = try h.eval("text .t -width 10 -height 2; pack .t; .t insert end im; update");
+    try t.expectEqualStrings("1", try h.eval("expr {[lindex [.t bbox 1.0] 2] == [lindex [.t bbox 1.1] 2]}"));
+    _ = try h.eval(".t configure -font {Helvetica 12}; update");
+    try t.expectEqualStrings("1", try h.eval("expr {[lindex [.t bbox 1.0] 2] < [lindex [.t bbox 1.1] 2]}"));
+}
