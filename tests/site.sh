@@ -152,4 +152,7 @@ done
 # of the pad and of the game, pause, and Escape, with no scroll of the page.
 timeout 180 node "$root/tests/toy-keys.mjs" "$browser" "$work/profile-keys" "http://127.0.0.1:$port/toys/" \
     --enable-unsafe-webgpu --use-angle=vulkan --enable-features=Vulkan --use-vulkan=swiftshader || fail=1
+# The panel of Inspect: in view and off its widget, at three widths.
+timeout 180 node "$root/tests/inspect.mjs" "$browser" "$work/profile-inspect" "http://127.0.0.1:$port/widgets/basic/" \
+    --use-angle=swiftshader --enable-unsafe-swiftshader || fail=1
 exit "$fail"

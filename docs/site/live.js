@@ -307,7 +307,11 @@ class Demo {
     this.panel = document.createElement("div");
     this.panel.className = "ld-inspect";
     this.panel.hidden = true;
+    this.panel.setAttribute("role", "dialog");
     this.fig.appendChild(this.panel);
+    const again = () => this.place();
+    addEventListener("scroll", again, { passive: true });
+    addEventListener("resize", again, { passive: true });
   }
 
   link() {
@@ -460,6 +464,13 @@ class Demo {
     head.innerHTML = `<b></b> <span></span>`;
     head.firstChild.textContent = path;
     head.lastChild.textContent = `${cls} · ${mgr} ${info}`;
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "ld-iclose";
+    close.textContent = "Close";
+    close.addEventListener("click", () => this.pick(null));
+    head.appendChild(close);
+    this.panel.setAttribute("aria-label", `The options of ${path}`);
     const table = document.createElement("table");
     const conf = ev(`${path} configure`);
     for (const row of conf.ok ? tclList(conf.result) : []) {
@@ -499,8 +510,58 @@ class Demo {
     }
     this.note = document.createElement("p");
     this.note.className = "ld-note";
-    this.panel.replaceChildren(head, this.note, table);
+    const scroll = document.createElement("div");
+    scroll.className = "ld-iscroll";
+    scroll.appendChild(table);
+    this.panel.replaceChildren(head, this.note, scroll);
     this.panel.hidden = false;
+    this.place(true);
+  }
+
+  // The panel of Inspect opens beside the picked widget: on its right,
+  // else on its left, else under it or over it, on the side with more
+  // room, and always inside the viewport. Its height follows its content up to the height of the
+  // viewport, and only the option table scrolls. On a screen under 640
+  // CSS pixels wide, it is a sheet at the bottom of the viewport.
+  // `opening` is true for the first place of a pick.
+  place(opening = false) {
+    const p = this.panel;
+    if (!p || p.hidden || !this.picked || !this.layer) return;
+    const lr = this.layer.getBoundingClientRect();
+    const k = lr.width / W;
+    const b = this.boxes().find((x) => x.kind === "w" && x.path === this.picked);
+    const w = b ? { left: lr.left + b.x * k, top: lr.top + b.y * k, right: lr.left + (b.x + b.w) * k, bottom: lr.top + (b.y + b.h) * k } : lr;
+    const vw = document.documentElement.clientWidth, vh = innerHeight, m = 8;
+    p.classList.toggle("sheet", vw < 640);
+    if (vw < 640) {
+      p.style.cssText = "";
+      // When the panel opens, the page scrolls the widget above the sheet.
+      const top = vh - p.offsetHeight;
+      if (opening && w.bottom > top - m) scrollBy({ top: w.bottom - top + m, behavior: "instant" });
+      return;
+    }
+    const pw = Math.min(380, vw - 2 * m);
+    p.style.cssText = `width:${pw}px;max-height:${vh - 2 * m}px;left:0;top:0`;
+    const ph = p.offsetHeight;
+    let x = null, y;
+    if (w.right + m + pw <= vw - m) x = w.right + m;
+    else if (w.left - m - pw >= m) x = w.left - m - pw;
+    if (x !== null) {
+      y = Math.min(Math.max(m, w.top), vh - m - ph);
+    } else {
+      x = Math.min(Math.max(m, w.left), vw - m - pw);
+      // The side with more room. The panel gets shorter to fit there,
+      // and its table scrolls.
+      const below = vh - w.bottom - 2 * m, above = w.top - 2 * m;
+      if (ph > below && ph > above) {
+        p.style.maxHeight = `${Math.max(160, Math.max(below, above))}px`;
+      }
+      const h = p.offsetHeight;
+      if (below >= above) y = Math.min(w.bottom + m, vh - m - h);
+      else y = Math.max(m, w.top - m - h);
+    }
+    p.style.left = `${Math.round(x)}px`;
+    p.style.top = `${Math.round(y)}px`;
   }
 
   // Writes "-opt value" into the line of the code that makes the widget.
