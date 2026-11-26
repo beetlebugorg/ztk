@@ -426,3 +426,12 @@ figure.chart { margin: 0; }
 .live-demo.toy .ld-more > summary { cursor: pointer; padding: 10px 14px; font-size: 14px; color: var(--text-2); }
 .live-demo.toy .ld-more > summary:hover { color: var(--accent); }
 .live-demo.toy .ld-more .ld-code { border-right: 0; border-top: 1px solid var(--line); }
+/* The handheld of the Toys page: the device, and the code of the game next to it. */
+.live-demo.toy-console { grid-template-columns: auto minmax(0, 1fr); }
+.live-demo.toy-console .ld-code { max-height: 720px; overflow: auto; border-left: 1px solid var(--line); border-right: 0; }
+.live-demo.toy-console .ld-bar { grid-column: 1 / -1; }
+.toy-console .toy-brand { display: grid; gap: 6px; justify-items: center; }
+.toy-pad .toy-menu { width: auto; height: 22px; padding: 0 10px; border-radius: 11px; font-size: 10px; letter-spacing: .1em; }
+.toy-console .toy-page { margin-left: auto; }
+.toy-console .toy-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+@media (max-width: 1000px) { .live-demo.toy-console { grid-template-columns: minmax(0, 1fr); } .live-demo.toy-console .ld-code { border-left: 0; border-top: 1px solid var(--line); } }

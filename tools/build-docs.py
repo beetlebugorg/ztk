@@ -277,6 +277,24 @@ class Build:
         return re.sub(r"<blockquote>\s*<p>\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(.*?)</p>\s*</blockquote>", replace, body, flags=re.S)
 
     @staticmethod
+    def toy_games(root):
+        """The code of each toy of the widget pages, with its name, its
+        page, and its shot, in hidden pre elements."""
+        games = []
+        for f in sorted((ROOT / "docs" / "widgets").glob("*.md")):
+            text = f.read_text(encoding="utf-8")
+            page = PAGE_OF[f"docs/widgets/{f.name}"]
+            # The game of a marker is the last "### Play: NAME" heading before it.
+            for m in re.finditer(r"<!-- widget: (toy-[a-z]+);[^\n]*-->\n```tcl\n(.*?)```\n", text, re.S):
+                heads = re.findall(r"^### Play: (.+)$", text[:m.start()], re.M)
+                if not heads:
+                    raise SystemExit(f"{f}: the toy {m.group(1)} has no heading \"### Play: NAME\"")
+                title, name, code = heads[-1].strip(), m.group(1), m.group(2)
+                games.append(f'<pre hidden class="toy-game" data-name="{name}" data-slug="{slug(title)}" data-title="{html.escape(title, quote=True)}" '
+                             f'data-page="{root}{page}#play-{slug(title)}" data-shot="{root}assets/shots/widget-{name}">{html.escape(code)}</pre>')
+        return "".join(games)
+
+    @staticmethod
     def live_figure(meta, code, root):
         """The HTML of a live snippet. assets/live.js turns the pre into an
         editor and the picture into the running window."""
@@ -291,6 +309,16 @@ class Build:
         # A shot of a plain run ("shot: update") equals the first frame of the snippet.
         data += ' data-still="1"' if meta.get("still") and meta.get("shot") else ""
         code_html = f'<div class="ld-code"><pre><code class="language-tcl">{html.escape(code)}</code></pre></div>'
+        if name == "toy-console":
+            # The handheld of the Toys page: the game list first, and the
+            # code of the game next to the handheld. The code of each toy
+            # of the widget pages is in a hidden pre, for assets/toys.js.
+            return (f'<figure class="live-demo toy toy-console" id="{meta["id"]}"{data}>'
+                    f'<div class="ld-view"><div class="ld-frame">{pic}</div></div>'
+                    f'{code_html}'
+                    f'<figcaption class="ld-bar"><span class="ld-tag">Live</span>'
+                    f'<a class="toy-page" hidden></a><span class="toy-status" role="status"></span></figcaption>'
+                    f'<div class="ld-err" role="status" hidden></div>{Build.toy_games(root)}</figure>\n')
         if name and name.startswith("toy-"):
             # A toy: the handheld first and large, and its code under a
             # toggle, so that the page next to the game is short.
@@ -343,7 +371,7 @@ class Build:
     def document(self, page, title, body):
         root = rel(page, "")
         name = f"{html.escape(title)} · ztk"
-        script = f'\n<script type="module" src="{root}assets/live.js"></script>' if 'class="live-demo"' in body else ""
+        script = f'\n<script type="module" src="{root}assets/live.js"></script>' if 'class="live-demo' in body else ""
         if 'data-name="toy-' in body:
             script += f'\n<script type="module" src="{root}assets/toys.js"></script>'
 
