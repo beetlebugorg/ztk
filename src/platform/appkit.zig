@@ -25,6 +25,12 @@
 //! `macime.zig` decides whether an answer of the input method is a
 //! `preedit`, a `commit`, or the key event as before. A text of an event
 //! lives until the `poll` after the one that gives the event.
+//!
+//! `appearance` gives the dark mode of `NSApp.effectiveAppearance` and
+//! `NSColor.controlAccentColor` in sRGB. An observer of the key path
+//! `effectiveAppearance` and of `NSSystemColorsDidChangeNotification`
+//! gives an `appearance` event when either changes. The scale of a window
+//! comes from `windowDidChangeBackingProperties:`.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -57,6 +63,9 @@ const not_found: usize = std.math.maxInt(isize);
 extern "c" fn pthread_main_np() c_int;
 extern "Foundation" const NSDefaultRunLoopMode: Id;
 extern "Foundation" const NSRunLoopCommonModes: Id;
+extern "AppKit" const NSAppearanceNameAqua: Id;
+extern "AppKit" const NSAppearanceNameDarkAqua: Id;
+extern "AppKit" const NSSystemColorsDidChangeNotification: Id;
 extern "CoreGraphics" const kCGColorSpaceSRGB: *const anyopaque;
 extern "CoreGraphics" fn CGColorSpaceCreateWithName(name: *const anyopaque) ?*anyopaque;
 extern "CoreGraphics" fn CGColorSpaceRelease(space: *anyopaque) void;
@@ -107,6 +116,10 @@ pub const AppKit = struct {
     /// True when an empty event to end the wait is posted and not yet taken.
     woken: bool = false,
     windows: u32 = 0,
+    /// The windows that are open, for the events of the whole program.
+    wins: std.ArrayListUnmanaged(*Win) = .empty,
+    /// The observer of the appearance, an object of a class made at run time.
+    observer: ?Id = null,
     /// The clipboard: the general pasteboard.
     clip: Pasteboard,
     /// The texts of the events of the last poll, and of the events since.
@@ -123,6 +136,7 @@ pub const AppKit = struct {
         objc.call(fn (Id, Sel) callconv(.c) void, app, "finishLaunching", .{});
         const a = try gpa.create(AppKit);
         a.* = .{ .gpa = gpa, .app = app, .view_class = viewClass(), .delegate_class = delegateClass(), .clip = Pasteboard.general() };
+        a.observe();
         return a;
     }
 
@@ -131,6 +145,15 @@ pub const AppKit = struct {
         a.freeTexts(&a.texts_new);
         a.texts_given.deinit(a.gpa);
         a.texts_new.deinit(a.gpa);
+        if (a.observer) |o| {
+            const key = objc.nsString("effectiveAppearance");
+            defer objc.release(key);
+            objc.call(fn (Id, Sel, Id, Id) callconv(.c) void, a.app, "removeObserver:forKeyPath:", .{ o, key });
+            send(notificationCenter(), "removeObserver:", .{o});
+            objc.setData(o, null);
+            objc.release(o);
+        }
+        a.wins.deinit(a.gpa);
         a.events.deinit(a.gpa);
         a.gpa.destroy(a);
     }
@@ -152,6 +175,7 @@ pub const AppKit = struct {
         .nowUs = vNowUs,
         .target = vTarget,
         .setCursor = vSetCursor,
+        .appearance = vAppearance,
         .clipboardSet = vClipboardSet,
         .clipboardGet = vClipboardGet,
         .textInput = vTextInput,
@@ -243,6 +267,7 @@ pub const AppKit = struct {
         send(ns_window, "makeKeyAndOrderFront:", .{@as(?Id, null)});
         send(a.app, "activateIgnoringOtherApps:", .{true});
         a.windows += 1;
+        a.wins.append(a.gpa, w) catch {};
         // The first frame needs no clock tick.
         a.push(.{ .frame = .{ .window = &w.window, .time_us = nowUs() } });
         return &w.window;
@@ -279,6 +304,10 @@ pub const AppKit = struct {
         w.ime.deinit(a.gpa);
         a.gpa.destroy(w);
         a.windows -|= 1;
+        for (a.wins.items, 0..) |x, k| if (x == w) {
+            _ = a.wins.swapRemove(k);
+            break;
+        };
     }
 
     fn vDeinit(ptr: *anyopaque) void {
@@ -695,6 +724,84 @@ pub const AppKit = struct {
         return .{ .origin = on_screen, .size = .{ .w = @floatFromInt(r.w), .h = @floatFromInt(r.h) } };
     }
 
+    // ---- The appearance ----
+
+    fn notificationCenter() Id {
+        return objc.call(fn (Class, Sel) callconv(.c) Id, objc.class("NSNotificationCenter").?, "defaultCenter", .{});
+    }
+
+    fn observe(a: *AppKit) void {
+        const cls = observerClass();
+        const o = objc.new(cls);
+        objc.setData(o, a);
+        const key = objc.nsString("effectiveAppearance");
+        defer objc.release(key);
+        // Options 0 and a null context: the observer reads the new value itself.
+        objc.call(fn (Id, Sel, Id, Id, usize, ?*anyopaque) callconv(.c) void, a.app, "addObserver:forKeyPath:options:context:", .{ o, key, 0, null });
+        objc.call(fn (Id, Sel, Id, Sel, Id, ?Id) callconv(.c) void, notificationCenter(), "addObserver:selector:name:object:", .{ o, objc.sel("ztkColors:"), NSSystemColorsDidChangeNotification, null });
+        a.observer = o;
+    }
+
+    /// One `appearance` event for the program. The core reads the
+    /// appearance again for each window, so the event names the first one.
+    fn appearanceChanged(a: *AppKit) void {
+        if (a.wins.items.len == 0) return;
+        for (a.events.items) |e| if (e == .appearance) return;
+        a.push(.{ .appearance = .{ .window = &a.wins.items[0].window } });
+    }
+
+    fn vAppearance(ptr: *anyopaque) plat.Appearance {
+        const a = self(ptr);
+        const pool = objc.Pool.push();
+        defer pool.pop();
+        const appearance = objc.call(fn (Id, Sel) callconv(.c) ?Id, a.app, "effectiveAppearance", .{});
+        var dark = false;
+        if (appearance) |ap| {
+            const pair = [2]Id{ NSAppearanceNameAqua, NSAppearanceNameDarkAqua };
+            const list = objc.call(fn (Class, Sel, [*]const Id, usize) callconv(.c) Id, objc.class("NSArray").?, "arrayWithObjects:count:", .{ &pair, 2 });
+            if (objc.call(fn (Id, Sel, Id) callconv(.c) ?Id, ap, "bestMatchFromAppearancesWithNames:", .{list})) |best|
+                dark = objc.call(fn (Id, Sel, Id) callconv(.c) bool, best, "isEqualToString:", .{NSAppearanceNameDarkAqua});
+        }
+        return .{ .dark = dark, .accent = accentColor(appearance) };
+    }
+
+    /// `controlAccentColor` in sRGB. It is a dynamic color, so it resolves
+    /// with the appearance of the program as the current drawing appearance.
+    fn accentColor(appearance: ?Id) ?geom.Color {
+        const cls = objc.class("NSAppearance").?;
+        const saved = objc.call(fn (Class, Sel) callconv(.c) ?Id, cls, "currentAppearance", .{});
+        if (appearance) |ap| objc.call(fn (Class, Sel, ?Id) callconv(.c) void, cls, "setCurrentAppearance:", .{ap});
+        defer objc.call(fn (Class, Sel, ?Id) callconv(.c) void, cls, "setCurrentAppearance:", .{saved});
+        const accent = objc.call(fn (Class, Sel) callconv(.c) ?Id, objc.class("NSColor").?, "controlAccentColor", .{}) orelse return null;
+        const srgb = objc.call(fn (Class, Sel) callconv(.c) Id, objc.class("NSColorSpace").?, "sRGBColorSpace", .{});
+        const c = objc.call(fn (Id, Sel, Id) callconv(.c) ?Id, accent, "colorUsingColorSpace:", .{srgb}) orelse return null;
+        var r: f64 = 0;
+        var g: f64 = 0;
+        var b: f64 = 0;
+        var al: f64 = 0;
+        objc.call(fn (Id, Sel, *f64, *f64, *f64, *f64) callconv(.c) void, c, "getRed:green:blue:alpha:", .{ &r, &g, &b, &al });
+        return colorOf(r, g, b);
+    }
+
+    fn onAppearance(obj: Id, _: Sel, _: ?Id, _: ?Id, _: ?Id, _: ?*anyopaque) callconv(.c) void {
+        const a: *AppKit = @ptrCast(@alignCast(objc.getData(obj) orelse return));
+        a.appearanceChanged();
+    }
+
+    fn onColors(obj: Id, _: Sel, _: ?Id) callconv(.c) void {
+        const a: *AppKit = @ptrCast(@alignCast(objc.getData(obj) orelse return));
+        a.appearanceChanged();
+    }
+
+    fn observerClass() Class {
+        if (objc.class("ZtkAppearanceObserver")) |c| return c;
+        const b = objc.ClassBuilder.begin("NSObject", "ZtkAppearanceObserver").?;
+        // The key, the object, the change dictionary, and the context.
+        b.method("observeValueForKeyPath:ofObject:change:context:", @ptrCast(&onAppearance), "v@:@@@^v");
+        b.method("ztkColors:", @ptrCast(&onColors), "v@:@");
+        return b.finish();
+    }
+
     // ---- The classes made at run time ----
 
     fn winOf(win: *Window) *Win {
@@ -847,4 +954,24 @@ fn send(target: Id, selector: [*:0]const u8, args: anytype) void {
         1 => objc.call(fn (Id, Sel, fields[0].type) callconv(.c) void, target, selector, args),
         else => @compileError("send has at most one argument; use objc.call for more"),
     }
+}
+
+/// An sRGB color from components from 0 to 1, rounded to 8 bits.
+fn colorOf(r: f64, g: f64, b: f64) geom.Color {
+    return .{ .r = channel(r), .g = channel(g), .b = channel(b) };
+}
+
+fn channel(v: f64) u8 {
+    return @intFromFloat(@round(std.math.clamp(v, 0, 1) * 255));
+}
+
+test "appkit: the components of an NSColor become an 8-bit color" {
+    // The blue accent of macOS in sRGB.
+    const c = colorOf(0.0, 0.478, 1.0);
+    try std.testing.expectEqual(@as(u8, 0), c.r);
+    try std.testing.expectEqual(@as(u8, 122), c.g);
+    try std.testing.expectEqual(@as(u8, 255), c.b);
+    // An extended sRGB component past 1 stays in the range.
+    try std.testing.expectEqual(@as(u8, 255), colorOf(1.2, -0.1, 0.5).r);
+    try std.testing.expectEqual(@as(u8, 0), colorOf(1.2, -0.1, 0.5).g);
 }

@@ -95,6 +95,7 @@ test {
     _ = metal;
     if (appkit_enabled) _ = @import("tests/metal.zig");
     if (appkit_enabled) _ = @import("tests/appkit.zig");
+    if (appkit_enabled) _ = appkit;
     if (appkit_enabled) _ = @import("platform/pasteboard.zig");
     if (direct_enabled) {
         _ = @import("sys/linux.zig");
