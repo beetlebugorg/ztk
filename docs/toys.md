@@ -26,8 +26,10 @@ foreach {x y} {0 0 4 0 2 2 0 4 2 4 4 4 2 6} {
     .sky create rectangle [expr {14 + $x * 3}] [expr {3 + $y * 3}] \
         [expr {20 + $x * 3}] [expr {9 + $y * 3}] -fill #ffcf5c -outline {}
 }
-.sky create text 44 16 -anchor w -text "ZTK PLAY" -fill #f2e6c4 -font {TkFixedFont 15 bold}
-.sky create text 344 16 -anchor e -text "SELECT A GAME" -fill #ef5b5b -font {TkFixedFont 10 bold}
+.sky create text 44 16 -anchor w -text "ZTK PLAY" -fill #f2e6c4 \
+    -font {TkFixedFont 15 bold}
+.sky create text 344 16 -anchor e -text "SELECT A GAME" -fill #ef5b5b \
+    -font {TkFixedFont 10 bold}
 listbox .games -height 8 -font {TkFixedFont 10 bold} -activestyle none \
     -background #1d1a33 -foreground #f2e6c4 -selectbackground #ffcf5c \
     -selectforeground #1d1a33 -borderwidth 0 -highlightthickness 0
@@ -44,7 +46,8 @@ focus .games
 # The hint names the widget that drives the selected game.
 proc hint {} {
     set i [lindex [.games curselection] 0]
-    .hint configure -text "[string toupper [lindex $::games [expr {$i * 3 + 2}]]]   A: PLAY"
+    set widget [lindex $::games [expr {$i * 3 + 2}]]
+    .hint configure -text "[string toupper $widget]   A: PLAY"
 }
 hint
 bind .games <<ListboxSelect>> hint
