@@ -171,6 +171,10 @@ let logged = false;
 /// The renderers that this file has, in the order of "auto".
 export const renderers = ["webgpu", "webgl2", "cpu"];
 
+// True after a WebGPU canvas of the page fell back to WebGL 2. Each later
+// app of the page with "auto" then starts with WebGL 2.
+let webgpuFailed = false;
+
 // The WebGL 2 renderer: the quads of the scene in one instanced draw.
 function webgl2(canvas, ex) {
   const gl = canvas.getContext("webgl2", { premultipliedAlpha: true, antialias: false, alpha: false, preserveDrawingBuffer: true });
@@ -359,16 +363,27 @@ export async function start(firstCanvas, options = {}) {
   let lastN = 0;
   const makers = {
     webgpu: () => createWebGPU(canvas, ex, { colorSpace: options.colorSpace, restored: () => draw(lastN), failed: (why) => fallback(why) }),
-    webgl2: () => webgl2(canvas, ex),
+    // A failed WebGPU start can restart the GPU process of the browser,
+    // and WebGL 2 has no context for a short time after it. The page
+    // then asks again 3 times, 200 ms apart.
+    webgl2: async () => {
+      for (let i = 0; ; i++) {
+        const r = webgl2(canvas, ex);
+        if (r || i === 3 || !webgpuFailed) return r;
+        await new Promise((res) => setTimeout(res, 200));
+      }
+    },
     cpu: () => cpu(canvas, ex),
   };
   if (want !== "auto" && !makers[want]) throw new Error(`ztk: no renderer "${want}"`);
   let renderer = null;
   for (const name of want === "auto" ? renderers : [want]) {
+    if (name === "webgpu" && want === "auto" && webgpuFailed) continue;
     try {
       renderer = await makers[name]();
     } catch (e) {
       if (want !== "auto") throw e;
+      if (name === "webgpu") webgpuFailed = true;
       console.warn(`ztk: the renderer ${name} failed: ${e}`);
     }
     if (renderer || want !== "auto") break;
@@ -403,6 +418,7 @@ export async function start(firstCanvas, options = {}) {
   const fallback = (why) => {
     if (falling || renderer?.name !== "webgpu" || want === "webgpu" || signal.aborted) return;
     falling = true;
+    webgpuFailed = true;
     console.warn(`ztk: WebGPU ${why}, so the renderer is now WebGL 2`);
     renderer.destroy();
     const next = canvas.cloneNode(false);
@@ -410,14 +426,18 @@ export async function start(firstCanvas, options = {}) {
     canvas = next;
     bindCanvas();
     renderer = null;
-    try { renderer = webgl2(canvas, ex); } catch (_) { /* no WebGL 2 */ }
-    renderer ??= cpu(canvas, ex);
-    falling = false;
-    draw(lastN);
+    (async () => {
+      try { renderer = await makers.webgl2(); } catch (_) { /* no WebGL 2 */ }
+      renderer ??= cpu(canvas, ex);
+      falling = false;
+      draw(lastN);
+    })();
   };
 
   const draw = (n) => {
     lastN = n;
+    // No renderer while a fallback waits for WebGL 2.
+    if (!renderer) return;
     const w = ex.ztk_scene_width(), h = ex.ztk_scene_height();
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
     const sc = scaleNow();
@@ -615,7 +635,7 @@ export async function start(firstCanvas, options = {}) {
     if (signal.aborted) return;
     life.abort();
     cancelAnimationFrame(raf);
-    renderer.destroy();
+    renderer?.destroy();
     input.remove();
     tree.remove();
     layer.remove();
@@ -625,8 +645,8 @@ export async function start(firstCanvas, options = {}) {
   const redraw = () => draw(lastN);
   const snapshot = (type = "image/png") => { redraw(); return canvas.toDataURL(type); };
   // A test: the GPU device is lost, and the renderer draws on a new one.
-  const loseDevice = async () => (renderer.lose ? renderer.lose() : false);
-  return { eval: evalScript, exports: ex, frame, tree, addFile, get canvas() { return canvas; }, resize, setTheme, destroy, get renderer() { return renderer.name; }, redraw, snapshot, loseDevice, signal };
+  const loseDevice = async () => (renderer?.lose ? renderer.lose() : false);
+  return { eval: evalScript, exports: ex, frame, tree, addFile, get canvas() { return canvas; }, resize, setTheme, destroy, get renderer() { return renderer?.name ?? "none"; }, redraw, snapshot, loseDevice, signal };
 }
 
 /// Mounts a ztk app on an element. `el` is a canvas, or an element that
