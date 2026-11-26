@@ -628,3 +628,20 @@ test "windows: the file dialogs of Windows get their options" {
     defer t.allocator.free(f.file_name);
     try t.expect(f.flags & dlg.flag.pick_folders != 0);
 }
+
+test "windows: the taskbar state of a hidden window goes to ITaskbarList3" {
+    if (!enabled()) return;
+    var events: std.ArrayListUnmanaged(Event) = .empty;
+    defer events.deinit(t.allocator);
+    const o = try openHidden(&events);
+    defer o.b.deinit();
+    const p = o.b.platform();
+    try t.expect(p.hasTaskbar());
+    // A hidden window has no button, so the shell refuses the calls. The
+    // state stays for the message of the button.
+    p.taskbarSet(o.w, .{ .progress = .paused, .value = 0.5, .badge = 3 });
+    try t.expect(o.b.taskbar.list != null);
+    p.taskbarSet(o.w, .{});
+    p.attention(o.w, false);
+    p.attention(o.w, true);
+}

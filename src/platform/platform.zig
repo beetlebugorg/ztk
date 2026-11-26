@@ -154,6 +154,17 @@ pub const FileDialogResult = struct {
     }
 };
 
+/// The state of the taskbar or dock button of a window (ztk#61).
+pub const Taskbar = struct {
+    progress: Progress = .none,
+    /// From 0 to 1, for `normal`, `paused`, and `failed`.
+    value: f32 = 0,
+    /// The count of the badge. 0 is no badge.
+    badge: u32 = 0,
+
+    pub const Progress = enum { none, normal, indeterminate, paused, failed };
+};
+
 /// The appearance of the system.
 pub const Appearance = struct {
     dark: bool,
@@ -325,6 +336,14 @@ pub const Platform = struct {
         traySet: ?*const fn (ptr: *anyopaque, id: TrayId, icon: TrayIcon, template: bool, tooltip: []const u8, menu: MenuId) void = null,
         /// Removes a tray icon.
         trayDrop: ?*const fn (ptr: *anyopaque, id: TrayId) void = null,
+
+        // The taskbar or dock button (ztk#61).
+
+        /// Shows the progress and the badge of `state` on the button of `w`.
+        taskbarSet: ?*const fn (ptr: *anyopaque, w: *Window, state: Taskbar) void = null,
+        /// Asks for the attention of the user with the button of `w`.
+        /// `critical` keeps the request until the window has the focus.
+        attention: ?*const fn (ptr: *anyopaque, w: *Window, critical: bool) void = null,
     };
 
     pub fn hasNativeMenus(p: Platform) bool {
@@ -360,6 +379,15 @@ pub const Platform = struct {
     }
     pub fn trayDrop(p: Platform, id: TrayId) void {
         if (p.vtable.trayDrop) |f| f(p.ptr, id);
+    }
+    pub fn hasTaskbar(p: Platform) bool {
+        return p.vtable.taskbarSet != null and p.vtable.attention != null;
+    }
+    pub fn taskbarSet(p: Platform, w: *Window, state: Taskbar) void {
+        if (p.vtable.taskbarSet) |f| f(p.ptr, w, state);
+    }
+    pub fn attention(p: Platform, w: *Window, critical: bool) void {
+        if (p.vtable.attention) |f| f(p.ptr, w, critical);
     }
     pub fn setMenuHandler(p: Platform, h: MenuHandler) void {
         if (p.vtable.setMenuHandler) |f| f(p.ptr, h);

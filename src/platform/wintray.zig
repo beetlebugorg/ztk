@@ -145,7 +145,7 @@ pub const Trays = struct {
 };
 
 /// An icon from RGBA pixels, or null for no pixels.
-fn makeIcon(icon: plat.TrayIcon) ?w32.HICON {
+pub fn makeIcon(icon: plat.TrayIcon) ?w32.HICON {
     if (icon.width == 0 or icon.height == 0 or icon.pixels.len < @as(usize, icon.width) * icon.height * 4) return null;
     const w: i32 = @intCast(icon.width);
     const h: i32 = @intCast(icon.height);
