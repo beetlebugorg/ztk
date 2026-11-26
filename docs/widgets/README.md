@@ -17,7 +17,7 @@ ztk has the widgets below today. Each one has the commands and the options of Tk
 | [Panes and tabs](panes.md) | `panedwindow`, `ttk::panedwindow`, `ttk::notebook` |
 | [Dialogs](dialogs.md) | `tk_messageBox`, `tk_dialog`, `tk_chooseColor`, the file dialogs, `ztk::toast`, the banner style |
 | [Menus](menus.md) | `menu`, `menubutton`, `ttk::menubutton`, `tk_popup`, the menu bar |
-| [Terminal](terminal.md) | `ztk::terminal`, a terminal emulator with scrollback and a pseudo-terminal |
+| [Terminal](terminal.md) | `ztk::terminal`, a terminal emulator on libghostty-vt, with scrollback, the shell of ztcl, and a pseudo-terminal |
 | [Themed widgets (ttk)](ttk.md) | `ttk::button`, `ttk::checkbutton`, `ttk::radiobutton`, `ttk::label`, `ttk::frame`, `ttk::labelframe`, `ttk::entry`, `ttk::separator`, `ttk::sizegrip` |
 | [pack, grid, and place](geometry.md) | The three geometry managers |
 
