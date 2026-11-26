@@ -214,6 +214,16 @@ fn waitMenu(p: plat.Platform, action: event.MenuAction) !event.Event {
     return error.NoEvent;
 }
 
+/// Sends the action of an item to its target, as AppKit does at the end
+/// of a click. On the CI runner, where the app is not active, an item of
+/// the menu bar gave no invoke through `performActionForItemAtIndex:`.
+fn choose(app: objc.Id, menu: objc.Id, index: isize) bool {
+    const item = objc.call(fn (objc.Id, objc.Sel, isize) callconv(.c) objc.Id, menu, "itemAtIndex:", .{index});
+    const action = objc.call(fn (objc.Id, objc.Sel) callconv(.c) ?objc.Sel, item, "action", .{});
+    const target = objc.call(fn (objc.Id, objc.Sel) callconv(.c) ?objc.Id, item, "target", .{});
+    return objc.call(fn (objc.Id, objc.Sel, ?objc.Sel, ?objc.Id, objc.Id) callconv(.c) bool, app, "sendAction:to:from:", .{ action, target, item });
+}
+
 const HandlerLog = struct {
     calls: u32 = 0,
     last: event.MenuAction = .closed,
@@ -261,7 +271,7 @@ test "appkit: native menus in the menu bar and as a popup" {
 
     // A click on an item gives an `invoke` of the window.
     makeCurrent(app, otherEvent());
-    objc.call(fn (objc.Id, objc.Sel, isize) callconv(.c) void, file, "performActionForItemAtIndex:", .{1});
+    try t.expect(choose(app, file, 1));
     const inv = try waitMenu(p, .invoke);
     try t.expect(inv.menu.window == win);
     try t.expectEqual(@as(u32, 2), inv.menu.menu);
@@ -307,7 +317,7 @@ test "appkit: native menus in the menu bar and as a popup" {
     const app_menu = a.menus.app_menu;
     const n = objc.call(fn (objc.Id, objc.Sel) callconv(.c) isize, app_menu, "numberOfItems", .{});
     makeCurrent(app, otherEvent());
-    objc.call(fn (objc.Id, objc.Sel, isize) callconv(.c) void, app_menu, "performActionForItemAtIndex:", .{n - 1});
+    try t.expect(choose(app, app_menu, n - 1));
     const quit = try waitFor(p, .app_command);
     try t.expectEqual(event.AppCommand.quit, quit.app_command.command);
 
