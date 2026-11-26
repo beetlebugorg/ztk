@@ -64,6 +64,18 @@ Win32 gives the messages of a window only to the thread that made it. The UI thr
 - The offscreen target is a texture. The tests read it back and compare it with the CPU image of the same scene.
 - The device is on the first hardware adapter of `IDXGIFactory6::EnumAdapterByGpuPreference`. With no hardware adapter, it is on the WARP adapter. With no device at all, `init` gives `error.NoD3D12`, and the backend uses the CPU renderer with `SetDIBitsToDevice` for the rows that changed.
 
+## Menus
+
+The backend fills the native menus of [menus.md](menus.md) with `src/platform/winmenu.zig`:
+
+- Each `MenuId` is one popup `HMENU`. `menuSet` removes its items with `RemoveMenu` and inserts the entries again with `InsertMenuItemW`, so the handle stays the same in each cascade and bar that has it. A check entry has `MFS_CHECKED`, a radio entry also `MFT_RADIOCHECK`, a disabled entry `MFS_GRAYED`, and `column_break` is `MFT_MENUBARBREAK`. The text has each `&` doubled, a `&` before the underlined character, and the accelerator after a tab.
+- Each menu has the style `MNS_NOTIFYBYPOS`, so a choice arrives as `WM_MENUCOMMAND` with the position of the item and the handle of its menu, and the position is the index of the entry. The backend queues it as a `menu` event with `invoke`.
+- `setMenuBar` builds a bar with `CreateMenu` from the entries of the menu, sets it with `SetMenu`, and keeps the client size of the window. The menu with the role `help` has `MFT_RIGHTJUSTIFY`, at the right end of the bar. `DestroyWindow` destroys the menu of a window, so the backend removes the bar first.
+- `WM_INITMENUPOPUP` calls the handler of the core with `opening`, and `WM_MENUSELECT` with `select`, inside the menu loop. `WM_UNINITMENUPOPUP` queues `closed`.
+- `postMenu` runs `TrackPopupMenuEx`, which returns after the menu closed. The hint of an entry at the point has no effect. `unpostMenu` calls `EndMenu`.
+- With a bar, Alt, F10, and the `WM_SYSCHAR` of an Alt key go on to `DefWindowProc`, which opens the bar or the menu of a mnemonic. The core still gets the key event of the press.
+- The system draws the menus with the light look, also in the dark scheme.
+
 ## CI
 
 A `test-windows` job on `windows-latest` runs `zig build`, `zig build test`, and the headless script of the Linux job. From PR 3 on, the Direct3D 12 tests run on the WARP adapter of the runner, or print `SKIP:` with the reason.

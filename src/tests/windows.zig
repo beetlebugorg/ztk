@@ -194,7 +194,7 @@ test "windows: pointer messages become motion, button, wheel, and leave events" 
 
     // One step of the wheel away from the user scrolls up.
     var pt: w32.POINT = .{ .x = @intCast(px), .y = @intCast(py) };
-    _ = ClientToScreen(o.hwnd, &pt);
+    _ = w32.ClientToScreen(o.hwnd, &pt);
     const screen: w32.LPARAM = @intCast((@as(u32, @bitCast(@as(i32, pt.y))) & 0xffff) << 16 | (@as(u32, @bitCast(@as(i32, pt.x))) & 0xffff));
     _ = w32.SendMessageW(o.hwnd, w32.WM_MOUSEWHEEL, 120 << 16, screen);
     try pollAll(o.b, &events);
@@ -207,7 +207,6 @@ test "windows: pointer messages become motion, button, wheel, and leave events" 
     try t.expect(has(events.items, .leave) != null);
 }
 
-extern "user32" fn ClientToScreen(hwnd: w32.HWND, p: *w32.POINT) callconv(.winapi) w32.BOOL;
 
 fn keyLparam(scan: u32, extended: bool, up: bool) w32.LPARAM {
     var v: u32 = 1 | (scan << 16);
@@ -351,4 +350,137 @@ test "windows: the appearance of the system and its change message" {
     _ = w32.SendMessageW(o.hwnd, w32.WM_SETTINGCHANGE, 0, @bitCast(@intFromPtr(other)));
     try pollAll(o.b, &events);
     try t.expect(has(events.items, .appearance) == null);
+}
+
+const plat = @import("../platform/platform.zig");
+
+fn itemText(h: w32.HMENU, pos: u32, buf: []u16) []const u16 {
+    var info: w32.MENUITEMINFOW = .{ .fMask = w32.MIIM_STRING, .dwTypeData = @ptrCast(buf.ptr), .cch = @intCast(buf.len) };
+    _ = w32.GetMenuItemInfoW(h, pos, 1, &info);
+    return buf[0..info.cch];
+}
+
+fn itemInfo(h: w32.HMENU, pos: u32) w32.MENUITEMINFOW {
+    var info: w32.MENUITEMINFOW = .{ .fMask = w32.MIIM_FTYPE | w32.MIIM_STATE | w32.MIIM_SUBMENU | w32.MIIM_ID };
+    _ = w32.GetMenuItemInfoW(h, pos, 1, &info);
+    return info;
+}
+
+test "windows: a native menu has the entries, the marks, and the cascade" {
+    if (!enabled()) return;
+    var events: std.ArrayListUnmanaged(Event) = .empty;
+    defer events.deinit(t.allocator);
+    const o = try openHidden(&events);
+    defer o.b.deinit();
+    const p = o.b.platform();
+    try t.expect(p.hasNativeMenus());
+    p.menuSet(&.{ .id = 2, .entries = &.{.{ .label = "Recent" }} });
+    p.menuSet(&.{ .id = 1, .title = "File", .entries = &.{
+        .{ .label = "Open", .accelerator = "Ctrl+O", .underline = 0 },
+        .{ .kind = .separator },
+        .{ .kind = .checkbutton, .label = "Wrap", .selected = true },
+        .{ .kind = .radiobutton, .label = "Small" },
+        .{ .label = "Gone", .enabled = false },
+        .{ .kind = .cascade, .label = "More", .submenu = 2 },
+    } });
+    const h = o.b.menus.handleOf(1).?;
+    try t.expectEqual(@as(c_int, 6), w32.GetMenuItemCount(h));
+    var buf: [64]u16 = undefined;
+    try t.expectEqualSlices(u16, std.unicode.utf8ToUtf16LeStringLiteral("&Open\tCtrl+O"), itemText(h, 0, &buf));
+    try t.expect(itemInfo(h, 1).fType & w32.MFT_SEPARATOR != 0);
+    try t.expect(itemInfo(h, 2).fState & w32.MFS_CHECKED != 0);
+    try t.expect(itemInfo(h, 3).fType & w32.MFT_RADIOCHECK != 0);
+    try t.expect(itemInfo(h, 4).fState & w32.MFS_GRAYED != 0);
+    try t.expectEqual(o.b.menus.handleOf(2), itemInfo(h, 5).hSubMenu);
+    // One entry changes in place.
+    p.menuEntrySet(1, 2, &.{ .kind = .checkbutton, .label = "Wrap lines", .selected = false });
+    try t.expect(itemInfo(h, 2).fState & w32.MFS_CHECKED == 0);
+    try t.expectEqualSlices(u16, std.unicode.utf8ToUtf16LeStringLiteral("Wrap lines"), itemText(h, 2, &buf));
+    p.menuDrop(2);
+    try t.expect(o.b.menus.handleOf(2) == null);
+}
+
+const Seen = struct {
+    p: plat.Platform,
+    opened: u32 = 0,
+    selected: i32 = -2,
+
+    fn call(ctx: ?*anyopaque, id: plat.MenuId, entry: i32, action: @import("../event.zig").MenuAction) void {
+        const s: *Seen = @ptrCast(@alignCast(ctx.?));
+        switch (action) {
+            .opening => {
+                s.opened += 1;
+                // The core runs -postcommand here and gives the new entries.
+                s.p.menuSet(&.{ .id = id, .entries = &.{ .{ .label = "A" }, .{ .label = "B" }, .{ .label = "C" } } });
+            },
+            .select => s.selected = entry,
+            else => {},
+        }
+    }
+};
+
+test "windows: a menu bar keeps the client size, and the menu messages reach the core" {
+    if (!enabled()) return;
+    var events: std.ArrayListUnmanaged(Event) = .empty;
+    defer events.deinit(t.allocator);
+    const o = try openHidden(&events);
+    defer o.b.deinit();
+    const p = o.b.platform();
+    var seen: Seen = .{ .p = p };
+    p.setMenuHandler(.{ .ctx = &seen, .call = Seen.call });
+    p.menuSet(&.{ .id = 1, .title = "File", .entries = &.{.{ .label = "Open" }} });
+    p.menuSet(&.{ .id = 3, .title = "Help", .role = .help, .entries = &.{.{ .label = "About" }} });
+    p.menuSet(&.{ .id = 10, .entries = &.{ .{ .kind = .cascade, .label = "File", .underline = 0, .submenu = 1 }, .{ .kind = .cascade, .label = "Help", .submenu = 3 } } });
+    p.setMenuBar(o.w, 10);
+    const bar = w32.GetMenu(o.hwnd) orelse return error.NoBar;
+    try t.expectEqual(@as(c_int, 2), w32.GetMenuItemCount(bar));
+    try t.expect(itemInfo(bar, 1).fType & w32.MFT_RIGHTJUSTIFY != 0);
+    var r: w32.RECT = .{};
+    _ = w32.GetClientRect(o.hwnd, &r);
+    try t.expectEqual(@as(i32, @intFromFloat(@round(100 * o.w.scale))), r.bottom);
+
+    const h1 = o.b.menus.handleOf(1).?;
+    _ = w32.SendMessageW(o.hwnd, w32.WM_INITMENUPOPUP, @intFromPtr(h1), 0);
+    try t.expectEqual(@as(u32, 1), seen.opened);
+    // The handler gave three entries before the message returned.
+    try t.expectEqual(@as(c_int, 3), w32.GetMenuItemCount(h1));
+    // The item of entry 1 has the ID 2.
+    _ = w32.SendMessageW(o.hwnd, w32.WM_MENUSELECT, 2, @bitCast(@intFromPtr(h1)));
+    try t.expectEqual(@as(i32, 1), seen.selected);
+    try pollAll(o.b, &events);
+    _ = w32.SendMessageW(o.hwnd, w32.WM_MENUCOMMAND, 2, @bitCast(@intFromPtr(h1)));
+    _ = w32.SendMessageW(o.hwnd, w32.WM_UNINITMENUPOPUP, @intFromPtr(h1), 0);
+    try pollAll(o.b, &events);
+    try t.expectEqual(@as(usize, 2), events.items.len);
+    const inv = events.items[0].menu;
+    try t.expectEqual(@as(u32, 1), inv.menu);
+    try t.expectEqual(@as(i32, 2), inv.entry);
+    try t.expect(inv.action == .invoke);
+    try t.expect(events.items[1].menu.action == .closed);
+
+    p.setMenuBar(o.w, 0);
+    try t.expect(w32.GetMenu(o.hwnd) == null);
+}
+
+extern "user32" fn SetTimer(hwnd: ?w32.HWND, id: usize, ms: u32, f: ?*const fn (?w32.HWND, u32, usize, u32) callconv(.winapi) void) callconv(.winapi) usize;
+extern "user32" fn KillTimer(hwnd: ?w32.HWND, id: usize) callconv(.winapi) w32.BOOL;
+
+fn endMenu(_: ?w32.HWND, _: u32, _: usize, _: u32) callconv(.winapi) void {
+    _ = w32.EndMenu();
+}
+
+test "windows: a posted menu runs its loop and returns when the menu ends" {
+    if (!enabled()) return;
+    var events: std.ArrayListUnmanaged(Event) = .empty;
+    defer events.deinit(t.allocator);
+    const o = try openHidden(&events);
+    defer o.b.deinit();
+    const p = o.b.platform();
+    p.menuSet(&.{ .id = 1, .entries = &.{ .{ .label = "Cut" }, .{ .label = "Copy" } } });
+    // A timer of the thread runs inside the menu loop and ends the menu.
+    const timer = SetTimer(null, 0, 100, endMenu);
+    defer _ = KillTimer(null, timer);
+    const t0 = host.nowUs();
+    p.postMenu(o.w, 1, .{ .x = 10, .y = 10 }, -1);
+    try t.expect(host.nowUs() - t0 < 2_000_000);
 }
