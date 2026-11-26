@@ -44,12 +44,12 @@ The page calls the build through one function. When the build of ztcl lands, the
 
 ## For the ztcl site
 
-These go in a PR to the ztcl repository after the ztk items 1 to 3. They use the npm module of ztcl.
+These go in PRs to the ztcl repository. They use the wasm module of ztcl.
 
-- A REPL in the page.
-- Runnable examples, with the live snippet of ztk and no window.
-- A step-limit meter.
-- A view of the bytecode of a proc, if the module exports one.
+1. The shell in the page. It is the real shell of ztcl (ztcl issues 4 and 75): the line editor with the vim mode, the history, the completion, the syntax colors, and the key that opens the line in an editor. The wasm module gets the line editor and a terminal hook: raw key bytes go in, and ANSI text comes out. A terminal in the page shows it. The first choice is the VT core of ztk (`src/term/`, the core of `ztk::terminal`) in a web build. If that core is not ready, a small terminal library at a fixed version shows it. The editor key opens an editor in the page and gives the text back to the line. The landing page gets a shell at the top, and a page of its own gets a full-size shell. Each shell has no capability of ztcl and shows the step limit as a meter.
+2. Runnable examples, with the live snippet of ztk and no window.
+3. A view of the bytecode of a proc, its tier, and its step count, if the module exports them.
+4. A race: the same proc in the interpreter and as compiled wasm.
 
 ## Limits
 
