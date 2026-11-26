@@ -209,6 +209,12 @@ pub const Fonts = struct {
         };
         var d = base;
         d.family = words[0];
+        // A named font as the family of a list, such as {TkFixedFont 9},
+        // keeps the face of that named font with the new size and style.
+        // Tk resolves TkFixedFont to the monospace family of the platform.
+        for (named, 0..) |nm, k| if (std.mem.eql(u8, words[0], nm)) {
+            d.family = if (k == 2) "monospace" else base.family;
+        };
         if (n >= 2) {
             const sz = std.fmt.parseFloat(f64, words[1]) catch return null;
             if (!std.math.isFinite(sz) or @abs(sz) > 10000) return null;
@@ -222,3 +228,13 @@ pub const Fonts = struct {
         return d;
     }
 };
+
+test "a named font as the family of a font list" {
+    const base: FontDesc = .{};
+    const fixed = Fonts.parseTk("TkFixedFont 9 bold", base, 1).?;
+    try std.testing.expectEqualStrings("monospace", fixed.family);
+    try std.testing.expectEqual(@as(f32, 9), fixed.size);
+    try std.testing.expectEqual(@as(u16, 700), fixed.weight);
+    try std.testing.expectEqualStrings("system-ui", Fonts.parseTk("{TkDefaultFont} 11", base, 1).?.family);
+    try std.testing.expectEqualStrings("Helvetica", Fonts.parseTk("Helvetica 12", base, 1).?.family);
+}

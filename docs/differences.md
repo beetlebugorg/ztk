@@ -9,6 +9,7 @@ ztk follows Tk 8.6.16. A script that runs in `wish` 8.6 runs in ztk when it uses
 - The clipboard is local to the app. It is not connected to the clipboard of the system.
 - `canvas postscript`.
 - Fonts come from ztk (Inter by default), so text widths differ from `wish`.
+- `TkFixedFont` is JetBrains Mono, and `TkDefaultFont` is Inter. A font list with a named font as its family, such as `{TkFixedFont 9 bold}`, keeps the face of that named font with the new size and style, as Tk does on its platforms. With the faces of the package, a bold monospace font renders in the regular weight: ztk has no bold file of JetBrains Mono.
 
 ## Platforms
 
