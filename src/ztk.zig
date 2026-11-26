@@ -99,6 +99,7 @@ test {
     if (appkit_enabled) _ = @import("tests/appkit.zig");
     if (appkit_enabled) _ = appkit;
     if (appkit_enabled) _ = @import("platform/pasteboard.zig");
+    if (appkit_enabled) _ = @import("platform/macdialog.zig");
     if (direct_enabled) {
         _ = @import("sys/linux.zig");
         _ = @import("tests/direct.zig");

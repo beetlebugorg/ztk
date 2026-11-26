@@ -50,6 +50,7 @@ const Atlas = @import("../text/atlas.zig").Atlas;
 const mackeys = @import("mackeys.zig");
 const Pasteboard = @import("pasteboard.zig").Pasteboard;
 const Ime = @import("macime.zig").Ime;
+const macdialog = @import("macdialog.zig");
 const Id = objc.Id;
 const Sel = objc.Sel;
 const Class = objc.Class;
@@ -179,7 +180,13 @@ pub const AppKit = struct {
         .clipboardSet = vClipboardSet,
         .clipboardGet = vClipboardGet,
         .textInput = vTextInput,
+        .fileDialog = vFileDialog,
     };
+
+    fn vFileDialog(_: *anyopaque, gpa: std.mem.Allocator, opts: *const plat.FileDialog) ?plat.FileDialogResult {
+        const parent: ?Id = if (opts.parent) |win| winOf(win).ns_window else null;
+        return macdialog.run(gpa, opts, parent);
+    }
 
     fn vClipboardSet(ptr: *anyopaque, typ: []const u8, data: []const u8) void {
         self(ptr).clip.set(typ, data);
