@@ -37,3 +37,7 @@ ztcl. https://github.com/beetlebugorg/ztcl
 ## The grid algorithm
 
 The section "THE GRID ALGORITHM" of `doc/grid.n` gives the three steps and the rules for weights, uniform groups, and the minimum size. The rules that the page leaves open (the rounding of space, the order of spans, the pad of an empty line) come from runs of `wish` 8.6.16 and from `tools/oracle-grid.tcl`. The authors did not read `tkGrid.c`.
+
+## The text widget
+
+The section "INDICES" of `doc/text.n` gives the forms of an index and its modifiers, and the sections on marks and on `delete` give the gravity of a mark and the rule for the last newline. The prefixes that a modifier accepts, the base of the line numbers, and the messages come from runs of `wish` 8.6.16. The cases are in `src/tests/textw.zig` and `src/text_widget/index.zig`. The authors did not read `tkTextIndex.c` or `tkText.c`.

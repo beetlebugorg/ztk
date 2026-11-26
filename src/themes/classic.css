@@ -228,6 +228,14 @@ Canvas::selection {
   color: var(--fg);
 }
 
+Text {
+  color: var(--fg);
+  background-color: var(--field-bg);
+  border: 1px inset var(--bg);
+  caret-color: var(--fg);
+  cursor: text;
+}
+
 Listbox {
   color: var(--fg);
   background-color: var(--field-bg);

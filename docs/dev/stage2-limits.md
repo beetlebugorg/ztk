@@ -205,6 +205,13 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - The class bindings are in Zig (`::ztk::priv::notebook`). `TNotebook` also has `<Motion>` and `<Leave>` for the hover of a tab. `ttk::notebook::enableTraversal` adds the bindings of `wish` to the toplevel, and its procs have the names of `wish`.
 - `zig build bench`, ReleaseFast, 2026-11-25, development machine: `tab-change` (a notebook of 3 tabs with 300 labels on each page changes its tab each 10 frames, with transitions on) has a median of 0.29 ms and a 99th percentile of 0.56 ms. The gate is 8 ms.
 
+## text (task 15)
+
+- PR 1 has the buffer, the indexes, and the subcommands `compare`, `count`, `delete`, `get`, `index`, `insert`, `mark`, and `replace`, with the options of `wish` 8.6.16 in its order. The other subcommands give the message `the text subcommand "name" is not in ztk yet`. The tag lists of `insert` and `replace` have no effect, and `sel.first` and `sel.last` give the message of `wish` for a tag with no characters.
+- `mark names` gives `insert`, `current`, and then the marks in the order of creation. `wish` gives the order of its hash table. Marks at one position are in the order of their last `mark set`.
+- The display forms of the indexes and of `count` (`display lines`, `-displaylines`) count the lines of the text, and `-xpixels` and `-ypixels` use one line height and no wrap. A character of 128 or more counts as a character of a word for `wordstart` and `wordend`.
+- The paint draws the lines from the top with no wrap and no scroll, and a caret with no blink.
+
 ## Additions
 
 - `ztk::animate`, `ztk::clock`, the timing function `spring()`, and the flag `--time` of the `ztk` program.

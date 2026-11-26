@@ -4,7 +4,7 @@ ztk follows Tk 8.6.16. A script that runs in `wish` 8.6 runs in ztk when it uses
 
 ## Missing today
 
-- Widgets: `text`, the dialogs (`tk_getOpenFile`, `tk_messageBox`, and the others), and `ttk::treeview`.
+- Widgets: the dialogs (`tk_getOpenFile`, `tk_messageBox`, and the others) and `ttk::treeview`. The `text` widget has its buffer, indexes, and marks, and its tags, scrolling, undo, and class bindings are not written yet.
 - Commands: `option`, `selection`, `event add`, `send`, and `package`. The Tk test files cannot run, because `tcltest` needs `package`.
 - The clipboard is local to the app. It is not connected to the clipboard of the system.
 - `canvas postscript`.

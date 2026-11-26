@@ -144,6 +144,9 @@ test {
     _ = @import("tests/notebook.zig");
     _ = @import("tests/scrollbar.zig");
     _ = @import("tests/listbox.zig");
+    _ = @import("text_widget/buffer.zig");
+    _ = @import("text_widget/index.zig");
+    _ = @import("tests/textw.zig");
     _ = @import("term/screen.zig");
     _ = @import("term/keys.zig");
     _ = @import("term/boxdraw.zig");
