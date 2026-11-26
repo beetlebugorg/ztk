@@ -47,6 +47,7 @@ const winmenu = @import("winmenu.zig");
 const wintray = @import("wintray.zig");
 const windialog = @import("windialog.zig");
 const wintaskbar = @import("wintaskbar.zig");
+const winrecent = @import("winrecent.zig");
 
 pub const Renderer = enum { auto, d3d12, cpu };
 
@@ -198,6 +199,8 @@ pub const Win32 = struct {
         .fileDialog = vFileDialog,
         .taskbarSet = vTaskbarSet,
         .attention = vAttention,
+        .recentAdd = vRecentAdd,
+        .recentClear = vRecentClear,
     };
 
     fn self(ptr: *anyopaque) *Win32 {
@@ -536,6 +539,14 @@ pub const Win32 = struct {
     fn vAttention(ptr: *anyopaque, w: *Window, critical: bool) void {
         const rec = self(ptr).recOf(w) orelse return;
         wintaskbar.flash(rec.hwnd, critical);
+    }
+
+    fn vRecentAdd(_: *anyopaque, path: []const u8) bool {
+        return winrecent.add(path);
+    }
+
+    fn vRecentClear(_: *anyopaque) void {
+        winrecent.clear();
     }
 
     /// A message of the shell for a tray: the action in the low word of
