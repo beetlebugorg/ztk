@@ -75,107 +75,123 @@ pack .size .copies .volume .meter .busy -fill x -padx 12 -pady 4
 
 ### Play: Tin Moon
 
-Tin Moon is a lander, and a `ttk::progressbar` is its fuel tank: the bar has `-variable fuel`, so each burn of the engine empties it. Press Space or click the screen to start. Up, or the pad, fires the main engine, and Left and Right, or B and A, fire the side jets. Put the ship down on the gold pad slowly and level. The fuel that is left adds to the score. With "Play on the page" on, a ship that flies out of the top of the screen falls across the page and bounces off the headings and the code. Each one that it hits gives 10 fuel back when the ship comes back. Escape or a scroll brings the ship back at once.
+Tin Moon is a lander game, and two ttk widgets are its controls. The `ttk::scale` on the right is the throttle: drag it, or click it and press the arrow keys, and ride it to fight gravity. The `ttk::progressbar` under the screen is the fuel gauge (`-variable fuel`), and the engine empties it at the rate of the throttle. Put the ship down on the gold pad slowly and level: the fuel that is left adds to the score. Each level has less fuel, a narrower pad, and more gravity, and a crash costs one of three ships. Press Space or click the screen to start. Z and X, or B and A on the handheld, fire the side jets, and Up and Down on the handheld move the throttle. With "Play on the page" on, a ship that flies out of the top of the screen falls across the page, and each heading or code block that it hits gives 10 fuel back.
 
 <!-- widget: toy-tinmoon; shot: update -->
 ```tcl
-# Tin Moon: a lander. The progress bar is the fuel tank.
+# Tin Moon: a lander. The scale is the throttle, and the progress bar is the fuel gauge.
 set ink {#1d1a33 #f2e6c4 #ef5b5b #ffcf5c #3a3560}
-set H 176
+set W 296; set H 176
 expr {srand(7)}
-canvas .c -width 360 -height $H -bg [lindex $ink 0] -highlightthickness 0
+canvas .c -width $W -height $H -bg [lindex $ink 0] -highlightthickness 0
+ttk::scale .thr -orient vertical -from 100 -to 0 -variable throttle -length $H
 ttk::label .tank -text Fuel
 ttk::progressbar .fuel -maximum 100 -variable fuel
-pack .c -fill x
-pack .tank -side left -padx 8
-pack .fuel -side left -fill x -expand 1 -padx 8 -pady 8
+grid .c .thr -padx 4 -pady {4 0}
+grid .tank -row 1 -column 0 -sticky w -padx 8
+grid .fuel -row 1 -column 0 -sticky ew -padx {48 8} -pady 6
 for {set i 0} {$i < 24} {incr i} {
-    set x [expr {int(rand()*90)*4}]; set y [expr {int(rand()*20)*4}]
+    set x [expr {int(rand()*78)*4}]; set y [expr {int(rand()*20)*4}]
     .c create rectangle $x $y [expr {$x+2}] [expr {$y+2}] -fill [lindex $ink 4] -width 0
 }
-# A sprite is rows of text: each # is a square of 2 pixels.
 proc sprite {tags rows color dx dy} {
-    set y $dy
     foreach row $rows {
         set x $dx
         foreach ch [split $row ""] {
-            if {$ch eq "#"} { .c create rectangle $x $y [expr {$x+2}] [expr {$y+2}] -tags $tags -fill $color -width 0 }
+            if {$ch eq "#"} { .c create rectangle $x $dy [expr {$x+2}] [expr {$dy+2}] -tags $tags -fill $color -width 0 }
             incr x 2
         }
-        incr y 2
+        incr dy 2
     }
 }
 sprite ship {..###.. .#####. ##.#.## .#####. .#...#. ##...##} [lindex $ink 1] 0 0
-sprite {ship flame} {.#.#. ..#.. ..#..} [lindex $ink 3] 2 12
-.c create text 180 80 -tags msg -fill [lindex $ink 3] -font {TkFixedFont 12 bold}
-.c create text 320 14 -tags score -fill [lindex $ink 1] -font {TkFixedFont 12 bold}
+# The flame has three rows: the throttle shows one, two, or three.
+for {set r 0} {$r < 3} {incr r} { sprite "ship flame f$r" [list [lindex {.#.#. ..#.. ..#..} $r]] [lindex $ink [expr {$r ? 3 : 2}]] 2 [expr {12 + 2*$r}] }
+.c create text [expr {$W/2}] 70 -tags msg -fill [lindex $ink 3] -font {TkFixedFont 12 bold}
+.c create text [expr {$W - 6}] 10 -anchor e -tags score -fill [lindex $ink 1] -font {TkFixedFont 9 bold}
 array set toy {spill 0 out {} back {} sfx {}}
-array set hold {up 0 left 0 right 0}
-set score 0
-# The ground: columns of 8 pixels, with a flat gold pad of 4 columns.
+array set b {x 0 y 0 px 0 py 0 run 0 out 0}
+set throttle 0; set level 1; set ships 3; set score 0; set fuel 100
+# A level: a rough ground with a gold pad. A higher level has less fuel, a narrow pad, and more gravity.
 proc level {} {
-    global ground pad H ink b fuel
+    global ground pad H W ink b fuel level padw
     .c delete land
-    set pad [expr {4 + int(rand()*36)}]
-    set y 140
-    for {set i 0} {$i < 45} {incr i} {
-        if {$i < $pad || $i > $pad + 3} { set y [expr {max(96, min(168, $y + int(rand()*25) - 12))}] }
-        lset ground $i $y
-        set c [expr {$i >= $pad && $i <= $pad + 3 ? 3 : 4}]
+    set padw [expr {max(2, 5 - $level / 2)}]
+    set n [expr {$W / 8}]
+    set pad [expr {4 + int(rand() * ($n - 8 - $padw))}]
+    set y 140; set ground {}
+    for {set i 0} {$i < $n} {incr i} {
+        if {$i < $pad || $i >= $pad + $padw} { set y [expr {max(96, min(168, $y + int(rand()*25) - 12))}] }
+        lappend ground $y
+        set c [expr {$i >= $pad && $i < $pad + $padw ? 3 : 4}]
         .c create rectangle [expr {$i*8}] $y [expr {$i*8+8}] $H -tags land -fill [lindex $ink $c] -width 0
     }
-    array set b {x 20 y 10 vx 0.6 vy 0 run 0 out 0 px 0 py 0 pulse 0}
-    set fuel 100
-    .c itemconfigure msg -text "PRESS SPACE"
+    array set b [list x 20 y 10 vx [expr {0.4 + 0.1 * $level}] vy 0 run 0]
+    set fuel [expr {max(40, 100 - 8 * ($level - 1))}]
+    set ::throttle 0
+    .c itemconfigure msg -text "LEVEL $level: PRESS SPACE"
 }
-set ground [lrepeat 45 0]
 level
-proc toy_press {key} {
-    global b hold
-    if {!$b(run)} { if {$b(y) > 20} level; set b(run) 1; .c itemconfigure msg -text ""; return }
-    if {$::fuel <= 0} return
-    switch $key { up { set b(pulse) 5 } a { set b(vx) [expr {$b(vx) + 0.15}] } b { set b(vx) [expr {$b(vx) - 0.15}] } }
+proc start {} {
+    global b ships level score
+    if {$b(run)} return
+    if {$ships == 0} { set ships 3; set level 1; set score 0; level }
+    set b(run) 1; .c itemconfigure msg -text ""
 }
-foreach k {Up Left Right} { bind .c <KeyPress-$k> "set hold([string tolower $k]) 1; if {!\$b(run)} {toy_press a}"; bind .c <KeyRelease-$k> "set hold([string tolower $k]) 0" }
-bind .c <space> {toy_press a}
-bind .c <ButtonPress-1> {toy_press a}
-focus .c
+proc jet {d} { global b fuel; if {$b(run) && $fuel > 1} { set b(vx) [expr {$b(vx) + $d}]; set fuel [expr {$fuel - 1}]; lappend ::toy(sfx) hit } }
+proc toy_press {key} {
+    switch $key {
+        up { .thr set [expr {min(100, [.thr get] + 10)}] }
+        down { .thr set [expr {max(0, [.thr get] - 10)}] }
+        a { if {$::b(run)} { jet 0.12 } else start }
+        b { if {$::b(run)} { jet -0.12 } else start }
+    }
+}
+bind . <space> start
+bind . <Key-z> {jet -0.12}
+bind . <Key-x> {jet 0.12}
+bind .c <ButtonPress-1> start
+focus .thr
 proc tick {} {
-    global b toy hold fuel ground pad score H
-    set burn [expr {$b(run) && $fuel > 0 && ($hold(up) || $b(pulse) > 0)}]
+    global b toy fuel ground pad padw score ships level throttle W H
+    set burn [expr {$b(run) && $fuel > 0 ? $throttle / 100.0 : 0}]
     if {$b(run) && !$b(out)} {
-        if {$b(pulse) > 0} { incr b(pulse) -1 }
-        set b(vy) [expr {$b(vy) + 0.03 - ($burn ? 0.08 : 0)}]
-        foreach {k d} {left -0.03 right 0.03} { if {$hold($k) && $fuel > 0} { set b(vx) [expr {$b(vx) + $d}]; set fuel [expr {$fuel - 0.2}] } }
-        if {$burn} { set fuel [expr {max(0, $fuel - 0.5)}] }
-        set b(x) [expr {max(0, min(346, $b(x) + $b(vx)))}]
+        set b(vy) [expr {$b(vy) + 0.025 + 0.004 * $level - 0.07 * $burn}]
+        set fuel [expr {max(0, $fuel - 0.3 * $burn)}]
+        set b(x) [expr {max(0, min($W - 14, $b(x) + $b(vx)))}]
         set b(y) [expr {$b(y) + $b(vy)}]
         if {$b(y) < -12} {
             # Out of the top: with play on the page, the ship falls across the page.
-            if {$toy(spill)} { set toy(out) [list $b(x) 0 $b(vx) $b(vy) 0.25]; set b(out) 1; lappend toy(sfx) smash } else { set b(y) -12; set b(vy) 0 }
+            if {$toy(spill)} { set toy(out) [list [expr {[winfo x .c] + $b(x)}] [winfo y .c] $b(vx) $b(vy) 0.25]; set b(out) 1; lappend toy(sfx) smash } else { set b(y) -12; set b(vy) 0 }
         }
         set c0 [expr {int($b(x)) / 8}]; set c1 [expr {int($b(x) + 13) / 8}]
         set top [tcl::mathfunc::min {*}[lrange $ground $c0 $c1]]
         if {$b(y) + 12 >= $top} {
-            set b(y) [expr {$top - 12}]; set b(run) 0
-            if {$c0 >= $pad && $c1 <= $pad + 3 && $b(vy) < 1.2 && abs($b(vx)) < 0.8} {
-                incr score [expr {100 + int($fuel)}]
-                .c itemconfigure msg -text "LANDED"; lappend toy(sfx) point
-            } else { .c itemconfigure msg -text "CRASH"; lappend toy(sfx) wall }
+            set b(y) [expr {$top - 12}]; set b(run) 0; set throttle 0
+            if {$c0 >= $pad && $c1 < $pad + $padw && $b(vy) < 1.0 && abs($b(vx)) < 0.7} {
+                incr score [expr {100 * $level + int($fuel)}]
+                incr level
+                lappend toy(sfx) point
+                after 1200 level
+                .c itemconfigure msg -text "LANDED"
+            } else {
+                incr ships -1
+                lappend toy(sfx) wall
+                if {$ships == 0} { .c itemconfigure msg -text "GAME OVER: PRESS SPACE" } else { after 1200 level; .c itemconfigure msg -text "CRASH" }
+            }
         }
     }
     # The page gives the ship back as {x vx vy hits}: each wall that it hit gives 10 fuel.
     if {$b(out) && $toy(back) ne ""} {
-        lassign $toy(back) b(x) b(vx) b(vy) hits
-        set fuel [expr {min(100, $fuel + 10 * $hits)}]
-        set b(y) -10; set b(vy) 0.5; set b(vx) [expr {$b(vx) / 4}]
-        set b(out) 0; set toy(back) {}
+        lassign $toy(back) x
+        set fuel [expr {min(100, $fuel + 10 * [lindex $toy(back) 3])}]
+        set b(y) -10; set b(vy) 0.5; set b(out) 0; set toy(back) {}
     }
     set nx [expr {$b(out) ? -40 : int($b(x)) / 2 * 2}]; set ny [expr {int($b(y)) / 2 * 2}]
     .c move ship [expr {$nx - $b(px)}] [expr {$ny - $b(py)}]
     set b(px) $nx; set b(py) $ny
-    .c itemconfigure flame -state [expr {$burn ? "normal" : "hidden"}]
-    .c itemconfigure score -text $score
+    for {set r 0} {$r < 3} {incr r} { .c itemconfigure f$r -state [expr {$burn > $r / 3.0 ? "normal" : "hidden"}] }
+    .c itemconfigure score -text "SCORE $score  LEVEL $level  SHIPS $ships"
     after 16 tick
 }
 tick
