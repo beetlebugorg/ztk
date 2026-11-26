@@ -47,6 +47,10 @@ ztk hello.tcl
 
 ztk is experimental, and it is not yet a drop-in Tk. Many widgets of Tk are still missing, among them `listbox`, `text`, `menu`, `ttk::notebook`, and `ttk::treeview`. On Linux it draws to a Wayland window with the CPU renderer. On Windows it draws to a native window with Direct3D 12 ([On Windows](docs/windows.md)). macOS has only the headless backend so far. The code and the docs were written largely with AI coding agents, under human direction. Review the code before you depend on it. The [plan](docs/dev/plan.md#11-stages) has the roadmap, and the [issues](https://github.com/beetlebugorg/ztk/issues) take bug reports and requests.
 
+## Contact
+
+Write to [opensource@beetlebug.org](mailto:opensource@beetlebug.org) about ztk. Open an [issue](https://github.com/beetlebugorg/ztk/issues) for a bug or a request, and report a security problem as [SECURITY.md](SECURITY.md) says.
+
 ## License
 
 BSD-2-Clause. See [LICENSE](LICENSE). ztk has no code of Tk. [References](docs/references/README.md) credits Tk and the other sources.
