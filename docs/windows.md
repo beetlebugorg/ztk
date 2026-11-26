@@ -44,7 +44,7 @@ The variable `ZTK_RENDERER` picks the output of the window:
 
 ## Limits
 
-- The text has no kerning from the OpenType GPOS table and no shaping of complex scripts yet, so Segoe UI Variable has no kerning pairs. The glyph images do not have the contrast and gamma of the system yet.
+- The text is shaped by DirectWrite on one font: a character that the font lacks shows as its missing glyph, because font fallback is not done yet, and right-to-left text keeps the order of the characters. The glyph images do not have the contrast and gamma of the system yet.
 
 - No input method has typed into ztk on a real desktop yet. The tests drive the text store of ztk the way an input method does.
 - The entry does not show the text that an input method composes. The input method shows its list of choices next to the entry.

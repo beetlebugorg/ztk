@@ -13,7 +13,7 @@ const Font = font_mod.Font;
 const Fonts = font_mod.Fonts;
 
 /// Device pixels from the line origin.
-pub const Glyph = struct { id: u16, x: f32, y: f32, cluster: u32 };
+pub const Glyph = @import("system.zig").Glyph;
 
 pub const Run = struct {
     font: *Font,
@@ -70,6 +70,12 @@ fn ceilWidth(dev: f32, scale: f32) i32 {
 pub fn shape(gpa: std.mem.Allocator, font: *Font, text: []const u8) !Run {
     var glyphs: std.ArrayListUnmanaged(Glyph) = .empty;
     errdefer glyphs.deinit(gpa);
+    // A font of the system with a shaper of the system.
+    if (font.system) |s| if (s.vtable.shape) |f| {
+        const end = try f(s.ctx, gpa, font.sys_face, font.size * font.scale, text, &glyphs);
+        const owned = try glyphs.toOwnedSlice(gpa);
+        return .{ .font = font, .glyphs = owned, .width = ceilWidth(end, font.scale), .end_x = end };
+    };
     try glyphs.ensureTotalCapacityPrecise(gpa, text.len);
     const us = font.unitScale();
 
@@ -95,20 +101,25 @@ pub fn measure(fonts: *Fonts, font: *Font, text: []const u8) i32 {
     var stack: [256]u8 = undefined;
     const gpa = fonts.gpa;
     const key_len = 8 + text.len;
-    const heap = if (key_len > stack.len) gpa.alloc(u8, key_len) catch return computeWidth(font, text) else null;
+    const heap = if (key_len > stack.len) gpa.alloc(u8, key_len) catch return computeWidth(gpa, font, text) else null;
     defer if (heap) |h| gpa.free(h);
     const key = if (heap) |h| h else stack[0..key_len];
     std.mem.writeInt(u64, key[0..8], @intFromPtr(font), .little);
     @memcpy(key[8..], text);
     if (fonts.widths.get(key)) |w| return w;
-    const w = computeWidth(font, text);
+    const w = computeWidth(gpa, font, text);
     if (fonts.widths.count() >= 4096) fonts.clearWidths();
     const owned = gpa.dupe(u8, key) catch return w;
     fonts.widths.put(gpa, owned, w) catch gpa.free(owned);
     return w;
 }
 
-fn computeWidth(font: *Font, text: []const u8) i32 {
+fn computeWidth(gpa: std.mem.Allocator, font: *Font, text: []const u8) i32 {
+    if (font.system) |s| if (s.vtable.shape != null) {
+        var run = shape(gpa, font, text) catch return 0;
+        defer run.deinit(gpa);
+        return run.width;
+    };
     const us = font.unitScale();
 
     var pen: f32 = 0;
