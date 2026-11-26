@@ -1,0 +1,250 @@
+// SPDX-License-Identifier: BSD-2-Clause
+// The toys of the widget pages (ztk issue 175). A toy is a live snippet
+// (docs/site/live.js) whose name starts with "toy-". This file puts the
+// window of the toy in a small handheld of our own design, with a pad,
+// two buttons, a light, and a sound switch, and lets a ball of the game
+// leave the screen and play on the page.
+//
+// The Tcl code of a toy keeps the array `toy`:
+//   toy(spill)  1 when the page lets a ball leave the screen. This file sets it.
+//   toy(out)    {x y vx vy} of a ball that left the screen, in pixels of
+//               the window and pixels for each frame. This file reads and
+//               clears it.
+//   toy(back)   {x vx vy} of the ball when it comes back at the top of
+//               the screen. This file sets it.
+//   toy(sfx)    a list of sound names: hit, wall, smash, point.
+// and the proc `toy_press KEY` for the keys up, down, a, and b of the pad.
+//
+// On the page, the ball is a square on a canvas layer over the document.
+// The headings, the code blocks, the tables, the images, and the edges
+// of the window are walls: the layer reads their boxes once in each
+// frame while a ball is out. A wall that the ball hits gets a glow on the
+// layer. The page text does not change. After 7 seconds, or at Escape, a
+// scroll, or the end of the toy, the ball goes back into the screen and
+// the layer goes away, so the page is as it was.
+//
+// Nothing starts by itself: the game waits for a key of the reader. The
+// ball leaves the screen only when "Play on the page" is on, and that
+// switch is off with reduced motion. The sound is off until the reader
+// turns it on. The poll of the game runs only while the toy is on the
+// screen.
+
+const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+const W = 360;
+
+// The palette of the toys and a pixel square: the shared helper.
+export const INK = { night: "#1d1a33", paper: "#f2e6c4", red: "#ef5b5b", gold: "#ffcf5c", dusk: "#3a3560" };
+export function pixel(g, x, y, size, color) {
+  g.fillStyle = color;
+  g.fillRect(Math.round(x), Math.round(y), size, size);
+}
+
+// Sound made at run time: a square wave for a hit and noise for a wall.
+let audio = null;
+function sound(name) {
+  audio ??= new AudioContext();
+  const t = audio.currentTime;
+  const gain = audio.createGain();
+  gain.gain.setValueAtTime(0.06, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + (name === "point" ? 0.3 : 0.08));
+  gain.connect(audio.destination);
+  if (name === "wall") {
+    const buf = audio.createBuffer(1, 2048, audio.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const src = audio.createBufferSource();
+    src.buffer = buf;
+    src.connect(gain);
+    src.start(t);
+    return;
+  }
+  const osc = audio.createOscillator();
+  osc.type = "square";
+  osc.frequency.setValueAtTime({ hit: 440, smash: 660, point: 220 }[name] ?? 330, t);
+  if (name === "smash") osc.frequency.exponentialRampToValueAtTime(1320, t + 0.08);
+  osc.connect(gain);
+  osc.start(t);
+  osc.stop(t + 0.3);
+}
+
+const parse = (s) => s.trim() ? s.trim().split(/\s+/).map(Number) : [];
+
+class Toy {
+  constructor(fig) {
+    this.fig = fig;
+    this.sound = false;
+    this.ball = null;
+    this.visible = false;
+    fig.classList.add("toy");
+    this.device();
+    new IntersectionObserver((e) => {
+      this.visible = e.some((x) => x.isIntersecting);
+      if (!this.visible) this.end();
+      else this.poll();
+    }).observe(fig.querySelector(".ld-view"));
+    addEventListener("keydown", (e) => { if (e.key === "Escape") this.end(); });
+    addEventListener("wheel", () => this.end(), { passive: true });
+    addEventListener("touchmove", () => this.end(), { passive: true });
+  }
+
+  get h() {
+    return this.fig.ztkDemo?.h ?? null;
+  }
+
+  eval(script) {
+    try {
+      return this.h?.eval(script) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  // The handheld: the pad, two buttons, the light, and the switches.
+  device() {
+    const pad = document.createElement("div");
+    pad.className = "toy-pad";
+    pad.innerHTML = `<span class="toy-led" aria-hidden="true"></span>
+<span class="toy-dpad"><button type="button" data-key="up" aria-label="Up">▲</button><button type="button" data-key="down" aria-label="Down">▼</button></span>
+<span class="toy-brand" aria-hidden="true">ZTK·PLAY</span>
+<span class="toy-ab"><button type="button" data-key="b" aria-label="B: serve">B</button><button type="button" data-key="a" aria-label="A: serve">A</button></span>
+<span class="toy-switches"><label><input type="checkbox" class="toy-spill"> Play on the page</label><label><input type="checkbox" class="toy-sound"> Sound</label></span>`;
+    this.fig.querySelector(".ld-view").appendChild(pad);
+    const spill = pad.querySelector(".toy-spill");
+    spill.checked = !reduced.matches;
+    spill.disabled = reduced.matches;
+    this.spill = spill;
+    reduced.addEventListener("change", () => {
+      spill.disabled = reduced.matches;
+      if (reduced.matches) spill.checked = false;
+    });
+    pad.querySelector(".toy-sound").addEventListener("change", (e) => { this.sound = e.target.checked; });
+    const press = Object.fromEntries(["up", "down", "a", "b"].map((k) => [k, `toy_press ${k}`]));
+    for (const b of pad.querySelectorAll("button")) {
+      let rep = 0;
+      const stop = () => clearInterval(rep);
+      b.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        this.eval(press[b.dataset.key]);
+        this.poll();
+        if (b.dataset.key === "up" || b.dataset.key === "down") rep = setInterval(() => this.eval(press[b.dataset.key]), 60);
+      });
+      b.addEventListener("click", (e) => { if (e.detail === 0) { this.eval(press[b.dataset.key]); this.poll(); } });
+      for (const ev of ["pointerup", "pointerleave", "pointercancel"]) b.addEventListener(ev, stop);
+    }
+  }
+
+  // One read of the game in each frame while the toy is on the screen.
+  poll() {
+    if (this.polling || !this.visible) return;
+    this.polling = true;
+    const step = () => {
+      if (!this.visible) { this.polling = false; return; }
+      const r = this.eval(`set ::toy(spill) ${this.spill.checked ? 1 : 0}; apply {{} {set r "$::toy(out)|$::toy(sfx)"; set ::toy(out) {}; set ::toy(sfx) {}; return $r}}`);
+      const m = r?.result?.split("|");
+      if (m?.length === 2) {
+        if (this.sound) for (const s of m[1].split(/\s+/).filter(Boolean)) sound(s);
+        const out = parse(m[0]);
+        if (out.length === 4 && !this.ball) this.launch(out);
+      }
+      this.fig.classList.toggle("toy-on", Boolean(this.h));
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
+  screen() {
+    return this.h?.canvas?.getBoundingClientRect() ?? null;
+  }
+
+  launch([x, y, vx, vy]) {
+    const r = this.screen();
+    if (!r) return;
+    const k = r.width / W;
+    const layer = document.createElement("canvas");
+    layer.className = "toy-layer";
+    layer.setAttribute("aria-hidden", "true");
+    document.body.appendChild(layer);
+    this.ball = { x: r.left + x * k, y: r.top + y * k, vx: vx * k, vy: vy * k, size: Math.max(6, Math.round(8 * k)), t0: performance.now(), trail: [], hits: new Map(), layer, home: false };
+    const step = (now) => {
+      if (!this.ball) return;
+      this.move(now);
+      if (this.ball) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
+  walls() {
+    const own = this.fig;
+    return [...document.querySelectorAll("main h1, main h2, main h3, main pre, main table, main img, main .ld-code")]
+      .filter((e) => !own.contains(e))
+      .map((e) => [e, e.getBoundingClientRect()])
+      .filter(([, b]) => b.width > 0 && b.bottom > 0 && b.top < innerHeight);
+  }
+
+  move(now) {
+    const b = this.ball;
+    const dpr = devicePixelRatio || 1;
+    const L = b.layer;
+    if (L.width !== Math.round(innerWidth * dpr)) { L.width = Math.round(innerWidth * dpr); L.height = Math.round(innerHeight * dpr); }
+    const s = b.size;
+    const r = this.screen();
+    if (!r) return this.end();
+    // After 7 seconds the ball steers to the top of the screen.
+    if (now - b.t0 > 7000) b.home = true;
+    if (b.home) {
+      const tx = r.left + r.width / 2, ty = r.top - s;
+      const dx = tx - b.x, dy = ty - b.y, d = Math.hypot(dx, dy);
+      const sp = Math.max(6, Math.hypot(b.vx, b.vy));
+      b.vx += (dx / d * sp - b.vx) * 0.15;
+      b.vy += (dy / d * sp - b.vy) * 0.15;
+      if (d < sp * 1.5) return this.end();
+    }
+    let nx = b.x + b.vx, ny = b.y + b.vy;
+    if (nx < 0 || nx + s > innerWidth) { b.vx = -b.vx; nx = b.x; }
+    if (ny < 0 || ny + s > innerHeight) { b.vy = -b.vy; ny = b.y; }
+    if (!b.home) {
+      for (const [el, w] of this.walls()) {
+        if (nx + s < w.left || nx > w.right || ny + s < w.top || ny > w.bottom) continue;
+        // Reflect on the side with the smallest overlap.
+        const ox = Math.min(nx + s - w.left, w.right - nx), oy = Math.min(ny + s - w.top, w.bottom - ny);
+        if (ox < oy) { b.vx = -b.vx; nx = b.x; } else { b.vy = -b.vy; ny = b.y; }
+        b.hits.set(el, now);
+        if (this.sound) sound("wall");
+        break;
+      }
+    }
+    b.trail.unshift([b.x, b.y]);
+    b.trail.length = Math.min(b.trail.length, 4);
+    b.x = nx;
+    b.y = ny;
+    const g = L.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, innerWidth, innerHeight);
+    for (const [el, t] of b.hits) {
+      const age = (now - t) / 400;
+      if (age > 1) { b.hits.delete(el); continue; }
+      const w = el.getBoundingClientRect();
+      g.globalAlpha = 1 - age;
+      g.strokeStyle = INK.gold;
+      g.lineWidth = 3;
+      g.strokeRect(Math.round(w.left) - 2, Math.round(w.top) - 2, Math.round(w.width) + 4, Math.round(w.height) + 4);
+    }
+    b.trail.forEach(([tx, ty], i) => { g.globalAlpha = 0.5 - i * 0.12; pixel(g, tx, ty, s, INK.red); });
+    g.globalAlpha = 1;
+    pixel(g, b.x, b.y, s, INK.gold);
+  }
+
+  // The ball goes back into the screen, and the layer goes away.
+  end() {
+    const b = this.ball;
+    if (!b) return;
+    this.ball = null;
+    b.layer.remove();
+    const r = this.screen();
+    const k = r ? r.width / W : 1;
+    const x = r ? Math.min(Math.max((b.x - r.left) / k, 40), 320) : 180;
+    this.eval(`set ::toy(back) {${Math.round(x)} ${Math.max(2, Math.abs(b.vx / k) / 2).toFixed(2)} 2}`);
+  }
+}
+
+for (const fig of document.querySelectorAll('figure.live-demo[data-name^="toy-"]')) new Toy(fig);

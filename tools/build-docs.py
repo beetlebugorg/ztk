@@ -135,7 +135,8 @@ class Build:
             if not src.startswith("docs/widgets/") or src.endswith("README.md"):
                 continue
             for t in self.live_blocks(src, self.md.parse((ROOT / src).read_text(encoding="utf-8"))):
-                if t.type == "fence" and t.meta.get("live") and t.meta["name"] and t.meta.get("shot"):
+                if t.type == "fence" and t.meta.get("live") and t.meta["name"] and t.meta.get("shot") \
+                        and not t.meta["name"].startswith("toy-"):
                     words = [line.split()[0] for line in t.content.splitlines() if line.strip() and not line.startswith("#")]
                     words = [w for w in words if w not in ("set", "proc", "bind", "after", "foreach", "wm")]
                     kind = "ztk" if any(w in ("ztk::terminal", "ztk::tooltip") for w in words) else "ttk" if words and words[0].startswith("ttk::") else "Tk"
@@ -333,6 +334,9 @@ class Build:
         root = rel(page, "")
         name = f"{html.escape(title)} · ztk"
         script = f'\n<script type="module" src="{root}assets/live.js"></script>' if 'class="live-demo"' in body else ""
+        if 'data-name="toy-' in body:
+            script += f'\n<script type="module" src="{root}assets/toys.js"></script>'
+
         desc = "A Tk replacement in Zig, on the ztcl interpreter, with a GPU renderer and CSS styles."
         return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -425,7 +429,7 @@ class Build:
             (folder / "index.html").write_text(self.document(page, title, body), encoding="utf-8")
         (out / "index.html").write_text(landing, encoding="utf-8")
         (out / "assets").mkdir()
-        for name in ("site.css", "favicon.svg", "live.js", "replay.js"):
+        for name in ("site.css", "favicon.svg", "live.js", "replay.js", "toys.js"):
             shutil.copy(SITE_DIR / name, out / "assets" / name)
         # The screenshots of the examples (tools/shots.sh).
         shutil.copytree(SITE_DIR / "shots", out / "assets" / "shots")
