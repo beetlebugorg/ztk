@@ -117,6 +117,9 @@ pub const TrayId = u32;
 /// The pixels are valid only during the call that gives them.
 pub const TrayIcon = struct { width: u32, height: u32, pixels: []const u8 };
 
+/// The id of one global shortcut. 0 is no shortcut.
+pub const HotkeyId = u32;
+
 /// The appearance of the system.
 pub const Appearance = struct {
     dark: bool,
@@ -154,13 +157,13 @@ pub const Cursor = enum {
     /// for a name with no shape here.
     pub fn fromTk(name: []const u8) ?Cursor {
         const map = [_]struct { []const u8, Cursor }{
-            .{ "arrow", .default },         .{ "left_ptr", .default },         .{ "top_left_arrow", .default },
-            .{ "xterm", .text },            .{ "hand1", .pointer },            .{ "hand2", .pointer },
-            .{ "watch", .wait },            .{ "crosshair", .crosshair },      .{ "cross", .crosshair },
-            .{ "tcross", .crosshair },      .{ "fleur", .move },               .{ "question_arrow", .help },
+            .{ "arrow", .default },               .{ "left_ptr", .default },            .{ "top_left_arrow", .default },
+            .{ "xterm", .text },                  .{ "hand1", .pointer },               .{ "hand2", .pointer },
+            .{ "watch", .wait },                  .{ "crosshair", .crosshair },         .{ "cross", .crosshair },
+            .{ "tcross", .crosshair },            .{ "fleur", .move },                  .{ "question_arrow", .help },
             .{ "sb_h_double_arrow", .ew_resize }, .{ "sb_v_double_arrow", .ns_resize }, .{ "X_cursor", .not_allowed },
-            .{ "size_we", .ew_resize },     .{ "size_ns", .ns_resize },        .{ "size_nw_se", .nwse_resize },
-            .{ "size_ne_sw", .nesw_resize }, .{ "size", .move },
+            .{ "size_we", .ew_resize },           .{ "size_ns", .ns_resize },           .{ "size_nw_se", .nwse_resize },
+            .{ "size_ne_sw", .nesw_resize },      .{ "size", .move },
         };
         for (map) |m| if (std.mem.eql(u8, m[0], name)) return m[1];
         return null;
@@ -284,6 +287,16 @@ pub const Platform = struct {
         traySet: ?*const fn (ptr: *anyopaque, id: TrayId, icon: TrayIcon, template: bool, tooltip: []const u8, menu: MenuId) void = null,
         /// Removes a tray icon.
         trayDrop: ?*const fn (ptr: *anyopaque, id: TrayId) void = null,
+
+        // The global shortcuts (ztk#63).
+
+        /// Registers a shortcut that works when the app has no focus: the
+        /// key `keysym` with the modifiers `shift`, `control`, `mod1` (Alt),
+        /// and `mod4` (the logo key) of `mods`. Its presses come as `hotkey`
+        /// events for `w`. Gives 0 when the system refuses it, for example
+        /// when another app has the shortcut.
+        hotkeyAdd: ?*const fn (ptr: *anyopaque, w: *Window, mods: event.Mods, keysym: u32) HotkeyId = null,
+        hotkeyRemove: ?*const fn (ptr: *anyopaque, id: HotkeyId) void = null,
     };
 
     pub fn hasNativeMenus(p: Platform) bool {
@@ -319,6 +332,16 @@ pub const Platform = struct {
     }
     pub fn trayDrop(p: Platform, id: TrayId) void {
         if (p.vtable.trayDrop) |f| f(p.ptr, id);
+    }
+    pub fn hasHotkeys(p: Platform) bool {
+        return p.vtable.hotkeyAdd != null and p.vtable.hotkeyRemove != null;
+    }
+    pub fn hotkeyAdd(p: Platform, w: *Window, mods: event.Mods, keysym: u32) HotkeyId {
+        const f = p.vtable.hotkeyAdd orelse return 0;
+        return f(p.ptr, w, mods, keysym);
+    }
+    pub fn hotkeyRemove(p: Platform, id: HotkeyId) void {
+        if (p.vtable.hotkeyRemove) |f| f(p.ptr, id);
     }
     pub fn setMenuHandler(p: Platform, h: MenuHandler) void {
         if (p.vtable.setMenuHandler) |f| f(p.ptr, h);

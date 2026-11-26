@@ -45,6 +45,7 @@ const Cursor = plat.Cursor;
 const tsf = @import("tsf.zig");
 const winmenu = @import("winmenu.zig");
 const wintray = @import("wintray.zig");
+const winhotkey = @import("winhotkey.zig");
 
 pub const Renderer = enum { auto, d3d12, cpu };
 
@@ -116,6 +117,9 @@ pub const Win32 = struct {
     menu_handler: ?plat.MenuHandler = null,
     /// The icons in the notification area.
     trays: wintray.Trays,
+    /// The shortcuts of `hotkeyAdd`: the id and its window, and the next id.
+    hotkeys: std.ArrayListUnmanaged(struct { id: u32, hwnd: w32.HWND }) = .empty,
+    hotkey_next: u32 = 1,
     last_frame_us: i64 = 0,
     /// Counts of the frames that each output drew, for the tests.
     gpu_frames: std.atomic.Value(u32) = .init(0),
@@ -145,6 +149,8 @@ pub const Win32 = struct {
     pub fn deinit(b: *Win32) void {
         // An icon goes away with the window that owns it, so the trays go first.
         b.trays.deinit();
+        for (b.hotkeys.items) |k| winhotkey.unregister(k.hwnd, k.id);
+        b.hotkeys.deinit(b.gpa);
         while (b.windows.items.len > 0) destroy(b, b.windows.items[b.windows.items.len - 1].win);
         b.windows.deinit(b.gpa);
         b.queue.deinit(b.gpa);
@@ -189,6 +195,8 @@ pub const Win32 = struct {
         .trayCreate = vTrayCreate,
         .traySet = vTraySet,
         .trayDrop = vTrayDrop,
+        .hotkeyAdd = vHotkeyAdd,
+        .hotkeyRemove = vHotkeyRemove,
     };
 
     fn self(ptr: *anyopaque) *Win32 {
@@ -517,6 +525,30 @@ pub const Win32 = struct {
         self(ptr).trays.drop(id);
     }
 
+    fn vHotkeyAdd(ptr: *anyopaque, w: *Window, m: event.Mods, sym: u32) plat.HotkeyId {
+        const b = self(ptr);
+        const rec = b.recOf(w) orelse return 0;
+        // The ids of an app are below 0xC000.
+        if (b.hotkey_next >= 0xC000) return 0;
+        const id = b.hotkey_next;
+        if (!winhotkey.register(rec.hwnd, id, m, sym)) return 0;
+        b.hotkeys.append(b.gpa, .{ .id = id, .hwnd = rec.hwnd }) catch {
+            winhotkey.unregister(rec.hwnd, id);
+            return 0;
+        };
+        b.hotkey_next += 1;
+        return id;
+    }
+
+    fn vHotkeyRemove(ptr: *anyopaque, id: plat.HotkeyId) void {
+        const b = self(ptr);
+        for (b.hotkeys.items, 0..) |k, i| if (k.id == id) {
+            winhotkey.unregister(k.hwnd, id);
+            _ = b.hotkeys.orderedRemove(i);
+            return;
+        };
+    }
+
     /// A message of the shell for a tray: the action in the low word of
     /// `lp`, the id in the high word, and the point of the pointer in `wp`.
     fn trayMessage(b: *Win32, rec: *WinRec, wp: w32.WPARAM, lp: w32.LPARAM) w32.LRESULT {
@@ -843,6 +875,10 @@ pub const Win32 = struct {
     fn message(b: *Win32, rec: *WinRec, msg: w32.UINT, wp: w32.WPARAM, lp: w32.LPARAM) w32.LRESULT {
         const w = rec.win;
         if (msg == wintray.callback_msg) return b.trayMessage(rec, wp, lp);
+        if (msg == winhotkey.WM_HOTKEY) {
+            b.push(.{ .hotkey = .{ .window = rec.win, .id = @intCast(wp) } });
+            return 0;
+        }
         if (msg == b.trays.taskbar_created and msg != 0) {
             b.trays.addAll();
             return 0;

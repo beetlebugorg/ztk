@@ -55,6 +55,9 @@ pub const Options = struct {
     compact_threshold: usize = 8 << 20,
     /// How the frames are drawn. A backend that cannot draw on another thread always uses `inline_draw`.
     render_mode: render_thread.Mode = .inline_draw,
+    /// True: `ztk::hotkey` can register global shortcuts. The ztk program
+    /// sets it with `--allow hotkey`.
+    hotkeys: bool = false,
     /// What the command `exit` calls. Null: the command gives an error.
     on_exit: ?*const fn (code: u8) noreturn = null,
 };
@@ -121,6 +124,7 @@ pub const App = struct {
     style_root: ?[]const u8 = null,
     io: ?std.Io = null,
     on_exit: ?*const fn (code: u8) noreturn = null,
+    hotkeys_allowed: bool = false,
     /// The generation of the style set at the last restyle.
     style_gen: u32 = 0,
     /// The queue of backend events, in order. The events before
@@ -182,6 +186,8 @@ pub const App = struct {
     text_input: @import("textinput.zig").State = .{},
     /// The icons of `ztk::tray`.
     trays: @import("tray.zig").State = .{},
+    /// The shortcuts of `ztk::hotkey`.
+    hotkeys: @import("hotkey.zig").State = .{},
     /// The accent color of the system, when the backend gives one. The themes do not use it yet.
     accent: ?geom.Color = null,
     anim_last_us: i64 = -1,
@@ -254,7 +260,7 @@ pub const App = struct {
         errdefer gpa.free(an);
         // The last step that can fail, so this copy needs no cleanup.
         const root_dir: ?[]const u8 = if (opts.style_root) |r| try gpa.dupe(u8, r) else null;
-        app.* = .{ .gpa = gpa, .it = it, .root_class = rc, .app_name = an, .platform = opts.platform, .loop = undefined, .err_output = opts.err_output, .styles = style_mod.StyleSet.init(gpa), .io = opts.io, .on_exit = opts.on_exit, .animations = opts.animations, .start_us = opts.start_us, .compact_threshold = opts.compact_threshold, .fonts = fonts, .atlas = atlas_mod.Atlas.init(gpa), .bindings = bind.Table.init(gpa) };
+        app.* = .{ .gpa = gpa, .it = it, .root_class = rc, .app_name = an, .platform = opts.platform, .loop = undefined, .err_output = opts.err_output, .styles = style_mod.StyleSet.init(gpa), .io = opts.io, .on_exit = opts.on_exit, .hotkeys_allowed = opts.hotkeys, .animations = opts.animations, .start_us = opts.start_us, .compact_threshold = opts.compact_threshold, .fonts = fonts, .atlas = atlas_mod.Atlas.init(gpa), .bindings = bind.Table.init(gpa) };
         app.env.dark = opts.dark;
         // With no --dark, the scheme follows the system when the backend gives it.
         if (!opts.dark) app.followSystem();
@@ -304,7 +310,7 @@ pub const App = struct {
     fn idleDraw(_: *anyopaque, _: *const scene_mod.Frame) anyerror!void {}
 
     /// The target of a render thread in the pool. It draws nothing.
-    pub const idle_target: render_thread.Target = .{ .ctx = @constCast(@ptrCast(&max_frame)), .draw = idleDraw };
+    pub const idle_target: render_thread.Target = .{ .ctx = @ptrCast(@constCast(&max_frame)), .draw = idleDraw };
 
     /// A render thread for a new window: one from the pool, or a new one.
     pub fn takeRender(app: *App, mode: render_thread.Mode, target: render_thread.Target) !*render_thread.RenderThread {
@@ -350,6 +356,7 @@ pub const App = struct {
         app.clipboard.deinit(app.gpa);
         app.text_input.deinit(app.gpa);
         app.trays.deinit(app);
+        app.hotkeys.deinit(app);
         while (app.handles) |h| {
             app.handles = h.next;
             app.gpa.destroy(h);
@@ -593,9 +600,15 @@ pub const App = struct {
                 const sp = k.spec.spec;
                 const delay = @as(i64, sp.delay_ms) * 1000;
                 const tmpl: scene_mod.FrameAnim = .{
-                    .first = 0, .count = 0, .from = 0,
-                    .start_us = k.start_us, .delay_us = delay, .len_us = @max(sp.totalUs() - delay, 1), .timing = sp.timing,
-                    .iterations = k.spec.count, .direction = @enumFromInt(@intFromEnum(k.spec.direction)),
+                    .first = 0,
+                    .count = 0,
+                    .from = 0,
+                    .start_us = k.start_us,
+                    .delay_us = delay,
+                    .len_us = @max(sp.totalUs() - delay, 1),
+                    .timing = sp.timing,
+                    .iterations = k.spec.count,
+                    .direction = @enumFromInt(@intFromEnum(k.spec.direction)),
                     .fill_backwards = k.spec.fill == .backwards or k.spec.fill == .both,
                     .fill_forwards = k.spec.fill == .forwards or k.spec.fill == .both,
                     .base = true,
@@ -961,6 +974,7 @@ pub const App = struct {
             .motion, .button, .leave, .key, .scroll, .preedit, .commit => dispatch.handleIn(app, ev, top),
             .appearance => app.followSystem(),
             .tray => |tr| @import("tray.zig").handleEvent(app, tr.id, tr.action),
+            .hotkey => |hk| @import("hotkey.zig").handleEvent(app, hk.id),
             .menu => |m| @import("widgets/menu.zig").handleEvent(app, m.menu, m.entry, m.action),
             .app_command => {},
         }

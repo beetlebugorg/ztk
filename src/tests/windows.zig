@@ -600,3 +600,23 @@ test "windows: a tray icon in the notification area, its actions, and its menu" 
     try pollAll(o.b, &events);
     try t.expect(has(events.items, .tray).?.tray.action == .menu);
 }
+
+test "windows: a global shortcut registers and its WM_HOTKEY is a hotkey event" {
+    if (!enabled()) return;
+    var events: std.ArrayListUnmanaged(Event) = .empty;
+    defer events.deinit(t.allocator);
+    const o = try openHidden(&events);
+    defer o.b.deinit();
+    const p = o.b.platform();
+    // Control-Alt-Shift-F24: a key that no keyboard of a person has.
+    const id = p.hotkeyAdd(o.w, .{ .control = true, .mod1 = true, .shift = true }, 0xffd5);
+    try t.expect(id != 0);
+    // The same shortcut a second time fails.
+    try t.expectEqual(@as(u32, 0), p.hotkeyAdd(o.w, .{ .control = true, .mod1 = true, .shift = true }, 0xffd5));
+    _ = w32.SendMessageW(o.hwnd, @import("../platform/winhotkey.zig").WM_HOTKEY, id, 0);
+    try pollAll(o.b, &events);
+    const ev = has(events.items, .hotkey) orelse return error.NoHotkey;
+    try t.expectEqual(id, ev.hotkey.id);
+    p.hotkeyRemove(id);
+    try t.expectEqual(@as(usize, 0), o.b.hotkeys.items.len);
+}

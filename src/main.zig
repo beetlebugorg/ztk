@@ -114,6 +114,7 @@ pub fn main(init: std.process.Init) !void {
     // 2026-11-26). --allow turns on more.
     var allow_bits: u32 = @intFromEnum(ztcl.interp.Capability.file) | @intFromEnum(ztcl.interp.Capability.channels);
     var root_dir: ?[]const u8 = null;
+    var hotkeys = false;
     var direct_on = false;
     var direct_opts: ztk.direct.Options = .{};
     var max_frames: ?u64 = null;
@@ -134,7 +135,17 @@ pub fn main(init: std.process.Init) !void {
             i += 1;
             if (a[2] == 'r') {
                 root_dir = args[i];
-            } else allow_bits |= ztcl.interp.Capability.parse(args[i]) orelse fail(err, "ztk: unknown capability in \"{s}\"\n", .{args[i]});
+            } else {
+                // `hotkey` is a grant of ztk. The other names are capabilities of ztcl.
+                var names = std.mem.tokenizeScalar(u8, args[i], ',');
+                while (names.next()) |n| {
+                    if (std.mem.eql(u8, n, "hotkey")) {
+                        hotkeys = true;
+                        continue;
+                    }
+                    allow_bits |= ztcl.interp.Capability.parse(n) orelse fail(err, "ztk: unknown capability in \"{s}\"\n", .{args[i]});
+                }
+            }
         } else if (std.mem.eql(u8, a, "--dark")) {
             dark = true;
         } else if (std.mem.eql(u8, a, "--direct")) {
@@ -279,7 +290,7 @@ pub fn main(init: std.process.Init) !void {
 
     // The folder of the script is the root of `ztk::style load`.
     const style_root = std.fs.path.dirname(path) orelse ".";
-    const app = try ztk.App.init(init.gpa, &it, .{ .platform = platform, .dark = dark, .style_root = style_root, .io = io, .on_exit = exitNow, .render_mode = .threaded, .animations = init.environ_map.get("ZTK_NO_ANIMATION") == null, .start_us = start_us });
+    const app = try ztk.App.init(init.gpa, &it, .{ .platform = platform, .dark = dark, .style_root = style_root, .io = io, .on_exit = exitNow, .hotkeys = hotkeys, .render_mode = .threaded, .animations = init.environ_map.get("ZTK_NO_ANIMATION") == null, .start_us = start_us });
     const want_stats = init.environ_map.get("ZTK_FRAME_STATS") != null;
     app.stats.slow_out = err;
     defer app.deinit();
