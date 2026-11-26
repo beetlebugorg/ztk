@@ -36,6 +36,7 @@ const Frame = @import("../scene.zig").Frame;
 const Target = @import("../render/thread.zig").Target;
 const Atlas = @import("../text/atlas.zig").Atlas;
 const mackeys = @import("mackeys.zig");
+const Pasteboard = @import("pasteboard.zig").Pasteboard;
 const Id = objc.Id;
 const Sel = objc.Sel;
 const Class = objc.Class;
@@ -92,6 +93,8 @@ pub const AppKit = struct {
     /// True when an empty event to end the wait is posted and not yet taken.
     woken: bool = false,
     windows: u32 = 0,
+    /// The clipboard: the general pasteboard.
+    clip: Pasteboard,
 
     pub fn init(gpa: std.mem.Allocator) !*AppKit {
         // AppKit makes windows only on the main thread.
@@ -102,7 +105,7 @@ pub const AppKit = struct {
         _ = objc.call(fn (Id, Sel, isize) callconv(.c) bool, app, "setActivationPolicy:", .{activation_regular});
         objc.call(fn (Id, Sel) callconv(.c) void, app, "finishLaunching", .{});
         const a = try gpa.create(AppKit);
-        a.* = .{ .gpa = gpa, .app = app, .view_class = viewClass(), .delegate_class = delegateClass() };
+        a.* = .{ .gpa = gpa, .app = app, .view_class = viewClass(), .delegate_class = delegateClass(), .clip = Pasteboard.general() };
         return a;
     }
 
@@ -128,7 +131,17 @@ pub const AppKit = struct {
         .nowUs = vNowUs,
         .target = vTarget,
         .setCursor = vSetCursor,
+        .clipboardSet = vClipboardSet,
+        .clipboardGet = vClipboardGet,
     };
+
+    fn vClipboardSet(ptr: *anyopaque, typ: []const u8, data: []const u8) void {
+        self(ptr).clip.set(typ, data);
+    }
+
+    fn vClipboardGet(ptr: *anyopaque, gpa: std.mem.Allocator, typ: []const u8) ?[]u8 {
+        return self(ptr).clip.get(gpa, typ);
+    }
 
     fn self(ptr: *anyopaque) *AppKit {
         return @ptrCast(@alignCast(ptr));
