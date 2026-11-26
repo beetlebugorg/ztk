@@ -2,13 +2,17 @@
 //! adds, and a cache of `Font` values, one for each face, size, and
 //! scale. Stage 1 has two faces from the package (Regular and Bold). A
 //! weight of 600 or more selects Bold. Each family name selects one of
-//! them, so the fonts of the system come in a later stage.
+//! them. With a text engine of the system (`system.zig`, DirectWrite on
+//! Windows), `get` opens a face of the system for the description, and
+//! the methods of `Font` ask the system for its glyphs and metrics.
 //! `parseTk` reads the font values of Tk.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
 const num = @import("../num.zig");
 const ttf = @import("ttf.zig");
+const system_mod = @import("system.zig");
+pub const System = system_mod.System;
 
 pub const FontDesc = struct {
     family: []const u8 = "system-ui",
@@ -23,7 +27,12 @@ pub const FontDesc = struct {
 pub const Metrics = struct { ascent: i32, descent: i32, line_height: i32 };
 
 pub const Font = struct {
+    /// The TrueType face. A font of the system keeps the first face here,
+    /// and each method asks the system.
     face: *const ttf.Face,
+    /// The text engine of the system and its face, for a font of the system.
+    system: ?System = null,
+    sys_face: u32 = 0,
     /// Logical pixels.
     size: f32,
     /// Device pixels for each logical pixel.
@@ -37,10 +46,10 @@ pub const Font = struct {
 
     pub fn glyph(f: *Font, cp: u21) u16 {
         if (cp < 128) {
-            if (f.ascii[cp] == 0xffff) f.ascii[cp] = f.face.glyphIndex(cp);
+            if (f.ascii[cp] == 0xffff) f.ascii[cp] = f.glyphOf(cp);
             return f.ascii[cp];
         }
-        return f.face.glyphIndex(cp);
+        return f.glyphOf(cp);
     }
 
     /// The kerning of a pair in font units.
@@ -48,22 +57,41 @@ pub const Font = struct {
         const key = (@as(u32, left) << 16) | right;
         const slot = &f.kern_cache[(key *% 2654435761) >> 24];
         if (slot.key == key) return slot.value;
-        const v = f.face.kerning(left, right);
+        const v: i16 = if (f.system) |s| std.math.cast(i16, s.kern(f.sys_face, left, right)) orelse 0 else f.face.kerning(left, right);
         slot.* = .{ .key = key, .value = v };
         return v;
     }
 
+    fn glyphOf(f: *const Font, cp: u21) u16 {
+        if (f.system) |s| return s.glyph(f.sys_face, cp);
+        return f.face.glyphIndex(cp);
+    }
+
+    /// The advance of a glyph in font units.
+    pub fn advance(f: *const Font, gid: u16) i32 {
+        if (f.system) |s| return s.advance(f.sys_face, gid);
+        return f.face.advance(gid);
+    }
+
+    /// The vertical metrics of the face, in font units.
+    pub fn faceMetrics(f: *const Font) system_mod.FaceMetrics {
+        if (f.system) |s| return s.metrics(f.sys_face);
+        return .{ .units_per_em = f.face.units_per_em, .ascent = f.face.ascent, .descent = f.face.descent, .line_gap = f.face.line_gap };
+    }
+
     /// Device pixels for each font unit.
     pub fn unitScale(f: *const Font) f32 {
-        return f.size * f.scale / @as(f32, @floatFromInt(f.face.units_per_em));
+        return f.size * f.scale / @as(f32, @floatFromInt(f.faceMetrics().units_per_em));
     }
 };
 
-const FontKey = struct { face: u8, size: u32, scale: u32 };
+const FontKey = struct { face: u8, size: u32, scale: u32, sys: u32 = 0 };
 
 pub const Fonts = struct {
     gpa: std.mem.Allocator,
     faces: std.ArrayListUnmanaged(*ttf.Face) = .empty,
+    /// The text engine of the system, when the platform gives one.
+    system: ?System = null,
     cache: std.AutoHashMapUnmanaged(FontKey, *Font) = .empty,
     /// The cache of `measure`.
     widths: std.StringHashMapUnmanaged(i32) = .empty,
@@ -113,20 +141,23 @@ pub const Fonts = struct {
         // The size can come from a script, and the scale from a backend.
         const size = num.clampF(desc.size, 0, num.max_font_size);
         const safe_scale = if (std.math.isNan(scale)) 1 else std.math.clamp(scale, 0.25, 16);
-        const key: FontKey = .{ .face = @intCast(idx), .size = @bitCast(size), .scale = @bitCast(safe_scale) };
+        // A face of the system, when the system has one for the description.
+        const sys_face: ?u32 = if (f.system) |s| s.open(.{ .family = desc.family, .size = size, .weight = desc.weight, .italic = desc.italic }) else null;
+        const key: FontKey = if (sys_face) |id| .{ .face = 255, .size = @bitCast(size), .scale = @bitCast(safe_scale), .sys = id } else .{ .face = @intCast(idx), .size = @bitCast(size), .scale = @bitCast(safe_scale) };
         if (f.cache.get(key)) |font| return font;
         const font = try f.gpa.create(Font);
         errdefer f.gpa.destroy(font);
-        font.* = .{ .face = f.faces.items[idx], .size = size, .scale = safe_scale };
+        font.* = .{ .face = f.faces.items[idx], .size = size, .scale = safe_scale, .system = if (sys_face != null) f.system else null, .sys_face = sys_face orelse 0 };
         try f.cache.put(f.gpa, key, font);
         return font;
     }
 
     pub fn metrics(font: *const Font) Metrics {
-        const upem: f32 = @floatFromInt(font.face.units_per_em);
-        const asc = num.pxCeil(@as(f32, @floatFromInt(font.face.ascent)) * font.size / upem);
-        const desc = num.pxCeil(-@as(f32, @floatFromInt(font.face.descent)) * font.size / upem);
-        const gap = num.pxCeil(@as(f32, @floatFromInt(font.face.line_gap)) * font.size / upem);
+        const m = font.faceMetrics();
+        const upem: f32 = @floatFromInt(m.units_per_em);
+        const asc = num.pxCeil(@as(f32, @floatFromInt(m.ascent)) * font.size / upem);
+        const desc = num.pxCeil(-@as(f32, @floatFromInt(m.descent)) * font.size / upem);
+        const gap = num.pxCeil(@as(f32, @floatFromInt(m.line_gap)) * font.size / upem);
         return .{ .ascent = asc, .descent = desc, .line_height = num.add(num.add(asc, desc), gap) };
     }
 

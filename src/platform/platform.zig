@@ -339,6 +339,10 @@ pub const Platform = struct {
         /// Removes a tray icon.
         trayDrop: ?*const fn (ptr: *anyopaque, id: TrayId) void = null,
 
+        /// The text engine of the system for the fonts of the app
+        /// (`text/system.zig`), or null for the TrueType faces of ztk.
+        textSystem: ?*const fn (ptr: *anyopaque) ?@import("../text/system.zig").System = null,
+
         // The taskbar or dock button (ztk#61).
 
         /// Shows the progress and the badge of `state` on the button of `w`.
@@ -428,6 +432,10 @@ pub const Platform = struct {
     }
     pub fn hotkeyRemove(p: Platform, id: HotkeyId) void {
         if (p.vtable.hotkeyRemove) |f| f(p.ptr, id);
+    }
+    pub fn textSystem(p: Platform) ?@import("../text/system.zig").System {
+        const f = p.vtable.textSystem orelse return null;
+        return f(p.ptr);
     }
     pub fn setMenuHandler(p: Platform, h: MenuHandler) void {
         if (p.vtable.setMenuHandler) |f| f(p.ptr, h);
