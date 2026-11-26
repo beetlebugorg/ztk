@@ -9,6 +9,14 @@
 //! scene and the atlas page in the memory of the module, and the page
 //! draws the quads with WebGL 2 and the same formulas as the CPU
 //! renderer. The build has no thread, no file, and no clock of its own.
+//!
+//! A posted menu and its cascades are popup windows of the headless
+//! backend. Each popup draws with the CPU renderer into an image with
+//! premultiplied alpha. The page shows each image in a canvas of a layer
+//! above the page, at the place of the popup, and gives the input of that
+//! canvas to the popup (`ztk_popup_*`). The screen of the popups is the
+//! viewport of the page (`ztk_screen`), so a menu can extend past the
+//! canvas of the window.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -47,7 +55,7 @@ export fn ztk_init(w: i32, h: i32, scale: f32, dark: bool, reduce_motion: bool) 
     it.output = .{ .ctx = null, .write = write };
     head = Headless.init(gpa) catch return false;
     head.skip_draw = true;
-    head.popups = false;
+    head.draw_popups = true;
     app = ztk.App.init(gpa, &it, .{ .platform = head.platform(), .dark = dark, .err_output = .{ .ctx = null, .write = write } }) catch return false;
     app.reduce_motion = reduce_motion;
     app.virtual_file = virtualFile;
@@ -255,3 +263,69 @@ export fn ztk_add_file(name_ptr: [*]const u8, name_len: usize, ptr: [*]const u8,
     files.put(gpa, name, text) catch return false;
     return true;
 }
+
+// ---- Popups ----
+
+/// The popup window `i`, in the order of their creation, or null.
+fn popupWin(i: u32) ?*ztk.platform.Window {
+    var n: u32 = 0;
+    for (head.windows.items) |r| if (r.popup != null) {
+        if (n == i) return r.win;
+        n += 1;
+    };
+    return null;
+}
+
+/// The viewport of the page in the logical pixels of the window of ".", from its top-left corner.
+export fn ztk_screen(x: i32, y: i32, w: i32, h: i32) void {
+    head.screen = .{ .x = x, .y = y, .w = w, .h = h };
+}
+
+/// The count of popup windows.
+export fn ztk_popups() u32 {
+    var n: u32 = 0;
+    for (head.windows.items) |r| n += @intFromBool(r.popup != null);
+    return n;
+}
+
+/// Counts the draws of each window, so the page knows when a popup has a new image.
+export fn ztk_draws() u32 {
+    return head.frames_drawn;
+}
+
+var popup_rect: [6]i32 = undefined;
+
+/// The place and the logical size of popup `i` in the window of ".", and
+/// the size of its image in device pixels: x, y, w, h, image w, image h.
+export fn ztk_popup_rect(i: u32) ?[*]const i32 {
+    const win = popupWin(i) orelse return null;
+    const o = head.absPos(win);
+    const img = head.image(win);
+    popup_rect = .{ o.x, o.y, win.size.w, win.size.h, if (img) |m| @intCast(m.width) else 0, if (img) |m| @intCast(m.height) else 0 };
+    return &popup_rect;
+}
+
+/// The RGBA image of popup `i` with premultiplied alpha, or null.
+export fn ztk_popup_image(i: u32) ?[*]const u8 {
+    const img = head.image(popupWin(i) orelse return null) orelse return null;
+    return img.pixels.ptr;
+}
+
+export fn ztk_popup_pointer(i: u32, x: f32, y: f32) void {
+    head.pointerMove(popupWin(i) orelse return, x, y);
+}
+
+export fn ztk_popup_button(i: u32, button: u8, pressed: bool) void {
+    head.pointerButton(popupWin(i) orelse return, button, pressed);
+}
+
+export fn ztk_popup_leave(i: u32) void {
+    head.pointerLeave(popupWin(i) orelse return);
+}
+
+/// A press on the page outside the canvas and the popups closes the popups, as a compositor does.
+export fn ztk_popup_dismiss() void {
+    const win = popupWin(0) orelse return;
+    head.close(win);
+}
+

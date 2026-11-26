@@ -82,6 +82,31 @@ if (params.has("test")) {
   const ex = ztk.exports;
   const canvas = document.getElementById("screen");
   ztk.frame(performance.now());
+  // ?pre=script runs before the input, for example a post of a menu.
+  if (params.get("pre")) {
+    ztk.eval(params.get("pre"));
+    ztk.frame(performance.now() + 500);
+  }
+  // ?popclick: a click on the middle of the first popup canvas.
+  let popup;
+  if (params.has("popclick")) {
+    const c = document.querySelector("[data-ztk-popups] > canvas");
+    if (c) {
+      const r = c.getBoundingClientRect();
+      const x = r.width / 2, y = r.height / 2;
+      const ctx = c.getContext("2d");
+      const mid = ctx.getImageData(Math.floor(c.width / 2), Math.floor(c.height / 2), 1, 1).data;
+      popup = { css: [r.left, r.top, r.width, r.height], store: [c.width, c.height], alpha: [ctx.getImageData(0, 0, 1, 1).data[3], mid[3]] };
+      const opt = { clientX: r.left + x, clientY: r.top + y, button: 0, pointerId: 1, bubbles: true };
+      c.dispatchEvent(new PointerEvent("pointermove", opt));
+      c.dispatchEvent(new PointerEvent("pointerdown", opt));
+      c.dispatchEvent(new PointerEvent("pointerup", opt));
+      ztk.frame(performance.now() + 600);
+      // The popup fades out in 150 ms after the click.
+      ztk.frame(performance.now() + 1200);
+      popup.after = document.querySelectorAll("[data-ztk-popups] > canvas").length;
+    }
+  }
   // Input through the DOM, as a person gives it: ?click=x,y and ?type=text.
   if (params.get("click")) {
     const [x, y] = params.get("click").split(",").map(Number);
@@ -163,7 +188,7 @@ if (params.has("test")) {
   }
   draws.sort((a, b) => a - b);
   const perf = { median: times[60], p99: times[Math.floor(times.length * 0.99)], drawMedian: draws[150], drawP99: draws[297], moduleMedian: module[60], moduleP99: module[118] };
-  const res = { perf, ok: window.ztkResult.ok, frames: Number(ex.ztk_frames()), roles, check: check.result, probe, renderer: ztk.renderer, png: ztk.snapshot() };
+  const res = { perf, ok: window.ztkResult.ok, frames: Number(ex.ztk_frames()), roles, check: check.result, probe, popup, renderer: ztk.renderer, png: ztk.snapshot() };
   // ?lose: the GPU device is lost, and the renderer draws the next frame on a new device.
   if (params.has("lose")) {
     const restored = await ztk.loseDevice();

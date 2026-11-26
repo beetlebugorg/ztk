@@ -276,4 +276,18 @@ WebAssembly.instantiate(fs.readFileSync(wasmPath), imports).then(({ instance }) 
   process.exit(ok ? 0 : 1);
 });
 JS
+# A posted menu opens in a popup canvas above the page. A click on the
+# middle of the popup invokes its one entry, and the popup goes away.
+pre='menu .pm -tearoff 0; .pm add command -label Hit -command {set ::hit 1}; set ::hit 0; .pm post 20 20'
+q="$(python3 -I -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$pre")"
+out="$(page "example=demo&light&size=$size&pre=$q&popclick&test=set%20hit")"
+echo "$out" > "$work/popup.json"
+python3 -I - "$work/popup.json" <<'PY' || fail=1
+import json, sys
+r = json.load(open(sys.argv[1]))
+p = r.get("popup") or {}
+ok = r.get("check") == "1" and p.get("alpha", [255, 0])[0] == 0 and p.get("alpha", [0, 0])[1] == 255 and p.get("after") == 0
+print(("ok" if ok else "FAIL") + ": a menu opens in a popup canvas with a clear edge, and a click there invokes its entry (%r, %r)" % (r.get("check"), p))
+sys.exit(0 if ok else 1)
+PY
 exit "$fail"
