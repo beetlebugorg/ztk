@@ -54,6 +54,11 @@ The features of ztk go through `Platform.VTable`, as the menus do: optional entr
 
 Windows: the tray, the file dialogs, `ztcl::open` and `ztcl::notify` in ztcl, then the `.exe` bundle. macOS: the order of the macOS session, with the same interface. The first PR of each feature adds its entries to `platform.zig` or its commands to ztcl, and the second backend builds to them.
 
+## Decisions
+
+- The capabilities of the programs (the user, 2026-11-26). The `ztk` program turns on the file commands and the file channels of ztcl by default, because a desktop program needs files. The other capabilities (`exec`, `socket`, and the rest) stay behind `--allow a,b`, with the names and the rules of the `ztcl` runner. A program that embeds ztk grants each capability in code.
+- The file commands of the `ztk` and `ztcl` programs use real paths of the host by default, as `wish` and `tclsh` do, so the paths of a native dialog open as they are. `--root DIR` keeps them in one folder (the jail of `fsroot.zig`). An embedder gets the jail by default. ztcl#122 adds the host mode. Until it is in ztcl, the `ztk` program uses the jail with the folder of the script as the root.
+
 ## Decisions for the user
 
 1. The name of the feature test in ztcl: `ztcl::has`, as ztcl#111 says, with the same names of features as `ztk::has`. The recommendation is one list of names for both.

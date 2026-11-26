@@ -31,4 +31,13 @@ out="$(ZTK_FRAME_STATS=1 $cap "$ztk" --headless --exit-after-frames 3 "$root/tes
 case "$out" in *"frames: 3"*"paint: count 3"*) echo "ok: the frame statistics" ;; *) echo "FAIL: no statistics: $out"; fail=1 ;; esac
 echo 'exit 3' >"$work/exit.tcl"
 $cap "$ztk" --headless "$work/exit.tcl" >/dev/null 2>&1; check "exit status" "$?" "3"
+printf 'set f [open out.txt w]; puts $f hi; close $f; set f [open out.txt]; puts [read -nonewline $f]; close $f\n' >"$work/f.tcl"
+check "a file in the folder of the script" "$($cap "$ztk" --headless "$work/f.tcl" 2>/dev/null)" "hi"
+mkdir -p "$work/root"
+$cap "$ztk" --headless --root "$work/root" "$work/f.tcl" >/dev/null 2>&1
+check "the file goes in the root" "$(test -f "$work/root/out.txt" && echo yes)" "yes"
+out="$($cap "$ztk" --headless --allow nonsense "$work/f.tcl" 2>&1)"
+check "an unknown capability" "$out" 'ztk: unknown capability in "nonsense"'
+printf 'puts [llength [info commands exec]]\n' >"$work/exec.tcl"
+check "exec needs --allow" "$($cap "$ztk" --headless "$work/exec.tcl" 2>/dev/null)" "0"
 exit "$fail"
