@@ -165,6 +165,11 @@ pub const Taskbar = struct {
     pub const Progress = enum { none, normal, indeterminate, paused, failed };
 };
 
+/// The tabbing mode of a macOS window: `automatic` follows the setting of
+/// the system, `preferred` opens new windows as tabs, and `disallowed`
+/// gives the window no tab bar.
+pub const Tabbing = enum { automatic, preferred, disallowed };
+
 /// The appearance of the system.
 pub const Appearance = struct {
     dark: bool,
@@ -336,6 +341,15 @@ pub const Platform = struct {
         traySet: ?*const fn (ptr: *anyopaque, id: TrayId, icon: TrayIcon, template: bool, tooltip: []const u8, menu: MenuId) void = null,
         /// Removes a tray icon.
         trayDrop: ?*const fn (ptr: *anyopaque, id: TrayId) void = null,
+
+        // The direct APIs of macOS (`ztk::mac::*`, ztk#65). Only the AppKit
+        // backend has them, and the commands give an error elsewhere.
+
+        /// The menu of the Dock icon, or 0 for no menu of the app.
+        macDockMenu: ?*const fn (ptr: *anyopaque, id: MenuId) void = null,
+        /// The tabs of a window: the tabbing mode, and the group of the
+        /// windows that join one tab bar. An empty group is the default.
+        macTabbing: ?*const fn (ptr: *anyopaque, w: *Window, mode: Tabbing, group: []const u8) void = null,
 
         // The taskbar or dock button (ztk#61).
 

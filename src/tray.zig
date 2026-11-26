@@ -9,7 +9,7 @@
 //!
 //! `ztk::has feature` gives 1 when this program has the feature on this
 //! platform, and 0 when it does not. It knows `tray`, `taskbar`, `recent`,
-//! and `native-menus`, and another name gives an error.
+//! `native-menus`, and `mac`, and another name gives an error.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -194,7 +194,9 @@ pub fn cmdHas(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.
         app.platform.hasRecent()
     else if (std.mem.eql(u8, name, "native-menus"))
         app.platform.hasNativeMenus()
+    else if (std.mem.eql(u8, name, "mac"))
+        app.platform.vtable.macDockMenu != null and app.platform.vtable.macTabbing != null
     else
-        return it.fail("bad feature \"{s}\": must be native-menus, recent, taskbar, or tray", .{name});
+        return it.fail("bad feature \"{s}\": must be mac, native-menus, recent, taskbar, or tray", .{name});
     return .{ .int = @intFromBool(on) };
 }

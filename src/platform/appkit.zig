@@ -134,6 +134,9 @@ pub const AppKit = struct {
     menus: *nsmenu.Menus = undefined,
     post_win: ?*Win = null,
     key_win: ?*Win = null,
+    /// The delegate of NSApp, for the menu of the Dock icon, and that menu.
+    app_delegate: ?Id = null,
+    dock_menu: plat.MenuId = 0,
     /// The status items of the menu bar.
     trays: *mactray.Trays = undefined,
 
@@ -171,6 +174,11 @@ pub const AppKit = struct {
         }
         a.wins.deinit(a.gpa);
         a.trays.deinit();
+        if (a.app_delegate) |d| {
+            send(a.app, "setDelegate:", .{@as(?Id, null)});
+            objc.setData(d, null);
+            objc.release(d);
+        }
         a.menus.deinit();
         a.events.deinit(a.gpa);
         a.gpa.destroy(a);
@@ -204,6 +212,8 @@ pub const AppKit = struct {
         .postMenu = vPostMenu,
         .unpostMenu = vUnpostMenu,
         .setMenuHandler = vSetMenuHandler,
+        .macDockMenu = vDockMenu,
+        .macTabbing = vTabbing,
         .trayCreate = vTrayCreate,
         .traySet = vTraySet,
         .trayDrop = vTrayDrop,
@@ -228,6 +238,44 @@ pub const AppKit = struct {
     fn trayAction(ctx: *anyopaque, owner: *anyopaque, id: plat.TrayId, action: event.TrayAction) void {
         const w: *Win = @ptrCast(@alignCast(owner));
         self(ctx).push(.{ .tray = .{ .window = &w.window, .id = id, .action = action } });
+    }
+
+    // ---- The direct APIs of macOS ----
+
+    /// The menu of the Dock icon. NSApp asks its delegate with
+    /// `applicationDockMenu:` each time the Dock shows the menu.
+    fn vDockMenu(ptr: *anyopaque, id: plat.MenuId) void {
+        const a = self(ptr);
+        a.dock_menu = id;
+        if (a.app_delegate == null) {
+            const d = objc.new(appDelegateClass());
+            objc.setData(d, a);
+            a.app_delegate = d;
+            send(a.app, "setDelegate:", .{d});
+        }
+    }
+
+    fn onDockMenu(delegate: Id, _: Sel, _: Id) callconv(.c) ?Id {
+        const a: *AppKit = @ptrCast(@alignCast(objc.getData(delegate) orelse return null));
+        const m = a.menus.menus.get(a.dock_menu) orelse return null;
+        return m.ns;
+    }
+
+    fn appDelegateClass() Class {
+        if (objc.class("ZtkAppDelegate")) |c| return c;
+        const b = objc.ClassBuilder.begin("NSObject", "ZtkAppDelegate").?;
+        _ = b.protocol("NSApplicationDelegate");
+        b.method("applicationDockMenu:", @ptrCast(&onDockMenu), "@@:@");
+        return b.finish();
+    }
+
+    /// NSWindowTabbingModeAutomatic, Preferred, and Disallowed are 0, 1, and 2.
+    fn vTabbing(_: *anyopaque, win: *Window, mode: plat.Tabbing, group: []const u8) void {
+        const w = winOf(win);
+        send(w.ns_window, "setTabbingMode:", .{@as(isize, @intFromEnum(mode))});
+        const g = objc.nsString(group);
+        defer objc.release(g);
+        send(w.ns_window, "setTabbingIdentifier:", .{g});
     }
 
     // ---- The native menus ----
