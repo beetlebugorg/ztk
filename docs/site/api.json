@@ -1,0 +1,3206 @@
+{
+ "version": 1,
+ "commands": {
+  "": [
+   ".",
+   "after",
+   "append",
+   "apply",
+   "array",
+   "binary",
+   "bind",
+   "bindtags",
+   "break",
+   "button",
+   "canvas",
+   "case",
+   "catch",
+   "checkbutton",
+   "clipboard",
+   "concat",
+   "continue",
+   "coroutine",
+   "destroy",
+   "dict",
+   "entry",
+   "error",
+   "eval",
+   "event",
+   "exit",
+   "expr",
+   "focus",
+   "for",
+   "foreach",
+   "format",
+   "frame",
+   "global",
+   "grab",
+   "grid",
+   "if",
+   "image",
+   "incr",
+   "info",
+   "interp",
+   "join",
+   "label",
+   "labelframe",
+   "lappend",
+   "lassign",
+   "lindex",
+   "linsert",
+   "list",
+   "listbox",
+   "llength",
+   "lmap",
+   "lrange",
+   "lrepeat",
+   "lreplace",
+   "lreverse",
+   "lsearch",
+   "lset",
+   "lsort",
+   "menu",
+   "menubutton",
+   "message",
+   "namespace",
+   "noise3",
+   "pack",
+   "package",
+   "panedwindow",
+   "place",
+   "proc",
+   "puts",
+   "radiobutton",
+   "regexp",
+   "regsub",
+   "rename",
+   "return",
+   "scale",
+   "scan",
+   "scrollbar",
+   "set",
+   "spinbox",
+   "split",
+   "string",
+   "subst",
+   "switch",
+   "tailcall",
+   "tcl_endOfWord",
+   "tcl_startOfNextWord",
+   "tcl_startOfPreviousWord",
+   "tcl_wordBreakAfter",
+   "tcl_wordBreakBefore",
+   "throw",
+   "tk",
+   "tk_focusFollowsMouse",
+   "tk_focusNext",
+   "tk_focusPrev",
+   "tk_popup",
+   "tkwait",
+   "toplevel",
+   "trace",
+   "try",
+   "unknown",
+   "unset",
+   "update",
+   "uplevel",
+   "upvar",
+   "variable",
+   "vwait",
+   "while",
+   "winfo",
+   "wm",
+   "yield",
+   "yieldto"
+  ],
+  "ttk": [
+   "ttk::button",
+   "ttk::checkbutton",
+   "ttk::combobox",
+   "ttk::entry",
+   "ttk::frame",
+   "ttk::label",
+   "ttk::labelframe",
+   "ttk::menubutton",
+   "ttk::notebook",
+   "ttk::panedwindow",
+   "ttk::progressbar",
+   "ttk::radiobutton",
+   "ttk::scale",
+   "ttk::scrollbar",
+   "ttk::separator",
+   "ttk::sizegrip",
+   "ttk::spinbox",
+   "ttk::style",
+   "ttk::takefocus"
+  ],
+  "ztk": [
+   "ztk::animate",
+   "ztk::class",
+   "ztk::clock",
+   "ztk::inject",
+   "ztk::limit",
+   "ztk::snapshot",
+   "ztk::style",
+   "ztk::terminal",
+   "ztk::tooltip",
+   "ztk::tree"
+  ]
+ },
+ "widgets": [
+  {
+   "command": "frame",
+   "class": "Frame",
+   "options": [
+    {
+     "name": "-bd",
+     "alias": "-borderwidth"
+    },
+    {
+     "name": "-borderwidth",
+     "default": "0"
+    },
+    {
+     "name": "-class",
+     "default": "Frame"
+    },
+    {
+     "name": "-relief",
+     "default": "flat"
+    },
+    {
+     "name": "-background",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-bg",
+     "alias": "-background"
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-height",
+     "default": "0"
+    },
+    {
+     "name": "-padx",
+     "default": "0"
+    },
+    {
+     "name": "-pady",
+     "default": "0"
+    },
+    {
+     "name": "-takefocus",
+     "default": "0"
+    },
+    {
+     "name": "-width",
+     "default": "0"
+    }
+   ]
+  },
+  {
+   "command": "label",
+   "class": "Label",
+   "options": [
+    {
+     "name": "-anchor",
+     "default": "center"
+    },
+    {
+     "name": "-background",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-bd",
+     "alias": "-borderwidth"
+    },
+    {
+     "name": "-bg",
+     "alias": "-background"
+    },
+    {
+     "name": "-borderwidth",
+     "default": "0"
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-fg",
+     "alias": "-foreground"
+    },
+    {
+     "name": "-font",
+     "default": "TkDefaultFont"
+    },
+    {
+     "name": "-foreground",
+     "default": "#000000"
+    },
+    {
+     "name": "-height",
+     "default": "0"
+    },
+    {
+     "name": "-justify",
+     "default": "center"
+    },
+    {
+     "name": "-padx",
+     "default": "0"
+    },
+    {
+     "name": "-pady",
+     "default": "0"
+    },
+    {
+     "name": "-relief",
+     "default": "flat"
+    },
+    {
+     "name": "-state",
+     "default": "normal"
+    },
+    {
+     "name": "-takefocus",
+     "default": "0"
+    },
+    {
+     "name": "-text",
+     "default": ""
+    },
+    {
+     "name": "-textvariable",
+     "default": ""
+    },
+    {
+     "name": "-width",
+     "default": "0"
+    }
+   ]
+  },
+  {
+   "command": "button",
+   "class": "Button",
+   "options": [
+    {
+     "name": "-activebackground",
+     "default": "#ececec"
+    },
+    {
+     "name": "-activeforeground",
+     "default": "#000000"
+    },
+    {
+     "name": "-anchor",
+     "default": "center"
+    },
+    {
+     "name": "-background",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-bd",
+     "alias": "-borderwidth"
+    },
+    {
+     "name": "-bg",
+     "alias": "-background"
+    },
+    {
+     "name": "-borderwidth",
+     "default": "0"
+    },
+    {
+     "name": "-command",
+     "default": ""
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-disabledforeground",
+     "default": "#a3a3a3"
+    },
+    {
+     "name": "-fg",
+     "alias": "-foreground"
+    },
+    {
+     "name": "-font",
+     "default": "TkDefaultFont"
+    },
+    {
+     "name": "-foreground",
+     "default": "#000000"
+    },
+    {
+     "name": "-height",
+     "default": "0"
+    },
+    {
+     "name": "-justify",
+     "default": "center"
+    },
+    {
+     "name": "-padx",
+     "default": "0"
+    },
+    {
+     "name": "-pady",
+     "default": "0"
+    },
+    {
+     "name": "-relief",
+     "default": "flat"
+    },
+    {
+     "name": "-state",
+     "default": "normal"
+    },
+    {
+     "name": "-takefocus",
+     "default": ""
+    },
+    {
+     "name": "-text",
+     "default": ""
+    },
+    {
+     "name": "-textvariable",
+     "default": ""
+    },
+    {
+     "name": "-width",
+     "default": "0"
+    }
+   ]
+  },
+  {
+   "command": "checkbutton",
+   "class": "Checkbutton",
+   "options": [
+    {
+     "name": "-activebackground",
+     "default": "#ececec"
+    },
+    {
+     "name": "-activeforeground",
+     "default": "#000000"
+    },
+    {
+     "name": "-anchor",
+     "default": "center"
+    },
+    {
+     "name": "-background",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-bd",
+     "alias": "-borderwidth"
+    },
+    {
+     "name": "-bg",
+     "alias": "-background"
+    },
+    {
+     "name": "-bitmap",
+     "default": ""
+    },
+    {
+     "name": "-borderwidth",
+     "default": "0"
+    },
+    {
+     "name": "-command",
+     "default": ""
+    },
+    {
+     "name": "-compound",
+     "default": "none"
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-disabledforeground",
+     "default": "#a3a3a3"
+    },
+    {
+     "name": "-fg",
+     "alias": "-foreground"
+    },
+    {
+     "name": "-font",
+     "default": "TkDefaultFont"
+    },
+    {
+     "name": "-foreground",
+     "default": "#000000"
+    },
+    {
+     "name": "-height",
+     "default": "0"
+    },
+    {
+     "name": "-highlightbackground",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-highlightcolor",
+     "default": "#000000"
+    },
+    {
+     "name": "-highlightthickness",
+     "default": "1"
+    },
+    {
+     "name": "-image",
+     "default": ""
+    },
+    {
+     "name": "-indicatoron",
+     "default": "1"
+    },
+    {
+     "name": "-justify",
+     "default": "center"
+    },
+    {
+     "name": "-offrelief",
+     "default": "raised"
+    },
+    {
+     "name": "-offvalue",
+     "default": "0"
+    },
+    {
+     "name": "-onvalue",
+     "default": "1"
+    },
+    {
+     "name": "-overrelief",
+     "default": ""
+    },
+    {
+     "name": "-padx",
+     "default": "0"
+    },
+    {
+     "name": "-pady",
+     "default": "0"
+    },
+    {
+     "name": "-relief",
+     "default": "flat"
+    },
+    {
+     "name": "-selectcolor",
+     "default": "#ffffff"
+    },
+    {
+     "name": "-selectimage",
+     "default": ""
+    },
+    {
+     "name": "-state",
+     "default": "normal"
+    },
+    {
+     "name": "-takefocus",
+     "default": ""
+    },
+    {
+     "name": "-text",
+     "default": ""
+    },
+    {
+     "name": "-textvariable",
+     "default": ""
+    },
+    {
+     "name": "-tristateimage",
+     "default": ""
+    },
+    {
+     "name": "-tristatevalue",
+     "default": ""
+    },
+    {
+     "name": "-underline",
+     "default": "-1"
+    },
+    {
+     "name": "-variable",
+     "default": ""
+    },
+    {
+     "name": "-width",
+     "default": "0"
+    },
+    {
+     "name": "-wraplength",
+     "default": "0"
+    }
+   ]
+  },
+  {
+   "command": "radiobutton",
+   "class": "Radiobutton",
+   "options": [
+    {
+     "name": "-activebackground",
+     "default": "#ececec"
+    },
+    {
+     "name": "-activeforeground",
+     "default": "#000000"
+    },
+    {
+     "name": "-anchor",
+     "default": "center"
+    },
+    {
+     "name": "-background",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-bd",
+     "alias": "-borderwidth"
+    },
+    {
+     "name": "-bg",
+     "alias": "-background"
+    },
+    {
+     "name": "-bitmap",
+     "default": ""
+    },
+    {
+     "name": "-borderwidth",
+     "default": "0"
+    },
+    {
+     "name": "-command",
+     "default": ""
+    },
+    {
+     "name": "-compound",
+     "default": "none"
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-disabledforeground",
+     "default": "#a3a3a3"
+    },
+    {
+     "name": "-fg",
+     "alias": "-foreground"
+    },
+    {
+     "name": "-font",
+     "default": "TkDefaultFont"
+    },
+    {
+     "name": "-foreground",
+     "default": "#000000"
+    },
+    {
+     "name": "-height",
+     "default": "0"
+    },
+    {
+     "name": "-highlightbackground",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-highlightcolor",
+     "default": "#000000"
+    },
+    {
+     "name": "-highlightthickness",
+     "default": "1"
+    },
+    {
+     "name": "-image",
+     "default": ""
+    },
+    {
+     "name": "-indicatoron",
+     "default": "1"
+    },
+    {
+     "name": "-justify",
+     "default": "center"
+    },
+    {
+     "name": "-offrelief",
+     "default": "raised"
+    },
+    {
+     "name": "-overrelief",
+     "default": ""
+    },
+    {
+     "name": "-padx",
+     "default": "0"
+    },
+    {
+     "name": "-pady",
+     "default": "0"
+    },
+    {
+     "name": "-relief",
+     "default": "flat"
+    },
+    {
+     "name": "-selectcolor",
+     "default": "#ffffff"
+    },
+    {
+     "name": "-selectimage",
+     "default": ""
+    },
+    {
+     "name": "-state",
+     "default": "normal"
+    },
+    {
+     "name": "-takefocus",
+     "default": ""
+    },
+    {
+     "name": "-text",
+     "default": ""
+    },
+    {
+     "name": "-textvariable",
+     "default": ""
+    },
+    {
+     "name": "-tristateimage",
+     "default": ""
+    },
+    {
+     "name": "-tristatevalue",
+     "default": ""
+    },
+    {
+     "name": "-underline",
+     "default": "-1"
+    },
+    {
+     "name": "-value",
+     "default": ""
+    },
+    {
+     "name": "-variable",
+     "default": "selectedButton"
+    },
+    {
+     "name": "-width",
+     "default": "0"
+    },
+    {
+     "name": "-wraplength",
+     "default": "0"
+    }
+   ]
+  },
+  {
+   "command": "entry",
+   "class": "Entry",
+   "options": [
+    {
+     "name": "-background",
+     "default": "#ffffff"
+    },
+    {
+     "name": "-bd",
+     "alias": "-borderwidth"
+    },
+    {
+     "name": "-bg",
+     "alias": "-background"
+    },
+    {
+     "name": "-borderwidth",
+     "default": "1"
+    },
+    {
+     "name": "-cursor",
+     "default": "xterm"
+    },
+    {
+     "name": "-disabledbackground",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-disabledforeground",
+     "default": "#a3a3a3"
+    },
+    {
+     "name": "-exportselection",
+     "default": "1"
+    },
+    {
+     "name": "-fg",
+     "alias": "-foreground"
+    },
+    {
+     "name": "-font",
+     "default": "TkTextFont"
+    },
+    {
+     "name": "-foreground",
+     "default": "#000000"
+    },
+    {
+     "name": "-highlightbackground",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-highlightcolor",
+     "default": "#000000"
+    },
+    {
+     "name": "-highlightthickness",
+     "default": "1"
+    },
+    {
+     "name": "-insertbackground",
+     "default": "#000000"
+    },
+    {
+     "name": "-insertborderwidth",
+     "default": "0"
+    },
+    {
+     "name": "-insertofftime",
+     "default": "300"
+    },
+    {
+     "name": "-insertontime",
+     "default": "600"
+    },
+    {
+     "name": "-insertwidth",
+     "default": "2"
+    },
+    {
+     "name": "-invalidcommand",
+     "default": ""
+    },
+    {
+     "name": "-invcmd",
+     "alias": "-invalidcommand"
+    },
+    {
+     "name": "-justify",
+     "default": "left"
+    },
+    {
+     "name": "-readonlybackground",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-relief",
+     "default": "sunken"
+    },
+    {
+     "name": "-selectbackground",
+     "default": "#c3c3c3"
+    },
+    {
+     "name": "-selectborderwidth",
+     "default": "0"
+    },
+    {
+     "name": "-selectforeground",
+     "default": "#000000"
+    },
+    {
+     "name": "-show",
+     "default": ""
+    },
+    {
+     "name": "-state",
+     "default": "normal"
+    },
+    {
+     "name": "-takefocus",
+     "default": ""
+    },
+    {
+     "name": "-textvariable",
+     "default": ""
+    },
+    {
+     "name": "-validate",
+     "default": "none"
+    },
+    {
+     "name": "-validatecommand",
+     "default": ""
+    },
+    {
+     "name": "-vcmd",
+     "alias": "-validatecommand"
+    },
+    {
+     "name": "-width",
+     "default": "20"
+    },
+    {
+     "name": "-xscrollcommand",
+     "default": ""
+    },
+    {
+     "name": "-placeholder",
+     "default": ""
+    },
+    {
+     "name": "-placeholderforeground",
+     "default": "#b3b3b3"
+    }
+   ]
+  },
+  {
+   "command": "spinbox",
+   "class": "Spinbox",
+   "options": [
+    {
+     "name": "-activebackground",
+     "default": "#ececec"
+    },
+    {
+     "name": "-background",
+     "default": "#ffffff"
+    },
+    {
+     "name": "-bd",
+     "alias": "-borderwidth"
+    },
+    {
+     "name": "-bg",
+     "alias": "-background"
+    },
+    {
+     "name": "-borderwidth",
+     "default": "1"
+    },
+    {
+     "name": "-buttonbackground",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-buttoncursor",
+     "default": ""
+    },
+    {
+     "name": "-buttondownrelief",
+     "default": "raised"
+    },
+    {
+     "name": "-buttonuprelief",
+     "default": "raised"
+    },
+    {
+     "name": "-command",
+     "default": ""
+    },
+    {
+     "name": "-cursor",
+     "default": "xterm"
+    },
+    {
+     "name": "-disabledbackground",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-disabledforeground",
+     "default": "#a3a3a3"
+    },
+    {
+     "name": "-exportselection",
+     "default": "1"
+    },
+    {
+     "name": "-fg",
+     "alias": "-foreground"
+    },
+    {
+     "name": "-font",
+     "default": "TkTextFont"
+    },
+    {
+     "name": "-foreground",
+     "default": "#000000"
+    },
+    {
+     "name": "-format",
+     "default": ""
+    },
+    {
+     "name": "-from",
+     "default": "0"
+    },
+    {
+     "name": "-highlightbackground",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-highlightcolor",
+     "default": "#000000"
+    },
+    {
+     "name": "-highlightthickness",
+     "default": "1"
+    },
+    {
+     "name": "-increment",
+     "default": "1"
+    },
+    {
+     "name": "-insertbackground",
+     "default": "#000000"
+    },
+    {
+     "name": "-insertborderwidth",
+     "default": "0"
+    },
+    {
+     "name": "-insertofftime",
+     "default": "300"
+    },
+    {
+     "name": "-insertontime",
+     "default": "600"
+    },
+    {
+     "name": "-insertwidth",
+     "default": "2"
+    },
+    {
+     "name": "-invalidcommand",
+     "default": ""
+    },
+    {
+     "name": "-invcmd",
+     "alias": "-invalidcommand"
+    },
+    {
+     "name": "-justify",
+     "default": "left"
+    },
+    {
+     "name": "-relief",
+     "default": "sunken"
+    },
+    {
+     "name": "-readonlybackground",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-repeatdelay",
+     "default": "400"
+    },
+    {
+     "name": "-repeatinterval",
+     "default": "100"
+    },
+    {
+     "name": "-selectbackground",
+     "default": "#c3c3c3"
+    },
+    {
+     "name": "-selectborderwidth",
+     "default": "0"
+    },
+    {
+     "name": "-selectforeground",
+     "default": "#000000"
+    },
+    {
+     "name": "-state",
+     "default": "normal"
+    },
+    {
+     "name": "-takefocus",
+     "default": ""
+    },
+    {
+     "name": "-textvariable",
+     "default": ""
+    },
+    {
+     "name": "-to",
+     "default": "0"
+    },
+    {
+     "name": "-validate",
+     "default": "none"
+    },
+    {
+     "name": "-validatecommand",
+     "default": ""
+    },
+    {
+     "name": "-values",
+     "default": ""
+    },
+    {
+     "name": "-vcmd",
+     "alias": "-validatecommand"
+    },
+    {
+     "name": "-width",
+     "default": "20"
+    },
+    {
+     "name": "-wrap",
+     "default": "0"
+    },
+    {
+     "name": "-xscrollcommand",
+     "default": ""
+    },
+    {
+     "name": "-placeholder",
+     "default": ""
+    },
+    {
+     "name": "-placeholderforeground",
+     "default": "#b3b3b3"
+    }
+   ]
+  },
+  {
+   "command": "scale",
+   "class": "Scale",
+   "options": [
+    {
+     "name": "-activebackground",
+     "default": "#ececec"
+    },
+    {
+     "name": "-background",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-bigincrement",
+     "default": "0"
+    },
+    {
+     "name": "-bd",
+     "alias": "-borderwidth"
+    },
+    {
+     "name": "-bg",
+     "alias": "-background"
+    },
+    {
+     "name": "-borderwidth",
+     "default": "0"
+    },
+    {
+     "name": "-command",
+     "default": ""
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-digits",
+     "default": "0"
+    },
+    {
+     "name": "-fg",
+     "alias": "-foreground"
+    },
+    {
+     "name": "-font",
+     "default": "TkDefaultFont"
+    },
+    {
+     "name": "-foreground",
+     "default": "#000000"
+    },
+    {
+     "name": "-from",
+     "default": "0"
+    },
+    {
+     "name": "-highlightbackground",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-highlightcolor",
+     "default": "#000000"
+    },
+    {
+     "name": "-highlightthickness",
+     "default": "1"
+    },
+    {
+     "name": "-label",
+     "default": ""
+    },
+    {
+     "name": "-length",
+     "default": "100"
+    },
+    {
+     "name": "-orient",
+     "default": "vertical"
+    },
+    {
+     "name": "-relief",
+     "default": "flat"
+    },
+    {
+     "name": "-repeatdelay",
+     "default": "300"
+    },
+    {
+     "name": "-repeatinterval",
+     "default": "100"
+    },
+    {
+     "name": "-resolution",
+     "default": "1"
+    },
+    {
+     "name": "-showvalue",
+     "default": "1"
+    },
+    {
+     "name": "-sliderlength",
+     "default": "30"
+    },
+    {
+     "name": "-sliderrelief",
+     "default": "raised"
+    },
+    {
+     "name": "-state",
+     "default": "normal"
+    },
+    {
+     "name": "-takefocus",
+     "default": ""
+    },
+    {
+     "name": "-tickinterval",
+     "default": "0"
+    },
+    {
+     "name": "-to",
+     "default": "100"
+    },
+    {
+     "name": "-troughcolor",
+     "default": "#b3b3b3"
+    },
+    {
+     "name": "-variable",
+     "default": ""
+    },
+    {
+     "name": "-width",
+     "default": "15"
+    }
+   ]
+  },
+  {
+   "command": "scrollbar",
+   "class": "Scrollbar",
+   "options": [
+    {
+     "name": "-activebackground",
+     "default": "#ececec"
+    },
+    {
+     "name": "-activerelief",
+     "default": "raised"
+    },
+    {
+     "name": "-background",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-bd",
+     "alias": "-borderwidth"
+    },
+    {
+     "name": "-bg",
+     "alias": "-background"
+    },
+    {
+     "name": "-borderwidth",
+     "default": "1"
+    },
+    {
+     "name": "-command",
+     "default": ""
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-elementborderwidth",
+     "default": "-1"
+    },
+    {
+     "name": "-highlightbackground",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-highlightcolor",
+     "default": "#000000"
+    },
+    {
+     "name": "-highlightthickness",
+     "default": "0"
+    },
+    {
+     "name": "-jump",
+     "default": "0"
+    },
+    {
+     "name": "-orient",
+     "default": "vertical"
+    },
+    {
+     "name": "-relief",
+     "default": "sunken"
+    },
+    {
+     "name": "-repeatdelay",
+     "default": "300"
+    },
+    {
+     "name": "-repeatinterval",
+     "default": "100"
+    },
+    {
+     "name": "-takefocus",
+     "default": ""
+    },
+    {
+     "name": "-troughcolor",
+     "default": "#b3b3b3"
+    },
+    {
+     "name": "-width",
+     "default": "11"
+    }
+   ]
+  },
+  {
+   "command": "listbox",
+   "class": "Listbox",
+   "options": [
+    {
+     "name": "-activestyle",
+     "default": "dotbox"
+    },
+    {
+     "name": "-background",
+     "default": "#ffffff"
+    },
+    {
+     "name": "-bd",
+     "alias": "-borderwidth"
+    },
+    {
+     "name": "-bg",
+     "alias": "-background"
+    },
+    {
+     "name": "-borderwidth",
+     "default": "1"
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-disabledforeground",
+     "default": "#a3a3a3"
+    },
+    {
+     "name": "-exportselection",
+     "default": "1"
+    },
+    {
+     "name": "-fg",
+     "alias": "-foreground"
+    },
+    {
+     "name": "-font",
+     "default": "TkDefaultFont"
+    },
+    {
+     "name": "-foreground",
+     "default": "#000000"
+    },
+    {
+     "name": "-height",
+     "default": "10"
+    },
+    {
+     "name": "-highlightbackground",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-highlightcolor",
+     "default": "#000000"
+    },
+    {
+     "name": "-highlightthickness",
+     "default": "1"
+    },
+    {
+     "name": "-justify",
+     "default": "left"
+    },
+    {
+     "name": "-relief",
+     "default": "sunken"
+    },
+    {
+     "name": "-selectbackground",
+     "default": "#c3c3c3"
+    },
+    {
+     "name": "-selectborderwidth",
+     "default": "0"
+    },
+    {
+     "name": "-selectforeground",
+     "default": "#000000"
+    },
+    {
+     "name": "-selectmode",
+     "default": "browse"
+    },
+    {
+     "name": "-setgrid",
+     "default": "0"
+    },
+    {
+     "name": "-state",
+     "default": "normal"
+    },
+    {
+     "name": "-takefocus",
+     "default": ""
+    },
+    {
+     "name": "-width",
+     "default": "20"
+    },
+    {
+     "name": "-xscrollcommand",
+     "default": ""
+    },
+    {
+     "name": "-yscrollcommand",
+     "default": ""
+    },
+    {
+     "name": "-listvariable",
+     "default": ""
+    },
+    {
+     "name": "-emptytext",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "command": "canvas",
+   "class": "Canvas",
+   "options": [
+    {
+     "name": "-background",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-bd",
+     "alias": "-borderwidth"
+    },
+    {
+     "name": "-bg",
+     "alias": "-background"
+    },
+    {
+     "name": "-borderwidth",
+     "default": "0"
+    },
+    {
+     "name": "-closeenough",
+     "default": "1"
+    },
+    {
+     "name": "-confine",
+     "default": "1"
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-height",
+     "default": "7c"
+    },
+    {
+     "name": "-highlightbackground",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-highlightcolor",
+     "default": "#000000"
+    },
+    {
+     "name": "-highlightthickness",
+     "default": "1"
+    },
+    {
+     "name": "-insertbackground",
+     "default": "#000000"
+    },
+    {
+     "name": "-insertborderwidth",
+     "default": "0"
+    },
+    {
+     "name": "-insertofftime",
+     "default": "300"
+    },
+    {
+     "name": "-insertontime",
+     "default": "600"
+    },
+    {
+     "name": "-insertwidth",
+     "default": "2"
+    },
+    {
+     "name": "-offset",
+     "default": "0,0"
+    },
+    {
+     "name": "-relief",
+     "default": "flat"
+    },
+    {
+     "name": "-scrollregion",
+     "default": ""
+    },
+    {
+     "name": "-selectbackground",
+     "default": "#c3c3c3"
+    },
+    {
+     "name": "-selectborderwidth",
+     "default": "1"
+    },
+    {
+     "name": "-selectforeground",
+     "default": "#000000"
+    },
+    {
+     "name": "-state",
+     "default": "normal"
+    },
+    {
+     "name": "-takefocus",
+     "default": ""
+    },
+    {
+     "name": "-width",
+     "default": "10c"
+    },
+    {
+     "name": "-xscrollcommand",
+     "default": ""
+    },
+    {
+     "name": "-xscrollincrement",
+     "default": "0"
+    },
+    {
+     "name": "-yscrollcommand",
+     "default": ""
+    },
+    {
+     "name": "-yscrollincrement",
+     "default": "0"
+    }
+   ]
+  },
+  {
+   "command": "labelframe",
+   "class": "Labelframe",
+   "options": [
+    {
+     "name": "-bd",
+     "alias": "-borderwidth"
+    },
+    {
+     "name": "-borderwidth",
+     "default": "0"
+    },
+    {
+     "name": "-class",
+     "default": "Labelframe"
+    },
+    {
+     "name": "-fg",
+     "alias": "-foreground"
+    },
+    {
+     "name": "-font",
+     "default": "TkDefaultFont"
+    },
+    {
+     "name": "-foreground",
+     "default": "#000000"
+    },
+    {
+     "name": "-labelanchor",
+     "default": "nw"
+    },
+    {
+     "name": "-labelwidget",
+     "default": ""
+    },
+    {
+     "name": "-relief",
+     "default": "groove"
+    },
+    {
+     "name": "-text",
+     "default": ""
+    },
+    {
+     "name": "-background",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-bg",
+     "alias": "-background"
+    },
+    {
+     "name": "-colormap",
+     "default": ""
+    },
+    {
+     "name": "-container",
+     "default": "0"
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-height",
+     "default": "0"
+    },
+    {
+     "name": "-highlightbackground",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-highlightcolor",
+     "default": "#000000"
+    },
+    {
+     "name": "-highlightthickness",
+     "default": "0"
+    },
+    {
+     "name": "-padx",
+     "default": "0"
+    },
+    {
+     "name": "-pady",
+     "default": "0"
+    },
+    {
+     "name": "-takefocus",
+     "default": "0"
+    },
+    {
+     "name": "-visual",
+     "default": ""
+    },
+    {
+     "name": "-width",
+     "default": "0"
+    }
+   ]
+  },
+  {
+   "command": "message",
+   "class": "Message",
+   "options": [
+    {
+     "name": "-anchor",
+     "default": "center"
+    },
+    {
+     "name": "-aspect",
+     "default": "150"
+    },
+    {
+     "name": "-background",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-bd",
+     "alias": "-borderwidth"
+    },
+    {
+     "name": "-bg",
+     "alias": "-background"
+    },
+    {
+     "name": "-borderwidth",
+     "default": "0"
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-fg",
+     "alias": "-foreground"
+    },
+    {
+     "name": "-font",
+     "default": "TkDefaultFont"
+    },
+    {
+     "name": "-foreground",
+     "default": "#000000"
+    },
+    {
+     "name": "-highlightbackground",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-highlightcolor",
+     "default": "#000000"
+    },
+    {
+     "name": "-highlightthickness",
+     "default": "0"
+    },
+    {
+     "name": "-justify",
+     "default": "left"
+    },
+    {
+     "name": "-padx",
+     "default": "-1"
+    },
+    {
+     "name": "-pady",
+     "default": "-1"
+    },
+    {
+     "name": "-relief",
+     "default": "flat"
+    },
+    {
+     "name": "-takefocus",
+     "default": "0"
+    },
+    {
+     "name": "-text",
+     "default": ""
+    },
+    {
+     "name": "-textvariable",
+     "default": ""
+    },
+    {
+     "name": "-width",
+     "default": "0"
+    }
+   ]
+  },
+  {
+   "command": "panedwindow",
+   "class": "Panedwindow",
+   "options": [
+    {
+     "name": "-background",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-bd",
+     "alias": "-borderwidth"
+    },
+    {
+     "name": "-bg",
+     "alias": "-background"
+    },
+    {
+     "name": "-borderwidth",
+     "default": "1"
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-handlepad",
+     "default": "8"
+    },
+    {
+     "name": "-handlesize",
+     "default": "8"
+    },
+    {
+     "name": "-height",
+     "default": ""
+    },
+    {
+     "name": "-opaqueresize",
+     "default": "1"
+    },
+    {
+     "name": "-orient",
+     "default": "horizontal"
+    },
+    {
+     "name": "-proxybackground",
+     "default": ""
+    },
+    {
+     "name": "-proxyborderwidth",
+     "default": "2"
+    },
+    {
+     "name": "-proxyrelief",
+     "default": "flat"
+    },
+    {
+     "name": "-relief",
+     "default": "flat"
+    },
+    {
+     "name": "-sashcursor",
+     "default": ""
+    },
+    {
+     "name": "-sashpad",
+     "default": "0"
+    },
+    {
+     "name": "-sashrelief",
+     "default": "flat"
+    },
+    {
+     "name": "-sashwidth",
+     "default": "3"
+    },
+    {
+     "name": "-showhandle",
+     "default": "0"
+    },
+    {
+     "name": "-width",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "command": "menubutton",
+   "class": "Menubutton",
+   "options": [
+    {
+     "name": "-activebackground",
+     "default": "#ececec"
+    },
+    {
+     "name": "-activeforeground",
+     "default": "#000000"
+    },
+    {
+     "name": "-anchor",
+     "default": "center"
+    },
+    {
+     "name": "-background",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-bd",
+     "alias": "-borderwidth"
+    },
+    {
+     "name": "-bg",
+     "alias": "-background"
+    },
+    {
+     "name": "-bitmap",
+     "default": ""
+    },
+    {
+     "name": "-borderwidth",
+     "default": "0"
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-direction",
+     "default": "below"
+    },
+    {
+     "name": "-disabledforeground",
+     "default": "#a3a3a3"
+    },
+    {
+     "name": "-fg",
+     "alias": "-foreground"
+    },
+    {
+     "name": "-font",
+     "default": "TkDefaultFont"
+    },
+    {
+     "name": "-foreground",
+     "default": "#000000"
+    },
+    {
+     "name": "-height",
+     "default": "0"
+    },
+    {
+     "name": "-highlightbackground",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-highlightcolor",
+     "default": "#000000"
+    },
+    {
+     "name": "-highlightthickness",
+     "default": "0"
+    },
+    {
+     "name": "-image",
+     "default": ""
+    },
+    {
+     "name": "-indicatoron",
+     "default": "0"
+    },
+    {
+     "name": "-justify",
+     "default": "center"
+    },
+    {
+     "name": "-menu",
+     "default": ""
+    },
+    {
+     "name": "-padx",
+     "default": "0"
+    },
+    {
+     "name": "-pady",
+     "default": "0"
+    },
+    {
+     "name": "-relief",
+     "default": "flat"
+    },
+    {
+     "name": "-compound",
+     "default": "none"
+    },
+    {
+     "name": "-state",
+     "default": "normal"
+    },
+    {
+     "name": "-takefocus",
+     "default": "0"
+    },
+    {
+     "name": "-text",
+     "default": ""
+    },
+    {
+     "name": "-textvariable",
+     "default": ""
+    },
+    {
+     "name": "-underline",
+     "default": "-1"
+    },
+    {
+     "name": "-width",
+     "default": "0"
+    },
+    {
+     "name": "-wraplength",
+     "default": "0"
+    }
+   ]
+  },
+  {
+   "command": "menu",
+   "class": "Menu",
+   "options": [
+    {
+     "name": "-activebackground",
+     "default": "#ececec"
+    },
+    {
+     "name": "-activeborderwidth",
+     "default": "1"
+    },
+    {
+     "name": "-activeforeground",
+     "default": "#000000"
+    },
+    {
+     "name": "-background",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-bd",
+     "alias": "-borderwidth"
+    },
+    {
+     "name": "-bg",
+     "alias": "-background"
+    },
+    {
+     "name": "-borderwidth",
+     "default": "1"
+    },
+    {
+     "name": "-cursor",
+     "default": "arrow"
+    },
+    {
+     "name": "-disabledforeground",
+     "default": "#a3a3a3"
+    },
+    {
+     "name": "-fg",
+     "alias": "-foreground"
+    },
+    {
+     "name": "-font",
+     "default": "TkMenuFont"
+    },
+    {
+     "name": "-foreground",
+     "default": "#000000"
+    },
+    {
+     "name": "-postcommand",
+     "default": ""
+    },
+    {
+     "name": "-relief",
+     "default": "raised"
+    },
+    {
+     "name": "-selectcolor",
+     "default": "#000000"
+    },
+    {
+     "name": "-takefocus",
+     "default": "0"
+    },
+    {
+     "name": "-tearoff",
+     "default": "1"
+    },
+    {
+     "name": "-tearoffcommand",
+     "default": ""
+    },
+    {
+     "name": "-title",
+     "default": ""
+    },
+    {
+     "name": "-type",
+     "default": "normal"
+    }
+   ]
+  },
+  {
+   "command": "toplevel",
+   "class": "Toplevel",
+   "options": [
+    {
+     "name": "-bd",
+     "alias": "-borderwidth"
+    },
+    {
+     "name": "-borderwidth",
+     "default": "0"
+    },
+    {
+     "name": "-class",
+     "default": "Toplevel"
+    },
+    {
+     "name": "-menu",
+     "default": ""
+    },
+    {
+     "name": "-relief",
+     "default": "flat"
+    },
+    {
+     "name": "-screen",
+     "default": ""
+    },
+    {
+     "name": "-use",
+     "default": ""
+    },
+    {
+     "name": "-background",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-bg",
+     "alias": "-background"
+    },
+    {
+     "name": "-colormap",
+     "default": ""
+    },
+    {
+     "name": "-container",
+     "default": "0"
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-height",
+     "default": "0"
+    },
+    {
+     "name": "-highlightbackground",
+     "default": "#d9d9d9"
+    },
+    {
+     "name": "-highlightcolor",
+     "default": "#000000"
+    },
+    {
+     "name": "-highlightthickness",
+     "default": "0"
+    },
+    {
+     "name": "-padx",
+     "default": "0"
+    },
+    {
+     "name": "-pady",
+     "default": "0"
+    },
+    {
+     "name": "-takefocus",
+     "default": "0"
+    },
+    {
+     "name": "-visual",
+     "default": ""
+    },
+    {
+     "name": "-width",
+     "default": "0"
+    }
+   ]
+  },
+  {
+   "command": "ttk::frame",
+   "class": "TFrame",
+   "options": [
+    {
+     "name": "-borderwidth",
+     "default": ""
+    },
+    {
+     "name": "-padding",
+     "default": ""
+    },
+    {
+     "name": "-relief",
+     "default": ""
+    },
+    {
+     "name": "-width",
+     "default": "0"
+    },
+    {
+     "name": "-height",
+     "default": "0"
+    },
+    {
+     "name": "-takefocus",
+     "default": ""
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-style",
+     "default": ""
+    },
+    {
+     "name": "-class",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "command": "ttk::label",
+   "class": "TLabel",
+   "options": [
+    {
+     "name": "-background",
+     "default": ""
+    },
+    {
+     "name": "-foreground",
+     "default": ""
+    },
+    {
+     "name": "-font",
+     "default": ""
+    },
+    {
+     "name": "-borderwidth",
+     "default": ""
+    },
+    {
+     "name": "-relief",
+     "default": ""
+    },
+    {
+     "name": "-anchor",
+     "default": "w"
+    },
+    {
+     "name": "-justify",
+     "default": "left"
+    },
+    {
+     "name": "-wraplength",
+     "default": ""
+    },
+    {
+     "name": "-takefocus",
+     "default": ""
+    },
+    {
+     "name": "-text",
+     "default": ""
+    },
+    {
+     "name": "-textvariable",
+     "default": ""
+    },
+    {
+     "name": "-underline",
+     "default": "-1"
+    },
+    {
+     "name": "-width",
+     "default": ""
+    },
+    {
+     "name": "-image",
+     "default": ""
+    },
+    {
+     "name": "-compound",
+     "default": ""
+    },
+    {
+     "name": "-padding",
+     "default": ""
+    },
+    {
+     "name": "-state",
+     "default": "normal"
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-style",
+     "default": ""
+    },
+    {
+     "name": "-class",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "command": "ttk::button",
+   "class": "TButton",
+   "options": [
+    {
+     "name": "-command",
+     "default": ""
+    },
+    {
+     "name": "-default",
+     "default": "normal"
+    },
+    {
+     "name": "-takefocus",
+     "default": "ttk::takefocus"
+    },
+    {
+     "name": "-text",
+     "default": ""
+    },
+    {
+     "name": "-textvariable",
+     "default": ""
+    },
+    {
+     "name": "-underline",
+     "default": "-1"
+    },
+    {
+     "name": "-width",
+     "default": ""
+    },
+    {
+     "name": "-image",
+     "default": ""
+    },
+    {
+     "name": "-compound",
+     "default": ""
+    },
+    {
+     "name": "-padding",
+     "default": ""
+    },
+    {
+     "name": "-state",
+     "default": "normal"
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-style",
+     "default": ""
+    },
+    {
+     "name": "-class",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "command": "ttk::checkbutton",
+   "class": "TCheckbutton",
+   "options": [
+    {
+     "name": "-variable",
+     "default": ""
+    },
+    {
+     "name": "-onvalue",
+     "default": "1"
+    },
+    {
+     "name": "-offvalue",
+     "default": "0"
+    },
+    {
+     "name": "-command",
+     "default": ""
+    },
+    {
+     "name": "-takefocus",
+     "default": "ttk::takefocus"
+    },
+    {
+     "name": "-text",
+     "default": ""
+    },
+    {
+     "name": "-textvariable",
+     "default": ""
+    },
+    {
+     "name": "-underline",
+     "default": "-1"
+    },
+    {
+     "name": "-width",
+     "default": ""
+    },
+    {
+     "name": "-image",
+     "default": ""
+    },
+    {
+     "name": "-compound",
+     "default": ""
+    },
+    {
+     "name": "-padding",
+     "default": ""
+    },
+    {
+     "name": "-state",
+     "default": "normal"
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-style",
+     "default": ""
+    },
+    {
+     "name": "-class",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "command": "ttk::radiobutton",
+   "class": "TRadiobutton",
+   "options": [
+    {
+     "name": "-variable",
+     "default": "::selectedButton"
+    },
+    {
+     "name": "-value",
+     "default": "1"
+    },
+    {
+     "name": "-command",
+     "default": ""
+    },
+    {
+     "name": "-takefocus",
+     "default": "ttk::takefocus"
+    },
+    {
+     "name": "-text",
+     "default": ""
+    },
+    {
+     "name": "-textvariable",
+     "default": ""
+    },
+    {
+     "name": "-underline",
+     "default": "-1"
+    },
+    {
+     "name": "-width",
+     "default": ""
+    },
+    {
+     "name": "-image",
+     "default": ""
+    },
+    {
+     "name": "-compound",
+     "default": ""
+    },
+    {
+     "name": "-padding",
+     "default": ""
+    },
+    {
+     "name": "-state",
+     "default": "normal"
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-style",
+     "default": ""
+    },
+    {
+     "name": "-class",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "command": "ttk::entry",
+   "class": "TEntry",
+   "options": [
+    {
+     "name": "-exportselection",
+     "default": "1"
+    },
+    {
+     "name": "-font",
+     "default": "TkTextFont"
+    },
+    {
+     "name": "-invalidcommand",
+     "default": ""
+    },
+    {
+     "name": "-justify",
+     "default": "left"
+    },
+    {
+     "name": "-show",
+     "default": ""
+    },
+    {
+     "name": "-state",
+     "default": "normal"
+    },
+    {
+     "name": "-textvariable",
+     "default": ""
+    },
+    {
+     "name": "-validate",
+     "default": "none"
+    },
+    {
+     "name": "-validatecommand",
+     "default": ""
+    },
+    {
+     "name": "-width",
+     "default": "20"
+    },
+    {
+     "name": "-xscrollcommand",
+     "default": ""
+    },
+    {
+     "name": "-foreground",
+     "default": ""
+    },
+    {
+     "name": "-background",
+     "default": ""
+    },
+    {
+     "name": "-takefocus",
+     "default": "ttk::takefocus"
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-style",
+     "default": ""
+    },
+    {
+     "name": "-class",
+     "default": ""
+    },
+    {
+     "name": "-placeholder",
+     "default": ""
+    },
+    {
+     "name": "-placeholderforeground",
+     "default": "#b3b3b3"
+    }
+   ]
+  },
+  {
+   "command": "ttk::combobox",
+   "class": "TCombobox",
+   "options": [
+    {
+     "name": "-height",
+     "default": "10"
+    },
+    {
+     "name": "-postcommand",
+     "default": ""
+    },
+    {
+     "name": "-values",
+     "default": ""
+    },
+    {
+     "name": "-exportselection",
+     "default": "1"
+    },
+    {
+     "name": "-font",
+     "default": "TkTextFont"
+    },
+    {
+     "name": "-invalidcommand",
+     "default": ""
+    },
+    {
+     "name": "-justify",
+     "default": "left"
+    },
+    {
+     "name": "-show",
+     "default": ""
+    },
+    {
+     "name": "-state",
+     "default": "normal"
+    },
+    {
+     "name": "-textvariable",
+     "default": ""
+    },
+    {
+     "name": "-validate",
+     "default": "none"
+    },
+    {
+     "name": "-validatecommand",
+     "default": ""
+    },
+    {
+     "name": "-width",
+     "default": "20"
+    },
+    {
+     "name": "-xscrollcommand",
+     "default": ""
+    },
+    {
+     "name": "-foreground",
+     "default": ""
+    },
+    {
+     "name": "-background",
+     "default": ""
+    },
+    {
+     "name": "-takefocus",
+     "default": "ttk::takefocus"
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-style",
+     "default": ""
+    },
+    {
+     "name": "-class",
+     "default": ""
+    },
+    {
+     "name": "-placeholder",
+     "default": ""
+    },
+    {
+     "name": "-placeholderforeground",
+     "default": "#b3b3b3"
+    }
+   ]
+  },
+  {
+   "command": "ttk::spinbox",
+   "class": "TSpinbox",
+   "options": [
+    {
+     "name": "-values",
+     "default": ""
+    },
+    {
+     "name": "-from",
+     "default": "0"
+    },
+    {
+     "name": "-to",
+     "default": "0"
+    },
+    {
+     "name": "-increment",
+     "default": "1"
+    },
+    {
+     "name": "-format",
+     "default": ""
+    },
+    {
+     "name": "-command",
+     "default": ""
+    },
+    {
+     "name": "-wrap",
+     "default": "0"
+    },
+    {
+     "name": "-exportselection",
+     "default": "1"
+    },
+    {
+     "name": "-font",
+     "default": "TkTextFont"
+    },
+    {
+     "name": "-invalidcommand",
+     "default": ""
+    },
+    {
+     "name": "-justify",
+     "default": "left"
+    },
+    {
+     "name": "-show",
+     "default": ""
+    },
+    {
+     "name": "-state",
+     "default": "normal"
+    },
+    {
+     "name": "-textvariable",
+     "default": ""
+    },
+    {
+     "name": "-validate",
+     "default": "none"
+    },
+    {
+     "name": "-validatecommand",
+     "default": ""
+    },
+    {
+     "name": "-width",
+     "default": "20"
+    },
+    {
+     "name": "-xscrollcommand",
+     "default": ""
+    },
+    {
+     "name": "-foreground",
+     "default": ""
+    },
+    {
+     "name": "-background",
+     "default": ""
+    },
+    {
+     "name": "-takefocus",
+     "default": "ttk::takefocus"
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-style",
+     "default": ""
+    },
+    {
+     "name": "-class",
+     "default": ""
+    },
+    {
+     "name": "-placeholder",
+     "default": ""
+    },
+    {
+     "name": "-placeholderforeground",
+     "default": "#b3b3b3"
+    }
+   ]
+  },
+  {
+   "command": "ttk::scale",
+   "class": "TScale",
+   "options": [
+    {
+     "name": "-command",
+     "default": ""
+    },
+    {
+     "name": "-variable",
+     "default": ""
+    },
+    {
+     "name": "-orient",
+     "default": "horizontal"
+    },
+    {
+     "name": "-from",
+     "default": "0"
+    },
+    {
+     "name": "-to",
+     "default": "1.0"
+    },
+    {
+     "name": "-value",
+     "default": "0"
+    },
+    {
+     "name": "-length",
+     "default": "100"
+    },
+    {
+     "name": "-state",
+     "default": "normal"
+    },
+    {
+     "name": "-takefocus",
+     "default": "ttk::takefocus"
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-style",
+     "default": ""
+    },
+    {
+     "name": "-class",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "command": "ttk::scrollbar",
+   "class": "TScrollbar",
+   "options": [
+    {
+     "name": "-command",
+     "default": ""
+    },
+    {
+     "name": "-orient",
+     "default": "vertical"
+    },
+    {
+     "name": "-takefocus",
+     "default": ""
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-style",
+     "default": ""
+    },
+    {
+     "name": "-class",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "command": "ttk::progressbar",
+   "class": "TProgressbar",
+   "options": [
+    {
+     "name": "-orient",
+     "default": "horizontal"
+    },
+    {
+     "name": "-length",
+     "default": "100"
+    },
+    {
+     "name": "-mode",
+     "default": "determinate"
+    },
+    {
+     "name": "-maximum",
+     "default": "100"
+    },
+    {
+     "name": "-variable",
+     "default": ""
+    },
+    {
+     "name": "-value",
+     "default": "0.0"
+    },
+    {
+     "name": "-phase",
+     "default": "0"
+    },
+    {
+     "name": "-takefocus",
+     "default": ""
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-style",
+     "default": ""
+    },
+    {
+     "name": "-class",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "command": "ttk::separator",
+   "class": "TSeparator",
+   "options": [
+    {
+     "name": "-orient",
+     "default": "horizontal"
+    },
+    {
+     "name": "-takefocus",
+     "default": ""
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-style",
+     "default": ""
+    },
+    {
+     "name": "-class",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "command": "ttk::sizegrip",
+   "class": "TSizegrip",
+   "options": [
+    {
+     "name": "-takefocus",
+     "default": ""
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-style",
+     "default": ""
+    },
+    {
+     "name": "-class",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "command": "ttk::labelframe",
+   "class": "TLabelframe",
+   "options": [
+    {
+     "name": "-labelanchor",
+     "default": "nw"
+    },
+    {
+     "name": "-text",
+     "default": ""
+    },
+    {
+     "name": "-underline",
+     "default": "-1"
+    },
+    {
+     "name": "-labelwidget",
+     "default": ""
+    },
+    {
+     "name": "-borderwidth",
+     "default": ""
+    },
+    {
+     "name": "-padding",
+     "default": ""
+    },
+    {
+     "name": "-relief",
+     "default": ""
+    },
+    {
+     "name": "-width",
+     "default": "0"
+    },
+    {
+     "name": "-height",
+     "default": "0"
+    },
+    {
+     "name": "-takefocus",
+     "default": ""
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-style",
+     "default": ""
+    },
+    {
+     "name": "-class",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "command": "ttk::notebook",
+   "class": "TNotebook",
+   "options": [
+    {
+     "name": "-width",
+     "default": "0"
+    },
+    {
+     "name": "-height",
+     "default": "0"
+    },
+    {
+     "name": "-padding",
+     "default": ""
+    },
+    {
+     "name": "-takefocus",
+     "default": "ttk::takefocus"
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-style",
+     "default": ""
+    },
+    {
+     "name": "-class",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "command": "ttk::panedwindow",
+   "class": "TPanedwindow",
+   "options": [
+    {
+     "name": "-orient",
+     "default": "vertical"
+    },
+    {
+     "name": "-width",
+     "default": "0"
+    },
+    {
+     "name": "-height",
+     "default": "0"
+    },
+    {
+     "name": "-takefocus",
+     "default": ""
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-style",
+     "default": ""
+    },
+    {
+     "name": "-class",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "command": "ttk::menubutton",
+   "class": "TMenubutton",
+   "options": [
+    {
+     "name": "-menu",
+     "default": ""
+    },
+    {
+     "name": "-direction",
+     "default": "below"
+    },
+    {
+     "name": "-takefocus",
+     "default": "ttk::takefocus"
+    },
+    {
+     "name": "-text",
+     "default": ""
+    },
+    {
+     "name": "-textvariable",
+     "default": ""
+    },
+    {
+     "name": "-underline",
+     "default": "-1"
+    },
+    {
+     "name": "-width",
+     "default": ""
+    },
+    {
+     "name": "-image",
+     "default": ""
+    },
+    {
+     "name": "-compound",
+     "default": ""
+    },
+    {
+     "name": "-padding",
+     "default": ""
+    },
+    {
+     "name": "-state",
+     "default": "normal"
+    },
+    {
+     "name": "-cursor",
+     "default": ""
+    },
+    {
+     "name": "-style",
+     "default": ""
+    },
+    {
+     "name": "-class",
+     "default": ""
+    }
+   ]
+  },
+  {
+   "command": "ztk::terminal",
+   "class": "Terminal",
+   "options": [
+    {
+     "name": "-background",
+     "default": "#ffffff"
+    },
+    {
+     "name": "-bd",
+     "alias": "-borderwidth"
+    },
+    {
+     "name": "-bg",
+     "alias": "-background"
+    },
+    {
+     "name": "-borderwidth",
+     "default": "0"
+    },
+    {
+     "name": "-command",
+     "default": ""
+    },
+    {
+     "name": "-cursor",
+     "default": "xterm"
+    },
+    {
+     "name": "-cwd",
+     "default": ""
+    },
+    {
+     "name": "-exitcommand",
+     "default": ""
+    },
+    {
+     "name": "-fg",
+     "alias": "-foreground"
+    },
+    {
+     "name": "-font",
+     "default": "TkFixedFont"
+    },
+    {
+     "name": "-foreground",
+     "default": "#000000"
+    },
+    {
+     "name": "-height",
+     "default": "24"
+    },
+    {
+     "name": "-inputcommand",
+     "default": ""
+    },
+    {
+     "name": "-relief",
+     "default": "flat"
+    },
+    {
+     "name": "-scrollback",
+     "default": "10000"
+    },
+    {
+     "name": "-takefocus",
+     "default": "1"
+    },
+    {
+     "name": "-width",
+     "default": "80"
+    }
+   ]
+  }
+ ]
+}
