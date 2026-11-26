@@ -41,6 +41,7 @@ systemd-run --user --scope -q -p MemoryMax=4G -p MemorySwapMax=0 -- <command>
 | `tests/docs-live.sh [page]` | Builds the site with the web build and runs each live snippet of the docs pages in a headless Chromium, in light and dark. A snippet with a plain shot must equal its shot, and the first snippet of each page gets edits. It needs `node`. Set `PYTHON` as for `tests/site.sh`. |
 | `tests/skill.sh` | Runs the check script of `skills/ztk-app/SKILL.md` and of `docs/agents.md` in `ztk --headless`. Each must print `n = 1`. |
 | `tests/api-index.sh` | Checks that `docs/site/api.json`, the API index for agents, equals the output of `tools/api-index.tcl` on this build. The top of the file has the command that writes it again. |
+| `tests/replay.sh` | Runs the script and the check of each step of each replay in `docs/site/replays` in `ztk --headless`. Each check must give 1. |
 | `ZTK_TEST_WINDOWS=1 zig build test -Dtest-filter=windows` | On Windows: runs the tests of the Win32 backend with hidden windows. Without the variable they print `SKIP:`. |
 | `ZTK_RENDERER=cpu\|d3d12\|warp zig-out/bin/ztk script.tcl` | On Windows: runs a script in a window with the CPU output, Direct3D 12, or Direct3D 12 on WARP. The default is Direct3D 12, and the CPU output when no device exists. |
 

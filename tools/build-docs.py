@@ -23,6 +23,7 @@ with a card for each widget snippet of the widget pages.
 """
 
 import html
+import json
 import posixpath
 import re
 import shutil
@@ -42,6 +43,7 @@ PAGES = [
     ("docs/install.md", "install/", "Start", "Install"),
     ("docs/quickstart.md", "quickstart/", "Start", "Quick start"),
     ("docs/agents.md", "agents/", "Start", "For agents"),
+    ("docs/replay.md", "replay/", "Start", "Watch it get built"),
     ("docs/widgets/README.md", "widgets/", "Widgets", "All widgets"),
     ("docs/widgets/basic.md", "widgets/basic/", "Widgets", "Frames, labels, and buttons"),
     ("docs/widgets/toggles.md", "widgets/toggles/", "Widgets", "Check and radio buttons"),
@@ -152,6 +154,19 @@ class Build:
     def render(self, src, page):
         tokens = self.live_blocks(src, self.md.parse((ROOT / src).read_text(encoding="utf-8")))
         for i, t in enumerate(tokens):
+            m = re.match(r"^<!-- replay: ([a-z0-9-]+) -->$", t.content.strip()) if t.type == "inline" else None
+            if m:
+                # A replay (docs/site/replays/NAME.json, assets/replay.js) and the live snippet that it drives.
+                rec = json.loads((SITE_DIR / "replays" / f"{m.group(1)}.json").read_text(encoding="utf-8"))
+                first = next(s["script"] for s in rec["steps"] if "script" in s)
+                root = rel(page, "")
+                tokens[i - 1].type = tokens[i + 1].type = "html_block"
+                tokens[i - 1].content, tokens[i + 1].content = "", ""
+                t.type, t.children = "html_block", None
+                t.content = (f'<div class="replay" data-src="{root}assets/replays/{m.group(1)}.json"><h2 class="rp-title">{html.escape(rec["title"])}</h2></div>'
+                             + self.live_figure({"live": True, "name": None, "id": f"live-replay-{m.group(1)}"}, first, root)
+                             + f'<script type="module" src="{root}assets/replay.js"></script>\n')
+                continue
             if t.type == "inline" and t.content.strip() == "<!-- widget-grid -->":
                 tokens[i - 1].type = tokens[i + 1].type = "html_block"
                 tokens[i - 1].content, tokens[i + 1].content = "", ""
@@ -406,10 +421,11 @@ class Build:
             (folder / "index.html").write_text(self.document(page, title, body), encoding="utf-8")
         (out / "index.html").write_text(landing, encoding="utf-8")
         (out / "assets").mkdir()
-        for name in ("site.css", "favicon.svg", "live.js"):
+        for name in ("site.css", "favicon.svg", "live.js", "replay.js"):
             shutil.copy(SITE_DIR / name, out / "assets" / name)
         # The screenshots of the examples (tools/shots.sh).
         shutil.copytree(SITE_DIR / "shots", out / "assets" / "shots")
+        shutil.copytree(SITE_DIR / "replays", out / "assets" / "replays")
         # The live demos and the playground: the files of `zig build wasm`, when they exist.
         if self.live is not None:
             shutil.copytree(self.live, out / "play")
