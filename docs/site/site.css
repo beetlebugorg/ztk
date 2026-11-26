@@ -371,3 +371,11 @@ figure.chart { margin: 0; }
 .live-demo .ld-inspect input[type="color"] { width: 28px; padding: 0; margin-right: 4px; vertical-align: middle; }
 .live-demo .ld-inspect td:last-child { display: flex; }
 .live-demo .ld-inspect input.bad { border-color: var(--warn); }
+
+/* The live snippet of the landing page: the window above the code. */
+.live-demo.stack { grid-template-columns: minmax(0, 1fr); margin: 0; box-shadow: var(--shadow); }
+.live-demo.stack .ld-code { border-right: 0; border-top: 1px solid var(--line); order: 2; }
+.live-demo.stack .ld-view { order: 1; }
+.live-demo.stack .ld-bar { order: 3; }
+.live-demo.stack .ld-err { order: 4; }
+.live-demo.stack .ld-frame { position: relative; top: auto; }

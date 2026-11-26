@@ -36,13 +36,32 @@ for name in demo signin calculator settings dashboard gallery spreadsheet vector
     done
 done
 
+# The shot of the live snippet of the landing page: docs/site/hero.tcl in
+# a window of 360 by 240 logical pixels, as widget-hero-light.png and
+# widget-hero-dark.png.
+hero="$(mktemp)"
+trap 'rm -f "$log" "$hero"' EXIT
+{ echo 'wm geometry . 360x240'; cat "$root/docs/site/hero.tcl"; echo update; } >"$hero"
+for scheme in light dark; do
+    flag=""
+    [ "$scheme" = dark ] && flag="--dark"
+    file="$out/widget-hero-$scheme.png"
+    if ! ZTK_NO_ANIMATION=1 timeout 60 "$ztk" --headless $flag --scale 2 \
+        --exit-after-frames 2 --screenshot "$file" "$hero" >/dev/null 2>"$log" || grep -qv '^frames: ' "$log"; then
+        echo "error: docs/site/hero.tcl failed:" >&2
+        cat "$log" >&2
+        exit 1
+    fi
+    echo "wrote $file ($(wc -c <"$file") bytes)"
+done
+
 # The shots of the widget pages (docs/dev/widget-pages.md). A line
 # `<!-- widget: NAME; shot: SCRIPT -->` in a page of docs/widgets marks
 # the next `tcl` block. The shot runs that block in a window of 360 by
 # 240 logical pixels, runs SCRIPT, and writes widget-NAME-light.png and
 # widget-NAME-dark.png.
 snippet="$(mktemp)"
-trap 'rm -f "$log" "$snippet"' EXIT
+trap 'rm -f "$log" "$hero" "$snippet"' EXIT
 for page in "$root"/docs/widgets/*.md; do
     grep -o '<!-- widget: [a-z0-9-]*' "$page" | sed 's/<!-- widget: //' | while read -r name; do
         {

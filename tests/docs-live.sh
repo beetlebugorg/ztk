@@ -32,7 +32,7 @@ server=$!
 trap 'kill $server 2>/dev/null; rm -rf "$work"' EXIT
 sleep 1
 pages="$*"
-[ -n "$pages" ] || pages="$(cd "$work/site" && grep -l 'class="live-demo"' -r --include=index.html . | sed 's|^\./||; s|/index.html$||' | sort)"
+[ -n "$pages" ] || pages="$(cd "$work/site" && grep -l 'class="live-demo"' -r --include=index.html . | sed 's|^\./||; s|/*index.html$||; s|^$|.|' | sort)"
 fail=0
 for page in $pages; do
     for scheme in light dark; do
@@ -41,7 +41,7 @@ for page in $pages; do
         # $flag has two flags or none.
         # shellcheck disable=SC2086
         ZTK_BROWSER_VIEWPORT=1400x3000x1 ZTK_BROWSER_TIMEOUT_MS=110000 timeout 120 node "$root/tests/browser.mjs" "$browser" "$work/profile-$scheme" \
-            "http://127.0.0.1:$port/$page/?livetest&livescale=2" --use-angle=swiftshader --enable-unsafe-swiftshader $flag \
+            "http://127.0.0.1:$port/$page/?snippettest&livescale=2" --use-angle=swiftshader --enable-unsafe-swiftshader $flag \
             > "$work/r.json"
         "$py" - "$work/r.json" "$root/docs/site/shots" "$scheme" "$page" "$work/site/$page/index.html" <<'PY' || fail=1
 import json, sys, base64, io, re

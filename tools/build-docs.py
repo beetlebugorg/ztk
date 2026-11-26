@@ -363,7 +363,13 @@ class Build:
             if anchor not in self.anchors.get(page, set()):
                 raise SystemExit(f"{src}: link to a missing anchor: {page}#{anchor}")
         landing = (SITE_DIR / "index.html").read_text(encoding="utf-8")
+        # The live snippet of the landing page: docs/site/hero.tcl.
+        hero = {"live": True, "name": "hero", "id": "live-hero", "alt": "The window of the snippet: a greeting form, a scale that drives a progress bar, and a switch",
+                "still": True, "shot": (SITE_DIR / "shots" / "widget-hero-light.png").is_file()}
+        figure = self.live_figure(hero, (SITE_DIR / "hero.tcl").read_text(encoding="utf-8"), "").replace('class="live-demo"', 'class="live-demo stack"')
+        landing = landing.replace("<!-- live: hero -->", figure)
         self.check_landing(landing)
+        landing = landing.replace("</head>", '<script type="module" src="assets/live.js"></script>\n</head>', 1)
         if out.exists():
             shutil.rmtree(out)
         for page, title, body in rendered:
