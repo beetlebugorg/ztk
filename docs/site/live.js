@@ -531,10 +531,11 @@ class Demo {
   // The frames: one call of frame() for each animation frame while the
   // snippet is on the screen.
   tick() {
-    if (this.raf || !this.visible || !this.h) return;
+    if (this.raf || !this.visible || !this.h || this.paused) return;
     const loop = (t) => {
       this.raf = 0;
-      if (!this.visible || !this.h) return;
+      // A toy sets paused (assets/toys.js).
+      if (!this.visible || !this.h || this.paused) return;
       const t0 = performance.now();
       const n = this.h.frame(t);
       if (n >= 0) {

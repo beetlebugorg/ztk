@@ -39,6 +39,18 @@ const W = 360;
 // the editor and runs it in the same handheld. Menu or Escape puts the
 // list back. The query `?game=SLUG` of the address keeps the game.
 
+// The keys. A click anywhere on the handheld gives the keyboard focus to
+// the hidden input of the window, and the device shows a focus ring.
+// The game gets the arrow keys, Space, and Return as its own key events.
+// W and S press Up and Down of the pad, A and D press B and A, Z and J
+// press A, and X and K press B. P pauses the game, and Escape gives the
+// focus back to the page. While the device has the focus, a key that the
+// game uses does not scroll the page. A letter goes to the game as text
+// when its focus widget is an entry or a text widget. Tab moves the
+// focus as on any page.
+const PAD_KEYS = { w: "up", s: "down", a: "b", d: "a", z: "a", j: "a", x: "b", k: "b" };
+const GAME_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " ", "Enter"]);
+
 // The palette of the toys and a pixel square: the shared helper.
 export const INK = { night: "#1d1a33", paper: "#f2e6c4", red: "#ef5b5b", gold: "#ffcf5c", dusk: "#3a3560" };
 export function pixel(g, x, y, size, color) {
@@ -90,6 +102,7 @@ class Toy {
       else this.poll();
     }).observe(fig.querySelector(".ld-view"));
     addEventListener("keydown", (e) => { if (e.key === "Escape") this.end(); });
+    this.keys();
     addEventListener("wheel", () => this.end(), { passive: true });
     addEventListener("touchmove", () => this.end(), { passive: true });
   }
@@ -104,6 +117,58 @@ class Toy {
     } catch {
       return null;
     }
+  }
+
+  get input() {
+    return this.fig.querySelector(".ld-view .ld-frame textarea");
+  }
+
+  focus() {
+    this.input?.focus({ preventScroll: true });
+  }
+
+  keys() {
+    const view = this.fig.querySelector(".ld-view");
+    view.addEventListener("pointerdown", (e) => {
+      if (e.target.closest(".toy-switches")) return;
+      // The canvas focuses the input itself, after this handler.
+      if (e.target.tagName !== "CANVAS") requestAnimationFrame(() => this.focus());
+    });
+    const map = document.createElement("p");
+    map.className = "toy-keys";
+    map.textContent = "Keys: arrows or W S, Z or J for A, X or K for B, P pauses, Escape leaves.";
+    view.querySelector(".toy-pad").appendChild(map);
+    view.addEventListener("keydown", (e) => {
+      if (!this.input || e.target !== this.input || e.ctrlKey || e.metaKey || e.altKey) return;
+      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      if (key === "Escape") {
+        this.input.blur();
+        return;
+      }
+      if (!GAME_KEYS.has(key) && key !== "p" && !PAD_KEYS[key]) return;
+      const cls = this.eval("winfo class [focus]")?.result;
+      if (cls === "Entry" || cls === "Text" || cls === "TEntry") return;
+      if (GAME_KEYS.has(key)) {
+        e.preventDefault();
+        return;
+      }
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (key === "p") return this.pause();
+      if (this.paused) this.pause();
+      this.eval(`toy_press ${PAD_KEYS[key]}`);
+      this.poll();
+    }, true);
+  }
+
+  // P: the frames of the game stop, and the screen shows PAUSED.
+  pause() {
+    const d = this.fig.ztkDemo;
+    if (!d) return;
+    this.paused = !this.paused;
+    d.paused = this.paused;
+    this.fig.classList.toggle("toy-paused", this.paused);
+    if (!this.paused) d.tick();
   }
 
   // The handheld: the pad, two buttons, the light, and the switches.

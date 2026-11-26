@@ -148,4 +148,8 @@ PY
         done
     done
 done
+# The keys of the handheld of the Toys page: a click on the pad, the keys
+# of the pad and of the game, pause, and Escape, with no scroll of the page.
+timeout 180 node "$root/tests/toy-keys.mjs" "$browser" "$work/profile-keys" "http://127.0.0.1:$port/toys/" \
+    --enable-unsafe-webgpu --use-angle=vulkan --enable-features=Vulkan --use-vulkan=swiftshader || fail=1
 exit "$fail"
