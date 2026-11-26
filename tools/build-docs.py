@@ -45,6 +45,7 @@ PAGES = [
     ("docs/styling.md", "styling/", "Guide", "Styling and themes"),
     ("docs/animation.md", "animation/", "Guide", "Animation"),
     ("docs/web.md", "web/", "Guide", "On the web"),
+    ("docs/windows.md", "windows/", "Guide", "On Windows"),
     ("docs/embedding.md", "embedding/", "Guide", "Embed in Zig"),
     ("docs/performance.md", "performance/", "Project", "Performance"),
     ("docs/differences.md", "differences/", "Project", "Differences from Tk"),
