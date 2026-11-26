@@ -86,9 +86,9 @@ pub fn safe(app: *App) bool {
     const it = app.it;
     if (it.searches.items.len != 0) return false;
     if (app.trace_native == null) return false;
-    var cmds = it.commands.valueIterator();
-    while (cmds.next()) |c| {
-        const tr = c.*.traces orelse continue;
+    var cmds = it.commands.iterator();
+    while (cmds.next()) |e| {
+        const tr = e.value_ptr.*.traces orelse continue;
         if (tr.cmds.items.len != 0 or tr.execs.items.len != 0) return false;
     }
     for (it.global.vars.items) |e| {
