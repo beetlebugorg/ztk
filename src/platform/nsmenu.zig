@@ -684,3 +684,20 @@ test "nsmenu: entries, cascades, and the application menu" {
     m.drop(2);
     try t.expect(call(fn (Id, Sel) callconv(.c) ?Id, itemAt(bar, 1), "submenu", .{}) == null);
 }
+
+test "nsmenu: a click on an item through AppKit gives an invoke" {
+    const pool = objc.Pool.push();
+    defer pool.pop();
+    var rec: Record = .{};
+    defer rec.deinit();
+    const m = try Menus.init(t.allocator, .{ .ctx = &rec, .menu = Record.menu, .command = Record.command, .key = Record.key });
+    defer m.deinit();
+    m.set(&.{ .id = 7, .entries = &.{ .{ .label = "One" }, .{ .label = "Two" } } });
+    const ns = m.menus.get(7).?.ns;
+    call(fn (Id, Sel, isize) callconv(.c) void, ns, "performActionForItemAtIndex:", .{1});
+    var invoked = false;
+    for (rec.menus.items) |r| if (r[2] == .invoke and r[0] == 7 and r[1] == 1) {
+        invoked = true;
+    };
+    try t.expect(invoked);
+}
