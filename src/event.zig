@@ -99,6 +99,8 @@ pub const Event = union(enum) {
     menu: struct { window: *Window, menu: u32, entry: i32, action: MenuAction },
     /// An action of the user on a tray icon. `window` is the window of `trayCreate`.
     tray: struct { window: *Window, id: u32, action: TrayAction },
+    /// A global shortcut of `hotkeyAdd`. It can come when the app has no focus.
+    hotkey: struct { window: ?*Window = null, id: u32 },
     /// A command of the application menu. It can come with no window open.
     app_command: struct { window: ?*Window = null, command: AppCommand },
 

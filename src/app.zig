@@ -55,6 +55,9 @@ pub const Options = struct {
     compact_threshold: usize = 8 << 20,
     /// How the frames are drawn. A backend that cannot draw on another thread always uses `inline_draw`.
     render_mode: render_thread.Mode = .inline_draw,
+    /// True: `ztk::hotkey` can register global shortcuts. The ztk program
+    /// sets it with `--allow hotkey`.
+    hotkeys: bool = false,
     /// What the command `exit` calls. Null: the command gives an error.
     on_exit: ?*const fn (code: u8) noreturn = null,
 };
@@ -121,6 +124,7 @@ pub const App = struct {
     style_root: ?[]const u8 = null,
     io: ?std.Io = null,
     on_exit: ?*const fn (code: u8) noreturn = null,
+    hotkeys_allowed: bool = false,
     /// The generation of the style set at the last restyle.
     style_gen: u32 = 0,
     /// The queue of backend events, in order. The events before
@@ -184,6 +188,8 @@ pub const App = struct {
     trays: @import("tray.zig").State = .{},
     /// The progress and the badge of `ztk::taskbar`.
     taskbar: @import("platform/platform.zig").Taskbar = .{},
+    /// The shortcuts of `ztk::hotkey`.
+    hotkeys: @import("hotkey.zig").State = .{},
     /// The accent color of the system, when the backend gives one. The themes do not use it yet.
     accent: ?geom.Color = null,
     anim_last_us: i64 = -1,
@@ -256,7 +262,7 @@ pub const App = struct {
         errdefer gpa.free(an);
         // The last step that can fail, so this copy needs no cleanup.
         const root_dir: ?[]const u8 = if (opts.style_root) |r| try gpa.dupe(u8, r) else null;
-        app.* = .{ .gpa = gpa, .it = it, .root_class = rc, .app_name = an, .platform = opts.platform, .loop = undefined, .err_output = opts.err_output, .styles = style_mod.StyleSet.init(gpa), .io = opts.io, .on_exit = opts.on_exit, .animations = opts.animations, .start_us = opts.start_us, .compact_threshold = opts.compact_threshold, .fonts = fonts, .atlas = atlas_mod.Atlas.init(gpa), .bindings = bind.Table.init(gpa) };
+        app.* = .{ .gpa = gpa, .it = it, .root_class = rc, .app_name = an, .platform = opts.platform, .loop = undefined, .err_output = opts.err_output, .styles = style_mod.StyleSet.init(gpa), .io = opts.io, .on_exit = opts.on_exit, .hotkeys_allowed = opts.hotkeys, .animations = opts.animations, .start_us = opts.start_us, .compact_threshold = opts.compact_threshold, .fonts = fonts, .atlas = atlas_mod.Atlas.init(gpa), .bindings = bind.Table.init(gpa) };
         app.env.dark = opts.dark;
         // With no --dark, the scheme follows the system when the backend gives it.
         if (!opts.dark) app.followSystem();
@@ -352,6 +358,7 @@ pub const App = struct {
         app.clipboard.deinit(app.gpa);
         app.text_input.deinit(app.gpa);
         app.trays.deinit(app);
+        app.hotkeys.deinit(app);
         while (app.handles) |h| {
             app.handles = h.next;
             app.gpa.destroy(h);
@@ -969,6 +976,7 @@ pub const App = struct {
             .motion, .button, .leave, .key, .scroll, .preedit, .commit => dispatch.handleIn(app, ev, top),
             .appearance => app.followSystem(),
             .tray => |tr| @import("tray.zig").handleEvent(app, tr.id, tr.action),
+            .hotkey => |hk| @import("hotkey.zig").handleEvent(app, hk.id),
             .menu => |m| @import("widgets/menu.zig").handleEvent(app, m.menu, m.entry, m.action),
             .app_command => {},
         }

@@ -35,6 +35,7 @@ The variable `ZTK_RENDERER` picks the output of the window:
 - Clipboard: `clipboard` and the copy and paste of an entry use the clipboard of Windows, as Unicode text.
 - Taskbar: `ztk::taskbar progress` shows a value, a paused or failed value, or a progress with no value on the taskbar button of `.`. `ztk::taskbar badge count` shows the count on a red disc over the icon, and `ztk::taskbar attention` flashes the button.
 - Recent documents: `ztk::recent add path` puts a file in the recent items of Windows and in the jump list of the app, when the app opens files of that type. `ztk::recent clear` empties the jump list of the app. `add` needs the real paths of the host, the default of the `ztk` program.
+- Global shortcuts: `ztk::hotkey add <Control-Alt-k> script` runs the script when the keys go down in any app, with `RegisterHotKey`. It needs `--allow hotkey`, and a shortcut that another app has is an error.
 - Dark mode: with no `--dark`, ztk follows the dark mode of Windows, also when it changes while the program runs.
 - Menus: the `-menu` of a toplevel is a menu bar of Windows, and `tk_popup` shows a menu of Windows. Alt and F10 open the bar.
 - Tray: `ztk::tray` shows an icon in the notification area, with its tooltip, its clicks, and its menu.

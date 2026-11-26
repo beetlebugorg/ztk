@@ -99,6 +99,11 @@ pub const Headless = struct {
     taskbar: plat.Taskbar = .{},
     attentions: u32 = 0,
     attention_critical: bool = false,
+    /// The shortcuts of `hotkeyAdd` that stay registered, and the next id.
+    /// A sequence in `hotkey_taken` gets 0, as one that another app has.
+    hotkeys: std.ArrayListUnmanaged(HotkeyRec) = .empty,
+    hotkey_next: u32 = 1,
+    hotkey_taken: ?u32 = null,
     /// The texts of the input method events in the queue, freed at the next `poll`.
     ime_texts: std.ArrayListUnmanaged([]u8) = .empty,
     ime_texts_old: std.ArrayListUnmanaged([]u8) = .empty,
@@ -138,6 +143,7 @@ pub const Headless = struct {
         h.dialog_title.deinit(h.gpa);
         for (h.recent.items) |p| h.gpa.free(p);
         h.recent.deinit(h.gpa);
+        h.hotkeys.deinit(h.gpa);
         h.freeTexts(&h.ime_texts);
         h.freeTexts(&h.ime_texts_old);
         h.ime_texts.deinit(h.gpa);
@@ -179,6 +185,8 @@ pub const Headless = struct {
         .attention = vAttention,
         .recentAdd = vRecentAdd,
         .recentClear = vRecentClear,
+        .hotkeyAdd = vHotkeyAdd,
+        .hotkeyRemove = vHotkeyRemove,
     };
 
     pub const TrayRec = struct { id: plat.TrayId, width: u32 = 0, template: bool = false, tooltip: std.ArrayListUnmanaged(u8) = .empty, menu: plat.MenuId = 0 };
@@ -246,6 +254,30 @@ pub const Headless = struct {
     /// Queues an action of the user on a tray.
     pub fn trayAction(h: *Headless, w: *Window, id: plat.TrayId, action: event.TrayAction) void {
         h.push(.{ .tray = .{ .window = w, .id = id, .action = action } });
+    }
+
+    pub const HotkeyRec = struct { id: plat.HotkeyId, window: *Window, mods: event.Mods, keysym: u32 };
+
+    fn vHotkeyAdd(ptr: *anyopaque, w: *Window, mods: event.Mods, sym: u32) plat.HotkeyId {
+        const h = self(ptr);
+        if (h.hotkey_taken == sym) return 0;
+        const id = h.hotkey_next;
+        h.hotkeys.append(h.gpa, .{ .id = id, .window = w, .mods = mods, .keysym = sym }) catch return 0;
+        h.hotkey_next += 1;
+        return id;
+    }
+
+    fn vHotkeyRemove(ptr: *anyopaque, id: plat.HotkeyId) void {
+        const h = self(ptr);
+        for (h.hotkeys.items, 0..) |r, i| if (r.id == id) {
+            _ = h.hotkeys.orderedRemove(i);
+            return;
+        };
+    }
+
+    /// Queues a press of a registered shortcut.
+    pub fn hotkeyPress(h: *Headless, id: plat.HotkeyId) void {
+        for (h.hotkeys.items) |r| if (r.id == id) h.push(.{ .hotkey = .{ .window = r.window, .id = id } });
     }
 
     fn vSetMenuHandler(ptr: *anyopaque, mh: plat.MenuHandler) void {
