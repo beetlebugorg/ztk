@@ -464,3 +464,111 @@ test "menu: the highlight eases from one entry to the next" {
     try t.expectEqual(@import("../widgets/menu.zig").yOf(m, 1), d.hl_from);
     try expectEval(&h, ".m index active", "3");
 }
+
+test "menu: a posted menu and its cascade open in popup windows" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval(setup);
+    _ = try h.eval("wm geometry . 400x300; .m.c add command -label Deep");
+    try h.update();
+    const before = try t.allocator.dupe(u8, h.head.image(h.win).?.pixels);
+    defer t.allocator.free(before);
+    _ = try h.eval(".m post 20 30");
+    try h.update();
+    const md = @import("../widgets/menudraw.zig");
+    const ps = &h.app.menu_pops;
+    try t.expectEqual(@as(usize, 1), ps.n);
+    const pw = ps.live[0].win;
+    try t.expect(h.head.popupOf(pw).?.parent == h.win);
+    const m = h.app.find(".m").?;
+    const r = md.rect(m);
+    try t.expectEqual(@as(i32, 20), r.x);
+    try t.expectEqual(@as(i32, 30), r.y);
+    // The window of "." has no part of the menu, and the popup has the box.
+    try t.expectEqualSlices(u8, before, h.head.image(h.win).?.pixels);
+    const img = h.head.image(pw).?;
+    const s = pw.scale;
+    const cx: usize = @intFromFloat(@as(f32, @floatFromInt(r.x - pw.pos.x + 10)) * s);
+    const cy: usize = @intFromFloat(@as(f32, @floatFromInt(r.y - pw.pos.y + 10)) * s);
+    try t.expectEqual(@as(u8, 255), img.pixels[(cy * img.width + cx) * 4 + 3]);
+    try t.expectEqual(@as(u8, 0), img.pixels[3]);
+    _ = try h.eval(".m postcascade 6");
+    try h.update();
+    try t.expectEqual(@as(usize, 2), ps.n);
+    try t.expect(h.head.popupOf(ps.live[1].win).?.parent == pw);
+    const rc = md.rect(h.app.find(".m.c").?);
+    try t.expect(rc.x >= r.x + r.w - 4);
+    try t.expectEqual(r.y + @import("../widgets/menu.zig").yOf(m, 6), rc.y + @import("../paint.zig").insets(&h.app.find(".m.c").?.style).top);
+    _ = try h.eval(".m postcascade none");
+    try h.update();
+    try t.expectEqual(@as(usize, 1), ps.n);
+    _ = try h.eval(".m unpost");
+    try h.update();
+    try t.expectEqual(@as(usize, 0), ps.n);
+}
+
+test "menu: the events of a popup window go to its menu" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval(setup);
+    _ = try h.eval("wm geometry . 400x300; set log {}");
+    try h.update();
+    _ = try h.eval(".m post 20 30");
+    try h.update();
+    const pw = h.app.menu_pops.live[0].win;
+    const r = @import("../widgets/menudraw.zig").rect(h.app.find(".m").?);
+    const y1 = try std.fmt.parseInt(i32, try h.eval(".m yposition 1"), 10);
+    // The point is in the coordinates of the popup.
+    h.head.pointerMove(pw, @floatFromInt(r.x - pw.pos.x + 20), @floatFromInt(r.y - pw.pos.y + y1 + 4));
+    try h.update();
+    try expectEval(&h, ".m index active", "1");
+    h.head.pointerButton(pw, 1, true);
+    h.head.pointerButton(pw, 1, false);
+    try h.update();
+    try expectEval(&h, "set log", "open");
+    try t.expect(h.app.menu_root == null);
+    try t.expectEqual(@as(usize, 0), h.app.menu_pops.n);
+    // A popup that the system dismissed unposts the chain.
+    _ = try h.eval(".m post 20 30");
+    try h.update();
+    h.head.close(h.app.menu_pops.live[0].win);
+    try h.update();
+    try t.expect(h.app.menu_root == null);
+    try t.expectEqual(@as(usize, 0), h.app.menu_pops.n);
+}
+
+test "menu: a menu bar cascade opens in a popup below its entry" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval(bar_setup);
+    try h.update();
+    const md = @import("../widgets/menudraw.zig");
+    const bar = h.app.find(".bar").?;
+    h.head.click(h.win, @floatFromInt(md.barX(bar, 1) + 4), 5);
+    try h.update();
+    try t.expectEqual(@as(usize, 1), h.app.menu_pops.n);
+    try t.expect(h.head.popupOf(h.app.menu_pops.live[0].win).?.parent == h.win);
+    const r = md.rect(h.app.find(".bar.edit").?);
+    try t.expectEqual(md.barX(bar, 1), r.x);
+    try t.expectEqual(md.barHeight(bar), r.y);
+}
+
+test "menu: the popups of a closed menu fade out and then go away" {
+    var h: Harness = undefined;
+    try h.initAnimated();
+    defer h.deinit();
+    _ = try h.eval(setup);
+    _ = try h.eval("wm geometry . 400x300; update; .m post 20 30");
+    h.head.advance(400);
+    try h.update();
+    _ = try h.eval(".m unpost");
+    try h.update();
+    try t.expectEqual(@as(usize, 0), h.app.menu_pops.n);
+    try t.expectEqual(@as(usize, 1), h.app.menu_pops.ng);
+    h.head.advance(400);
+    try h.update();
+    try t.expectEqual(@as(usize, 0), h.app.menu_pops.ng);
+}

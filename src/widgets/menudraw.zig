@@ -40,6 +40,7 @@ const easing = @import("../easing.zig");
 const loop_mod = @import("../loop.zig");
 const style_mod = @import("../style.zig");
 const menu = @import("menu.zig");
+const menupop = @import("menupop.zig");
 const options = @import("../options.zig");
 const App = @import("../app.zig").App;
 const Widget = widget.Widget;
@@ -47,9 +48,11 @@ const Value = ztcl.Value;
 const Style = style_mod.Style;
 
 const move_dur_us: i64 = 150_000;
-const slide: f32 = 6;
+/// The slide of the open move in logical pixels.
+pub const slide_px: i32 = 6;
+const slide: f32 = @floatFromInt(slide_px);
 /// The longest chain of cascades.
-const max_depth = 16;
+pub const max_depth = 16;
 /// The gap between a menu and the edge of the window.
 const edge: i32 = 4;
 
@@ -116,13 +119,16 @@ fn shownTop(w: *Widget) *Widget {
 }
 
 /// The box of a posted menu in the coordinates of the window of its
-/// toplevel. The box of a menu bar is its row.
+/// toplevel. The box of a menu bar is its row. A menu in a popup window
+/// has the box of its popup. A menu without a popup stays in the window.
 pub fn rect(w: *Widget) geom.Rect {
     const d = menu.data(w);
     const top = shownTop(w);
     if (d.is_bar) return .{ .x = 0, .y = 0, .w = top.geom.w, .h = barHeight(w) };
+    if (menupop.boxOf(w.app, w)) |r| return r;
     const sz = size(w);
     var r: geom.Rect = .{ .x = d.post_at.x, .y = d.post_at.y, .w = sz.w, .h = sz.h };
+    if (menupop.active(w.app)) return r;
     if (r.x + r.w > top.geom.w - edge) r.x = top.geom.w - edge - r.w;
     if (r.y + r.h > top.geom.h - edge) r.y = top.geom.h - edge - r.h;
     r.x = @max(r.x, edge);
@@ -141,7 +147,7 @@ pub fn cascadeOf(w: *Widget) ?*Widget {
 }
 
 /// The posted chain from `App.menu_root`, in the order of the cascades.
-fn chain(app: *App, out: *[max_depth]*Widget) []*Widget {
+pub fn chain(app: *App, out: *[max_depth]*Widget) []*Widget {
     var n: usize = 0;
     var m = app.menu_root;
     while (m) |x| : (m = cascadeOf(x)) {
@@ -170,6 +176,7 @@ pub fn post(w: *Widget) void {
     app.menu_top = w.toplevel();
     app.grab = .{ .widget = w, .global = false };
     repaint(w);
+    menupop.sync(app);
 }
 
 /// Opens the cascade of an entry, or closes the open cascade when the
@@ -211,6 +218,7 @@ pub fn postCascade(w: *Widget, index: i64) ztcl.Error!void {
     md.open_us = app.platform.nowUs();
     d.cascade = index;
     repaint(w);
+    menupop.sync(app);
 }
 
 /// Unposts a menu and its open cascades.
@@ -268,6 +276,7 @@ fn clearFade(app: *App) void {
         for (app.tops.items) |t| if (t.alive()) t.invalidate(dirty);
     }
     f.* = .{};
+    menupop.dropGhosts(app);
 }
 
 fn fadeDone(ctx: ?*anyopaque) void {
@@ -292,7 +301,11 @@ fn startFade(app: *App) void {
     f.top = if (app.menu_top) |t| t else f.items[0].w.toplevel();
     f.start_us = app.platform.nowUs();
     f.timer = app.loop.addNative(move_dur_us, fadeDone, app) catch null;
-    if (f.timer == null) f.* = .{};
+    if (f.timer == null) {
+        f.* = .{};
+        return;
+    }
+    menupop.toGhosts(app);
 }
 
 /// Unposts the chain and ends the grab.
@@ -308,6 +321,7 @@ pub fn unpostAll(app: *App) void {
     }
     if (app.grab.widget == r) app.grab.widget = null;
     if (r.alive()) unpostChain(r);
+    menupop.sync(app);
 }
 
 /// Removes a menu that is going away from the chain.
@@ -324,12 +338,14 @@ pub fn forget(w: *Widget) void {
         app.menu_top = null;
         app.menu_button = null;
         if (app.grab.widget == w) app.grab.widget = null;
+        menupop.sync(app);
         return;
     }
     var list: [max_depth]*Widget = undefined;
     for (chain(app, &list)) |x| if (cascadeOf(x) == w) {
         menu.data(x).cascade = -1;
     };
+    menupop.sync(app);
 }
 
 // ---- The menu bar ----
@@ -382,6 +398,14 @@ pub fn barX(w: *Widget, index: i64) i32 {
         x += barWidth(w, &ps, en);
     }
     return x;
+}
+
+/// The box of an entry of a menu bar in the coordinates of its toplevel.
+pub fn barEntryRect(w: *Widget, index: i64) geom.Rect {
+    const ps = BarParts.of(w);
+    const d = menu.data(w);
+    const wd = if (index >= 0 and index < d.entries.items.len) barWidth(w, &ps, &d.entries.items[@intCast(index)]) else 0;
+    return .{ .x = barX(w, index), .y = 0, .w = wd, .h = barHeight(w) };
 }
 
 fn barEntryAt(w: *Widget, x: i32) i64 {
@@ -615,16 +639,31 @@ fn byteOfChar(text: []const u8, i: i64) ?usize {
 }
 
 /// Paints the posted chain of the toplevel `top`, over its widgets.
+/// A menu with a popup window paints in its popup (`menupop.zig`).
 pub fn paintPosted(app: *App, top: *Widget, b: *scene.Builder) !void {
+    menupop.sync(app);
     const f = &app.menu_fade;
     if (f.top == top) for (f.items[0..f.n]) |g| {
-        if (g.w.alive()) try paintMove(app, g.w, b, g.r, g.active, f.start_us, true);
+        if (g.w.alive() and !menupop.hasGhost(app, g.w)) try paintMove(app, g.w, b, g.r, g.active, f.start_us, true);
     };
     var list: [max_depth]*Widget = undefined;
     for (chain(app, &list)) |w| {
-        if (shownTop(w) != top or menu.data(w).is_bar) continue;
+        if (shownTop(w) != top or menu.data(w).is_bar or menupop.boxOf(app, w) != null) continue;
         try paintOne(app, w, b);
     }
+}
+
+/// Paints a posted menu, for its popup window.
+pub fn paintLive(app: *App, w: *Widget, b: *scene.Builder) !void {
+    if (w.alive() and menu.data(w).posted) try paintOne(app, w, b);
+}
+
+/// Paints a menu of the closed chain during its close move, for its ghost popup.
+pub fn paintGhost(app: *App, w: *const Widget, b: *scene.Builder) !void {
+    const f = &app.menu_fade;
+    for (f.items[0..f.n]) |g| if (g.w == w and g.w.alive()) {
+        try paintMove(app, g.w, b, g.r, g.active, f.start_us, true);
+    };
 }
 
 fn paintOne(app: *App, w: *Widget, b: *scene.Builder) !void {

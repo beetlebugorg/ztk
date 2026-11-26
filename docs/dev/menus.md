@@ -60,6 +60,8 @@ In Tk, `-accelerator` only shows text, and a binding of the script handles the k
 
 A backend without native menus gets the menus that the core draws. The bar is a row at the top of the window, as Tk on X11 has it. A popup and a cascade each go in a popup surface when the backend sets `Platform.popups`: `createWindow` with `WindowOptions.popup` gives a window next to an anchor rectangle of its parent window. The popup can extend past the edges of the parent. The backend flips or slides it when the screen has no room on the side that the core asked for. The backend sends `close` for the popup window when the system dismissed it. A backend without popups gets the menu drawn inside the parent window.
 
+With popups, each menu of the chain, except a menu bar, gets one popup window. A cascade has the popup of its parent menu as its parent. The menus keep the coordinates of the toplevel: the core adds the place of a popup (`Window.pos`) to the position of each pointer event of the popup, and gives the event to the toplevel. At an unpost, the popups stay for the close fade, and the end of the fade destroys them. The `--screenshot` flag of the headless backend draws the popups over the window of `.`, at their places.
+
 A drawn menu opens with a fade and a short slide from its anchor, as the list of a combobox does.
 
 ## The PRs
@@ -73,6 +75,10 @@ A drawn menu opens with a fade and a short slide from its anchor, as the list of
    - 3d: the gallery card, the widget page, and the `menu-open` bench case;
    - 3e: the close fade of a menu and the move of the highlight between entries;
    - 3f: the menu bars and the context menus of the spreadsheet and the vector tool.
-4. The popup surfaces of the Wayland backend and the popup layer of the web backend. Until this PR, each backend gets the drawn menus inside the parent window, also a backend with `Platform.popups`.
+4. The popup surfaces, in three parts:
+   - 4a: the popup windows of the posted chain in the core (`src/widgets/menupop.zig`), the placement of the headless backend, and the CPU renderer with an alpha channel for a popup surface;
+   - 4b: `xdg_popup` in the Wayland backend;
+   - 4c: the popup layer of the web backend.
+   Until 4b and 4c, the Wayland and the web backends get the drawn menus inside the parent window.
 
 The macOS and Windows backends fill the native functions in their own PRs.

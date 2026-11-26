@@ -1,7 +1,10 @@
 //! The CPU renderer. It draws a scene to an RGBA image with the math of
 //! renderer.zig. It clears the image, then draws each quad in order with
 //! "source over" on 8-bit sRGB values: out = src * a + dst * (1 - a),
-//! rounded to the nearest integer. The target is opaque. A pixel outside
+//! rounded to the nearest integer. The target is opaque, unless the clear
+//! color has an alpha under 1 (a popup surface): then the image has
+//! premultiplied alpha, and each blend also sets the alpha byte to
+//! a + dst * (1 - a). A pixel outside
 //! the clip of a quad gets no color. A pixel in the solid core of a box
 //! (farther from each edge than the largest radius and border) skips the
 //! distance math. A glyph or image quad draws nothing until task 07.
@@ -16,7 +19,7 @@ const Quad = scene_mod.Quad;
 const Image = r.Image;
 const Atlas = @import("../text/atlas.zig").Atlas;
 
-inline fn blend(dst: []u8, rgb: [3]f32, a: f32) void {
+inline fn blend(comptime alpha: bool, dst: []u8, rgb: [3]f32, a: f32) void {
     // The test is also false for NaN.
     if (!(a > 0)) return;
     const ia = 1 - a;
@@ -24,6 +27,10 @@ inline fn blend(dst: []u8, rgb: [3]f32, a: f32) void {
         const d: f32 = @floatFromInt(dst[i]);
         const o = rgb[i] * 255 * a + d * ia;
         dst[i] = @intFromFloat(std.math.clamp(@round(o), 0, 255));
+    }
+    if (alpha) {
+        const d: f32 = @floatFromInt(dst[3]);
+        dst[3] = @intFromFloat(std.math.clamp(@round(255 * a + d * ia), 0, 255));
     }
 }
 
@@ -53,16 +60,16 @@ fn bounds(q: *const Quad, pad: f32, img: Image) [4]i32 {
 }
 
 /// One pixel of a box on the slow path: the coverage comes from the distance math.
-inline fn boxPixel(q: *const Quad, dst: []u8, x: i32, y: i32, flat: bool) void {
+inline fn boxPixel(comptime alpha: bool, q: *const Quad, dst: []u8, x: i32, y: i32, flat: bool) void {
     const px = @as(f32, @floatFromInt(x)) + 0.5;
     const py = @as(f32, @floatFromInt(y)) + 0.5;
     const c = r.boxCoverage(q, px, py);
     const opacity = q.params[3];
     if (c.fill > 0) {
         const col = if (flat) q.fill else lerpColor(q.fill, q.fill2, r.gradientT(q, px, py));
-        blend(dst, rgbOf(col), col[3] * c.fill * opacity);
+        blend(alpha, dst, rgbOf(col), col[3] * c.fill * opacity);
     }
-    if (c.border > 0) blend(dst, rgbOf(q.border_color), q.border_color[3] * c.border * opacity);
+    if (c.border > 0) blend(alpha, dst, rgbOf(q.border_color), q.border_color[3] * c.border * opacity);
 }
 
 /// The rows far from the top and bottom edges ("core rows") have no
@@ -75,7 +82,7 @@ inline fn boxPixel(q: *const Quad, dst: []u8, x: i32, y: i32, flat: bool) void {
 ///
 /// The clip edges are whole numbers (the Builder rounds them), so each
 /// pixel of the bounds has its center in the clip.
-fn drawBox(q: *const Quad, img: Image) void {
+fn drawBox(comptime alpha: bool, q: *const Quad, img: Image) void {
     const b = bounds(q, 1, img);
     if (b[2] <= b[0] or b[3] <= b[1]) return;
     var maxr: f32 = 0;
@@ -116,7 +123,7 @@ fn drawBox(q: *const Quad, img: Image) void {
         const s0 = if (core_row) a0 else m0;
         const s1 = if (core_row) a1 else m1;
         var x = b[0];
-        while (x < s0) : (x += 1) boxPixel(q, row[@as(usize, @intCast(x)) * 4 ..][0..4], x, y, flat);
+        while (x < s0) : (x += 1) boxPixel(alpha, q, row[@as(usize, @intCast(x)) * 4 ..][0..4], x, y, flat);
         if (s1 > s0) {
             // One coverage for the span.
             const c: r.Coverage = if (core_row)
@@ -134,18 +141,18 @@ fn drawBox(q: *const Quad, img: Image) void {
                     const dst = row[@as(usize, @intCast(x)) * 4 ..][0..4];
                     if (c.fill > 0) {
                         const col = if (flat) q.fill else lerpColor(q.fill, q.fill2, r.gradientT(q, @as(f32, @floatFromInt(x)) + 0.5, py));
-                        blend(dst, rgbOf(col), col[3] * c.fill * opacity);
+                        blend(alpha, dst, rgbOf(col), col[3] * c.fill * opacity);
                     }
-                    if (c.border > 0) blend(dst, rgbOf(q.border_color), q.border_color[3] * c.border * opacity);
+                    if (c.border > 0) blend(alpha, dst, rgbOf(q.border_color), q.border_color[3] * c.border * opacity);
                 }
             }
         }
         x = s1;
-        while (x < b[2]) : (x += 1) boxPixel(q, row[@as(usize, @intCast(x)) * 4 ..][0..4], x, y, flat);
+        while (x < b[2]) : (x += 1) boxPixel(alpha, q, row[@as(usize, @intCast(x)) * 4 ..][0..4], x, y, flat);
     }
 }
 
-fn drawShadow(q: *const Quad, img: Image) void {
+fn drawShadow(comptime alpha: bool, q: *const Quad, img: Image) void {
     const pad = @max(q.params[2], 1) + 1;
     const b = bounds(q, pad, img);
     if (b[2] <= b[0] or b[3] <= b[1]) return;
@@ -158,14 +165,14 @@ fn drawShadow(q: *const Quad, img: Image) void {
         while (x < b[2]) : (x += 1) {
             const px = @as(f32, @floatFromInt(x)) + 0.5;
             const cov = r.shadowCoverage(q, px, py);
-            blend(row[@as(usize, @intCast(x)) * 4 ..][0..4], rgbOf(q.fill), q.fill[3] * cov * q.params[3]);
+            blend(alpha, row[@as(usize, @intCast(x)) * 4 ..][0..4], rgbOf(q.fill), q.fill[3] * cov * q.params[3]);
         }
     }
 }
 
 /// Draws a glyph quad: the coverage is the texel of the atlas at the
 /// pixel. The quad has whole device pixel positions, so no filter applies.
-fn drawGlyph(q: *const Quad, atlas: *const Atlas, img: Image) void {
+fn drawGlyph(comptime alpha: bool, q: *const Quad, atlas: *const Atlas, img: Image) void {
     const page = atlas.page();
     if (page.len == 0) return;
     const b = bounds(q, 0, img);
@@ -183,7 +190,7 @@ fn drawGlyph(q: *const Quad, atlas: *const Atlas, img: Image) void {
         while (x < b[2]) : (x += 1) {
             const cov = page[trow + @as(usize, @intCast(ux + x - rx))];
             if (cov == 0) continue;
-            blend(row[@as(usize, @intCast(x)) * 4 ..][0..4], color, q.fill[3] * (@as(f32, @floatFromInt(cov)) / 255) * q.params[3]);
+            blend(alpha, row[@as(usize, @intCast(x)) * 4 ..][0..4], color, q.fill[3] * (@as(f32, @floatFromInt(cov)) / 255) * q.params[3]);
         }
     }
 }
@@ -191,20 +198,26 @@ fn drawGlyph(q: *const Quad, atlas: *const Atlas, img: Image) void {
 /// Draws the scene. `atlas` is the glyph atlas, or null for a scene
 /// with no glyphs.
 pub fn render(scene: *const Scene, atlas_ptr: ?*const anyopaque, out: *Image) void {
+    if (scene.clear[3] >= 1) return renderWith(false, scene, atlas_ptr, out);
+    renderWith(true, scene, atlas_ptr, out);
+}
+
+fn renderWith(comptime alpha: bool, scene: *const Scene, atlas_ptr: ?*const anyopaque, out: *Image) void {
     const atlas: ?*const Atlas = if (atlas_ptr) |p| @ptrCast(@alignCast(p)) else null;
     const clear = scene.clear;
+    const ca: f32 = if (alpha) std.math.clamp(clear[3], 0, 1) else 1;
     var i: usize = 0;
     while (i < out.pixels.len) : (i += 4) {
-        out.pixels[i] = num.byte(clear[0] * 255);
-        out.pixels[i + 1] = num.byte(clear[1] * 255);
-        out.pixels[i + 2] = num.byte(clear[2] * 255);
-        out.pixels[i + 3] = 255;
+        out.pixels[i] = num.byte(clear[0] * ca * 255);
+        out.pixels[i + 1] = num.byte(clear[1] * ca * 255);
+        out.pixels[i + 2] = num.byte(clear[2] * ca * 255);
+        out.pixels[i + 3] = num.byte(ca * 255);
     }
     for (scene.quads.items) |*q| {
         switch (@as(scene_mod.Kind, @enumFromInt(q.kind))) {
-            .box => drawBox(q, out.*),
-            .shadow => drawShadow(q, out.*),
-            .glyph => if (atlas) |a| drawGlyph(q, a, out.*),
+            .box => drawBox(alpha, q, out.*),
+            .shadow => drawShadow(alpha, q, out.*),
+            .glyph => if (atlas) |a| drawGlyph(alpha, q, a, out.*),
             .image => {},
         }
     }

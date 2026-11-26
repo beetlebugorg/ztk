@@ -81,6 +81,8 @@ pub const Top = struct {
     render: *render_thread.RenderThread,
     wm: wm_mod.State = .{},
     frame_requested: bool = false,
+    /// The atlas takes that the surface of the window has (`Atlas.takePatchesFor`).
+    atlas_seen: u32 = atlas_mod.Atlas.seen_none,
 };
 
 pub const App = struct {
@@ -206,6 +208,10 @@ pub const App = struct {
     menu_fade: @import("widgets/menudraw.zig").Fade = .{},
     /// The menu button that posted the chain, or null.
     menu_button: ?*Widget = null,
+    /// The popup windows of the posted chain, for a backend with `Platform.popups`.
+    menu_pops: @import("widgets/menupop.zig").Pops = .{},
+    /// The atlas takes that the surface of the window of "." has.
+    atlas_seen: u32 = 0,
     /// The menu widget of each native menu id, and the next id.
     menu_ids: std.AutoHashMapUnmanaged(u32, *Widget) = .empty,
     menu_next: u32 = 1,
@@ -324,6 +330,7 @@ pub const App = struct {
             if (app.window) |win| win.render.store(null, .release);
             app.render.retarget(idle_target);
         }
+        @import("widgets/menupop.zig").dropAll(app);
         if (app.root) |r| widget.destroy(r);
         // A widget that has no root (a failed init) still needs a free.
         // The window goes away here, after the render thread finished its frames.
@@ -845,10 +852,12 @@ pub const App = struct {
         try @import("ttk/combobox.zig").paintPopdown(app, top, &b);
         try @import("widgets/menudraw.zig").paintPosted(app, top, &b);
         try @import("grab.zig").paintTip(app, top, &b);
-        try app.atlas.takePatches(app.gpa, &fr.patches);
+        const seen = if (app.topOf(top)) |d| &d.atlas_seen else &app.atlas_seen;
+        try app.atlas.takePatchesFor(app.gpa, &fr.patches, seen);
         app.stats.end(.paint, wall.*());
         app.stats.begin(.render, wall.*());
         rend.submit();
+        @import("widgets/menupop.zig").paintAll(app, top);
         app.stats.end(.render, wall.*());
         top.dirty = widget.Dirty.none;
         app.anim_more_us = now;
@@ -929,6 +938,7 @@ pub const App = struct {
     fn handleEvent(app: *App, ev: event.Event) void {
         if (ev == .app_command) return app.appCommand(ev.app_command.command);
         // A window that is gone has no events. Compare the pointer only.
+        if (@import("widgets/menupop.zig").handleEvent(app, ev)) return;
         const top = app.topOfWindow(ev.window() orelse return) orelse return;
         switch (ev) {
             .resize => |r| {
