@@ -178,6 +178,8 @@ pub const App = struct {
     clipboard: @import("clipboard.zig").Store = .{},
     /// The input method: what the backend has, and the composition text.
     text_input: @import("textinput.zig").State = .{},
+    /// The icons of `ztk::tray`.
+    trays: @import("tray.zig").State = .{},
     /// The accent color of the system, when the backend gives one. The themes do not use it yet.
     accent: ?geom.Color = null,
     anim_last_us: i64 = -1,
@@ -340,6 +342,7 @@ pub const App = struct {
         app.classes.deinit(app.gpa);
         app.clipboard.deinit(app.gpa);
         app.text_input.deinit(app.gpa);
+        app.trays.deinit(app);
         while (app.handles) |h| {
             app.handles = h.next;
             app.gpa.destroy(h);
@@ -946,6 +949,7 @@ pub const App = struct {
             .scale => top.invalidate(.{ .style = false, .measure = false, .layout = false, .paint = true }),
             .motion, .button, .leave, .key, .scroll, .preedit, .commit => dispatch.handleIn(app, ev, top),
             .appearance => app.followSystem(),
+            .tray => |tr| @import("tray.zig").handleEvent(app, tr.id, tr.action),
             .menu => |m| @import("widgets/menu.zig").handleEvent(app, m.menu, m.entry, m.action),
             .app_command => {},
         }

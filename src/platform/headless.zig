@@ -71,6 +71,9 @@ pub const Headless = struct {
     ime_calls: u32 = 0,
     /// The appearance of the system that a test sets. Null: light, with no accent.
     system: ?plat.Appearance = null,
+    /// The trays: the last call of `traySet` for each, and the count of the ids.
+    trays: std.ArrayListUnmanaged(TrayRec) = .empty,
+    tray_next: u32 = 1,
     /// The texts of the input method events in the queue, freed at the next `poll`.
     ime_texts: std.ArrayListUnmanaged([]u8) = .empty,
     ime_texts_old: std.ArrayListUnmanaged([]u8) = .empty,
@@ -99,6 +102,8 @@ pub const Headless = struct {
         h.windows.deinit(h.gpa);
         h.queue.deinit(h.gpa);
         h.clip_set.deinit(h.gpa);
+        for (h.trays.items) |*r| r.tooltip.deinit(h.gpa);
+        h.trays.deinit(h.gpa);
         h.freeTexts(&h.ime_texts);
         h.freeTexts(&h.ime_texts_old);
         h.ime_texts.deinit(h.gpa);
@@ -132,7 +137,50 @@ pub const Headless = struct {
         .postMenu = vPostMenu,
         .unpostMenu = vUnpostMenu,
         .setMenuHandler = vSetMenuHandler,
+        .trayCreate = vTrayCreate,
+        .traySet = vTraySet,
+        .trayDrop = vTrayDrop,
     };
+
+    pub const TrayRec = struct { id: plat.TrayId, width: u32 = 0, template: bool = false, tooltip: std.ArrayListUnmanaged(u8) = .empty, menu: plat.MenuId = 0 };
+
+    fn vTrayCreate(ptr: *anyopaque, _: *Window, icon: plat.TrayIcon, template: bool, _: []const u8) plat.TrayId {
+        const h = self(ptr);
+        const id = h.tray_next;
+        h.trays.append(h.gpa, .{ .id = id, .width = icon.width, .template = template }) catch return 0;
+        h.tray_next += 1;
+        return id;
+    }
+
+    fn vTraySet(ptr: *anyopaque, id: plat.TrayId, icon: plat.TrayIcon, template: bool, tooltip: []const u8, m: plat.MenuId) void {
+        const h = self(ptr);
+        const r = h.tray(id) orelse return;
+        r.width = icon.width;
+        r.template = template;
+        r.menu = m;
+        r.tooltip.clearRetainingCapacity();
+        r.tooltip.appendSlice(h.gpa, tooltip) catch {};
+    }
+
+    fn vTrayDrop(ptr: *anyopaque, id: plat.TrayId) void {
+        const h = self(ptr);
+        for (h.trays.items, 0..) |*r, i| if (r.id == id) {
+            r.tooltip.deinit(h.gpa);
+            _ = h.trays.orderedRemove(i);
+            return;
+        };
+    }
+
+    /// The record of a tray, or null after its drop.
+    pub fn tray(h: *Headless, id: plat.TrayId) ?*TrayRec {
+        for (h.trays.items) |*r| if (r.id == id) return r;
+        return null;
+    }
+
+    /// Queues an action of the user on a tray.
+    pub fn trayAction(h: *Headless, w: *Window, id: plat.TrayId, action: event.TrayAction) void {
+        h.push(.{ .tray = .{ .window = w, .id = id, .action = action } });
+    }
 
     fn vSetMenuHandler(ptr: *anyopaque, mh: plat.MenuHandler) void {
         self(ptr).menu_handler = mh;

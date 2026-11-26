@@ -44,6 +44,7 @@ const Mods = event.Mods;
 const Cursor = plat.Cursor;
 const tsf = @import("tsf.zig");
 const winmenu = @import("winmenu.zig");
+const wintray = @import("wintray.zig");
 
 pub const Renderer = enum { auto, d3d12, cpu };
 
@@ -113,6 +114,8 @@ pub const Win32 = struct {
     /// The native menus, and the handler of the core for their menu loop.
     menus: winmenu.Menus,
     menu_handler: ?plat.MenuHandler = null,
+    /// The icons in the notification area.
+    trays: wintray.Trays,
     last_frame_us: i64 = 0,
     /// Counts of the frames that each output drew, for the tests.
     gpu_frames: std.atomic.Value(u32) = .init(0),
@@ -134,12 +137,14 @@ pub const Win32 = struct {
         // A manual reset keeps the tick signaled after the wait, so `poll` sees it.
         const timer = w32.CreateWaitableTimerExW(null, null, w32.CREATE_WAITABLE_TIMER_MANUAL_RESET | w32.CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, w32.TIMER_ALL_ACCESS) orelse return error.NoTimer;
         const b = try gpa.create(Win32);
-        b.* = .{ .gpa = gpa, .opts = opts, .inst = inst, .timer = timer, .menus = .{ .gpa = gpa } };
+        b.* = .{ .gpa = gpa, .opts = opts, .inst = inst, .timer = timer, .menus = .{ .gpa = gpa }, .trays = wintray.Trays.init(gpa) };
         b.tsf = tsf.Tsf.init() catch null;
         return b;
     }
 
     pub fn deinit(b: *Win32) void {
+        // An icon goes away with the window that owns it, so the trays go first.
+        b.trays.deinit();
         while (b.windows.items.len > 0) destroy(b, b.windows.items[b.windows.items.len - 1].win);
         b.windows.deinit(b.gpa);
         b.queue.deinit(b.gpa);
@@ -181,6 +186,9 @@ pub const Win32 = struct {
         .postMenu = vPostMenu,
         .unpostMenu = vUnpostMenu,
         .setMenuHandler = vSetMenuHandler,
+        .trayCreate = vTrayCreate,
+        .traySet = vTraySet,
+        .trayDrop = vTrayDrop,
     };
 
     fn self(ptr: *anyopaque) *Win32 {
@@ -492,6 +500,55 @@ pub const Win32 = struct {
         b.push(.{ .menu = .{ .window = rec.win, .menu = id, .entry = entry, .action = action } });
     }
 
+    // ---- Tray ----
+
+    fn vTrayCreate(ptr: *anyopaque, w: *Window, icon: plat.TrayIcon, _: bool, tooltip: []const u8) plat.TrayId {
+        const b = self(ptr);
+        const rec = b.recOf(w) orelse return 0;
+        return b.trays.create(rec.hwnd, icon, tooltip);
+    }
+
+    // Windows has no template icons, so `template` has no effect.
+    fn vTraySet(ptr: *anyopaque, id: plat.TrayId, icon: plat.TrayIcon, _: bool, tooltip: []const u8, menu: plat.MenuId) void {
+        self(ptr).trays.set(id, icon, tooltip, menu);
+    }
+
+    fn vTrayDrop(ptr: *anyopaque, id: plat.TrayId) void {
+        self(ptr).trays.drop(id);
+    }
+
+    /// A message of the shell for a tray: the action in the low word of
+    /// `lp`, the id in the high word, and the point of the pointer in `wp`.
+    fn trayMessage(b: *Win32, rec: *WinRec, wp: w32.WPARAM, lp: w32.LPARAM) w32.LRESULT {
+        const action: u16 = @bitCast(w32.loword(lp));
+        const id: plat.TrayId = @as(u16, @bitCast(w32.hiword(lp)));
+        const what: event.TrayAction = switch (action) {
+            w32.NIN_SELECT, w32.NIN_KEYSELECT => .click,
+            w32.WM_LBUTTONDBLCLK => .double,
+            w32.WM_CONTEXTMENU => .menu,
+            else => return 0,
+        };
+        b.push(.{ .tray = .{ .window = rec.win, .id = id, .action = what } });
+        if (what != .menu) return 0;
+        const t = b.trays.find(id) orelse return 0;
+        const h = b.menus.handleOf(t.menu) orelse return 0;
+        // The documentation of TrackPopupMenu asks for the foreground window
+        // before the menu of a tray, and a message after it, so the menu
+        // closes on a click outside it.
+        _ = w32.SetForegroundWindow(rec.hwnd);
+        const x: i32 = w32.loword(wp);
+        const y: i32 = w32.hiword(wp);
+        _ = w32.TrackPopupMenuEx(h, w32.TPM_RIGHTBUTTON, x, y, rec.hwnd, null);
+        _ = w32.PostMessageW(rec.hwnd, w32.WM_NULL, 0, 0);
+        return 0;
+    }
+
+    /// The tray of an id, for the tests.
+    pub fn trayMenu(b: *Win32, id: plat.TrayId) ?plat.MenuId {
+        const t = b.trays.find(id) orelse return null;
+        return t.menu;
+    }
+
     // ---- Appearance ----
 
     /// The dark mode from `AppsUseLightTheme` of the user (0 is dark), and
@@ -785,6 +842,11 @@ pub const Win32 = struct {
 
     fn message(b: *Win32, rec: *WinRec, msg: w32.UINT, wp: w32.WPARAM, lp: w32.LPARAM) w32.LRESULT {
         const w = rec.win;
+        if (msg == wintray.callback_msg) return b.trayMessage(rec, wp, lp);
+        if (msg == b.trays.taskbar_created and msg != 0) {
+            b.trays.addAll();
+            return 0;
+        }
         switch (msg) {
             w32.WM_SIZE => {
                 const pw: u16 = @bitCast(w32.loword(lp));

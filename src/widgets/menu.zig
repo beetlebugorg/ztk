@@ -547,6 +547,16 @@ fn nativeId(w: *Widget) !plat.MenuId {
     return d.native_id;
 }
 
+/// The native menu of a menu widget for a use other than a bar or a
+/// cascade, such as the menu of a tray: the entries go to the backend,
+/// and the id comes back. Null for a widget of another class or a
+/// backend with no native menus.
+pub fn nativeMenuOf(w: *Widget) ?plat.MenuId {
+    if (w.class != &class or !w.app.platform.hasNativeMenus()) return null;
+    syncNative(w, 0) catch return null;
+    return data(w).native_id;
+}
+
 /// The role of a cascade menu in a menu bar, from its name as Tk on macOS has it.
 fn roleOf(bar: *Widget, sub: *Widget) plat.Menu.Role {
     if (!data(bar).is_bar or sub.parent != bar) return .none;
