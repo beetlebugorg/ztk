@@ -290,6 +290,8 @@ pub const Class = struct {
     /// The pointer shape of a part under the pointer, such as a sash, or
     /// null. It comes before the `-cursor` option.
     cursor: ?*const fn (w: *const Widget) ?@import("platform/platform.zig").Cursor = null,
+    /// Adds quads over the children of the widget, after their paint.
+    overlay: ?*const fn (w: *Widget, b: *scene.Builder) anyerror!void = null,
 };
 
 /// The name of a variable in the global namespace, as `-textvariable` reads it.

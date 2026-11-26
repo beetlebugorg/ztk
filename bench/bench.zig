@@ -362,6 +362,31 @@ pub fn main(init: std.process.Init) !void {
         report("sash-drag", buf[0..runs]);
     }
 
+    // tab-change: a notebook of 3 tabs with 300 labels on each page changes
+    // its tab each 10 frames, with transitions on, so most frames have the
+    // slide of the indicator and the fade of the page.
+    {
+        var nw: World = undefined;
+        try nw.it.init(gpa);
+        nw.head = try ztk.headless.Headless.init(gpa);
+        nw.app = try ztk.App.init(gpa, &nw.it, .{ .platform = nw.head.platform(), .io = io, .animations = true });
+        defer nw.deinit();
+        nw.head.skip_draw = true;
+        nw.eval("ttk::notebook .n; foreach n {a b c} { ttk::frame .n.$n; for {set i 0} {$i < 300} {incr i} { label .n.$n.l$i -text $n$i; grid .n.$n.l$i -row [expr {$i / 15}] -column [expr {$i % 15}] }; .n add .n.$n -text \"Page $n\" }; pack .n -fill both -expand 1; update");
+        const runs = 200;
+        for (buf[0..runs], 0..) |*slot, i| {
+            nw.head.advance(16);
+            if (i % 10 == 0) {
+                var sbuf: [32]u8 = undefined;
+                nw.eval(std.fmt.bufPrint(&sbuf, ".n select {d}", .{(i / 10) % 3}) catch unreachable);
+            }
+            const t0 = nowNs();
+            nw.eval("update");
+            slot.* = nowNs() - t0;
+        }
+        report("tab-change", buf[0..runs]);
+    }
+
     // listbox-scroll-10000: fine wheel steps scroll a listbox of 10,000 rows, one step
     // for each frame, with transitions on, and a press selects a row each 20 frames.
     {

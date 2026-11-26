@@ -174,6 +174,22 @@ $pn.p add $pn.p.r -stretch always
 pack $pn.p -fill x
 pack .cols.right.panes -fill x -pady 4
 
+# Tabs: a notebook with three pages. The line under the selected tab slides to the next one.
+set tb [card .cols.right.tabs "Tabs"]
+ttk::notebook $tb.n
+foreach {page title} {general General network Network advanced Advanced} {
+    ttk::frame $tb.n.$page -padding 8
+    $tb.n add $tb.n.$page -text $title
+}
+set gnlogin 1
+ttk::checkbutton $tb.n.general.a -text "Open at login" -variable gnlogin
+pack $tb.n.general.a -anchor w
+ttk::label $tb.n.network.l -text "Proxy: none"
+pack $tb.n.network.l -anchor w
+$tb.n tab $tb.n.advanced -state disabled
+pack $tb.n -fill x
+pack .cols.right.tabs -fill x -pady 4
+
 # Lists: a sidebar, and a list with a scrollbar and the extended selection mode.
 set ls [card .cols.left.lists "Lists"]
 listbox $ls.side -height 4 -width 12 -activestyle none -exportselection 0

@@ -1,6 +1,6 @@
-# Panes
+# Panes and tabs
 
-**Live:** the Panes card of the [gallery](https://beetlebug.org/ztk/play/index.html?example=gallery).
+**Live:** the Panes and Tabs cards of the [gallery](https://beetlebug.org/ztk/play/index.html?example=gallery).
 
 ## panedwindow and ttk::panedwindow
 
@@ -28,3 +28,32 @@ pack .p -fill both -expand 1 -padx 8 -pady 8
 - A press on a sash and a drag move it. The panes follow the pointer in each frame, and the render thread moves the sash with the pointer while a script is busy. With `-opaqueresize 0`, a drag moves a line, and the release moves the sash. `-showhandle` draws a handle on each sash.
 - The pointer shape is a resize arrow over a sash, or the shape of `-sashcursor`.
 - The modern theme draws a sash as a thin line in the part `::sash`. The sash under the pointer or in a drag fades to the part `::sash-active` in 120 ms.
+
+## ttk::notebook
+
+![A notebook with the tabs General, Network, and Advanced, the General tab selected with a blue line under it, and a page with two check buttons](../site/shots/widget-notebook-light.png)
+
+<!-- widget: notebook; shot: update -->
+```tcl
+ttk::notebook .n
+foreach {page title} {general General network Network advanced Advanced} {
+    ttk::frame .n.$page -padding 12
+    .n add .n.$page -text $title -underline 0
+}
+set login 1
+set menubar 0
+ttk::checkbutton .n.general.a -text "Open at login" -variable login
+ttk::checkbutton .n.general.b -text "Show in the menu bar" -variable menubar
+pack .n.general.a .n.general.b -anchor w -pady 2
+ttk::label .n.network.l -text "Proxy: none"
+pack .n.network.l -anchor w
+.n tab .n.advanced -state disabled
+ttk::notebook::enableTraversal .n
+pack .n -fill both -expand 1 -padx 8 -pady 8
+```
+
+- `ttk::notebook` has the subcommands of Tk 8.6: `add`, `forget`, `hide`, `identify`, `index`, `insert`, `select`, `tab`, and `tabs`, with `instate` and `state`. A tab is `normal`, `disabled`, or `hidden`, and it has `-text`, `-underline`, `-padding`, and `-sticky`.
+- A click on a tab selects it. `Left` and `Right` move to the next tab that is not disabled, and `Control-Tab` and `Control-Shift-Tab` cycle the tabs. `ttk::notebook::enableTraversal` adds these keys to the whole window, with `Control-Page Up`, `Control-Page Down`, and `Alt` with the letter of `-underline`.
+- Each change of the selected tab sends `<<NotebookTabChanged>>` after the script that made the change.
+- The line under the selected tab slides to the new tab in 200 ms, and the new page fades in over 150 ms. A change during the slide starts from the shown place.
+- The parts `::tab`, `::tab-selected`, `::tab-hover`, `::tab-disabled`, `::indicator`, and `::client` of `TNotebook` accept CSS rules.

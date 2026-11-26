@@ -20,7 +20,7 @@
   border-radius: 10px;
 }
 
-.group Label, .group Checkbutton, .group Radiobutton, .group Frame, .group Panedwindow {
+.group Label, .group Checkbutton, .group Radiobutton, .group Frame, .group Panedwindow, .group TNotebook {
   background-color: var(--field-bg);
 }
 

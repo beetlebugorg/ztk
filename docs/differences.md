@@ -4,7 +4,7 @@ ztk follows Tk 8.6.16. A script that runs in `wish` 8.6 runs in ztk when it uses
 
 ## Missing today
 
-- Widgets: `text`, the dialogs (`tk_getOpenFile`, `tk_messageBox`, and the others), and the `ttk` widgets `notebook` and `treeview`.
+- Widgets: `text`, the dialogs (`tk_getOpenFile`, `tk_messageBox`, and the others), and `ttk::treeview`.
 - Commands: `option`, `selection`, `event add`, `send`, and `package`. The Tk test files cannot run, because `tcltest` needs `package`.
 - The clipboard is local to the app. It is not connected to the clipboard of the system.
 - `canvas postscript`.
@@ -54,6 +54,7 @@ ztk follows Tk 8.6.16. A script that runs in `wish` 8.6 runs in ztk when it uses
 - `<<Paste>>` deletes the selection before it inserts, as Tk does on Windows and macOS.
 - `grid` differs by one pixel from `wish` in a few layouts with overlapping spans.
 - A `panedwindow` that is smaller than its panes, with no pane that can stretch, cuts the last pane at its end. Over a sash, the pointer shape changes with no change of `-cursor`.
+- The row of tabs of a `ttk::notebook` has the height of the theme, so the place of a page differs from `wish`. `-image` and `-compound` of a tab are stored with no effect.
 
 ## Additions
 
