@@ -51,6 +51,7 @@ const mackeys = @import("mackeys.zig");
 const Pasteboard = @import("pasteboard.zig").Pasteboard;
 const Ime = @import("macime.zig").Ime;
 const nsmenu = @import("nsmenu.zig");
+const macdock = @import("macdock.zig");
 const mactray = @import("mactray.zig");
 const Id = objc.Id;
 const Sel = objc.Sel;
@@ -134,6 +135,8 @@ pub const AppKit = struct {
     menus: *nsmenu.Menus = undefined,
     post_win: ?*Win = null,
     key_win: ?*Win = null,
+    /// The Dock icon: its badge, its progress bar, and a request for attention.
+    dock: macdock.Dock = .{},
     /// The status items of the menu bar.
     trays: *mactray.Trays = undefined,
 
@@ -171,6 +174,7 @@ pub const AppKit = struct {
         }
         a.wins.deinit(a.gpa);
         a.trays.deinit();
+        a.dock.deinit();
         a.menus.deinit();
         a.events.deinit(a.gpa);
         a.gpa.destroy(a);
@@ -204,6 +208,8 @@ pub const AppKit = struct {
         .postMenu = vPostMenu,
         .unpostMenu = vUnpostMenu,
         .setMenuHandler = vSetMenuHandler,
+        .taskbarSet = vTaskbarSet,
+        .attention = vAttention,
         .trayCreate = vTrayCreate,
         .traySet = vTraySet,
         .trayDrop = vTrayDrop,
@@ -228,6 +234,16 @@ pub const AppKit = struct {
     fn trayAction(ctx: *anyopaque, owner: *anyopaque, id: plat.TrayId, action: event.TrayAction) void {
         const w: *Win = @ptrCast(@alignCast(owner));
         self(ctx).push(.{ .tray = .{ .window = &w.window, .id = id, .action = action } });
+    }
+
+    // ---- The Dock ----
+
+    fn vTaskbarSet(ptr: *anyopaque, _: *Window, state: plat.Taskbar) void {
+        self(ptr).dock.set(state);
+    }
+
+    fn vAttention(ptr: *anyopaque, _: *Window, critical: bool) void {
+        self(ptr).dock.setAttention(critical);
     }
 
     // ---- The native menus ----
