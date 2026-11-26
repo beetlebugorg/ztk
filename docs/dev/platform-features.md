@@ -41,6 +41,12 @@ The features of ztk go through `Platform.VTable`, as the menus do: optional entr
 - An event `tray` with the id and an action: `click`, `double`, or `menu`. A tray with a menu shows it in the backend: on macOS a status item with a menu opens it on each click, and Windows posts the menu at the pointer after `SetForegroundWindow` on a click of the right button, as the documentation of `TrackPopupMenu` asks. On macOS `click` and `double` come only for a tray with no menu. Windows gives them for the left button also with a menu. A script that needs the same behavior on both gives a tray either a menu or a command.
 - `ztk::tray create -image photo -template bool -tooltip text -menu .m -command script` gives a name, with `configure` and `destroy`. The script gets the action in `%a`.
 
+**Dock and taskbar (ztk#61).**
+
+- `taskbarBadge(w, text)`, `taskbarProgress(w, value)` with a value from 0 to 1 or null, and `taskbarAttention(w, none | informational | critical)`. `w` is the window of the call: Windows has a taskbar button for each window, and macOS one Dock icon for the app.
+- macOS: the badge label of `NSDockTile`, a content view of the tile with the icon and an `NSProgressIndicator` bar, and `requestUserAttention:`. Windows: `ITaskbarList3` for the overlay icon and the progress, and `FlashWindowEx`.
+- `ztk::taskbar badge ?text?`, `ztk::taskbar progress value|none`, and `ztk::taskbar attention ?-critical|none?`, each with `-window .w` after the subcommand. `ztk::has taskbar` tells a script.
+
 **Dialogs (ztk#57).**
 
 - `fileDialog(opts) ?[][]u8`: a modal dialog with a kind (`open`, `save`, `folder`), the parent window, the title, the first folder and the first file, the filters of `-filetypes`, the default extension, and multiple selection. It returns the paths in UTF-8, or null for Cancel. The core maps the options and the result of `tk_getOpenFile`, `tk_getSaveFile`, and `tk_chooseDirectory` onto it, as the manual pages give them.

@@ -154,6 +154,17 @@ pub const FileDialogResult = struct {
     }
 };
 
+/// A request for the attention of the user.
+pub const Attention = enum {
+    /// Ends a request.
+    none,
+    /// One bounce of the Dock icon, or a flash of the taskbar button until
+    /// the window comes to the front.
+    informational,
+    /// A bounce or a flash until the user activates the program.
+    critical,
+};
+
 /// The appearance of the system.
 pub const Appearance = struct {
     dark: bool,
@@ -325,6 +336,18 @@ pub const Platform = struct {
         traySet: ?*const fn (ptr: *anyopaque, id: TrayId, icon: TrayIcon, template: bool, tooltip: []const u8, menu: MenuId) void = null,
         /// Removes a tray icon.
         trayDrop: ?*const fn (ptr: *anyopaque, id: TrayId) void = null,
+
+        // The icon of the program in the Dock or the taskbar (ztk#61).
+        // `w` is the window of the call: the taskbar of Windows has a
+        // button for each window, and the Dock of macOS one icon for the app.
+
+        /// Shows a short text, such as a count, on the icon. "" removes it.
+        taskbarBadge: ?*const fn (ptr: *anyopaque, w: ?*Window, text: []const u8) void = null,
+        /// Shows a progress bar on the icon, from 0 to 1. Null removes it.
+        taskbarProgress: ?*const fn (ptr: *anyopaque, w: ?*Window, value: ?f32) void = null,
+        /// Asks for the attention of the user, as a bounce of the Dock icon
+        /// or a flash of the taskbar button, or ends the request.
+        taskbarAttention: ?*const fn (ptr: *anyopaque, w: ?*Window, attention: Attention) void = null,
     };
 
     pub fn hasNativeMenus(p: Platform) bool {
@@ -360,6 +383,18 @@ pub const Platform = struct {
     }
     pub fn trayDrop(p: Platform, id: TrayId) void {
         if (p.vtable.trayDrop) |f| f(p.ptr, id);
+    }
+    pub fn hasTaskbar(p: Platform) bool {
+        return p.vtable.taskbarBadge != null and p.vtable.taskbarProgress != null and p.vtable.taskbarAttention != null;
+    }
+    pub fn taskbarBadge(p: Platform, w: ?*Window, text: []const u8) void {
+        if (p.vtable.taskbarBadge) |f| f(p.ptr, w, text);
+    }
+    pub fn taskbarProgress(p: Platform, w: ?*Window, value: ?f32) void {
+        if (p.vtable.taskbarProgress) |f| f(p.ptr, w, value);
+    }
+    pub fn taskbarAttention(p: Platform, w: ?*Window, attention: Attention) void {
+        if (p.vtable.taskbarAttention) |f| f(p.ptr, w, attention);
     }
     pub fn setMenuHandler(p: Platform, h: MenuHandler) void {
         if (p.vtable.setMenuHandler) |f| f(p.ptr, h);

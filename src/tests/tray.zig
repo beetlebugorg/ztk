@@ -35,6 +35,28 @@ test "tray: the errors of the options and of the names" {
     try t.expectEqualStrings("image \"none\" doesn't exist", try h.evalError("ztk::tray create -image none"));
     try t.expectEqualStrings("bad option \"-icon\": must be -command, -image, -menu, -template, or -tooltip", try h.evalError("ztk::tray create -icon x"));
     try t.expectEqualStrings("tray \"tray9\" doesn't exist", try h.evalError("ztk::tray destroy tray9"));
-    try t.expectEqualStrings("bad feature \"teleport\": must be native-menus or tray", try h.evalError("ztk::has teleport"));
+    try t.expectEqualStrings("bad feature \"teleport\": must be native-menus, taskbar, or tray", try h.evalError("ztk::has teleport"));
     try t.expectEqualStrings("0", try h.eval("ztk::has native-menus"));
+}
+
+test "taskbar: badge, progress, and attention reach the backend" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    try t.expectEqualStrings("1", try h.eval("ztk::has taskbar"));
+    _ = try h.eval("ztk::taskbar badge 3");
+    try t.expectEqualStrings("3", h.head.badge.items);
+    _ = try h.eval("ztk::taskbar badge");
+    try t.expectEqualStrings("", h.head.badge.items);
+    _ = try h.eval("ztk::taskbar progress 0.25");
+    try t.expectEqual(@as(?f32, 0.25), h.head.progress);
+    _ = try h.eval("ztk::taskbar progress -window . none");
+    try t.expectEqual(@as(?f32, null), h.head.progress);
+    _ = try h.eval("ztk::taskbar attention -critical");
+    try t.expectEqual(@import("../platform/platform.zig").Attention.critical, h.head.attention);
+    _ = try h.eval("ztk::taskbar attention none");
+    try t.expectEqual(@import("../platform/platform.zig").Attention.none, h.head.attention);
+    try t.expectEqualStrings("expected a number from 0 to 1 or \"none\" but got \"2\"", try h.evalError("ztk::taskbar progress 2"));
+    try t.expectEqualStrings("bad subcommand \"wiggle\": must be attention, badge, or progress", try h.evalError("ztk::taskbar wiggle"));
+    try t.expectEqualStrings("bad option \"-loud\": must be -critical or none", try h.evalError("ztk::taskbar attention -loud"));
 }

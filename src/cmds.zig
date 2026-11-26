@@ -37,6 +37,7 @@ pub fn register(app: *App) !void {
     try it.register("ztk::clock", @import("animate.zig").cmdClock);
     try it.register("ztk::tray", @import("tray.zig").cmdTray);
     try it.register("ztk::has", @import("tray.zig").cmdHas);
+    try it.register("ztk::taskbar", @import("taskbar.zig").cmdTaskbar);
     try it.register("ztk::limit", cmdLimit);
     try @import("snapshot.zig").register(it);
     try @import("inject.zig").register(it);

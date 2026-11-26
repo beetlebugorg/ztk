@@ -51,6 +51,7 @@ const mackeys = @import("mackeys.zig");
 const Pasteboard = @import("pasteboard.zig").Pasteboard;
 const Ime = @import("macime.zig").Ime;
 const nsmenu = @import("nsmenu.zig");
+const macdock = @import("macdock.zig");
 const Id = objc.Id;
 const Sel = objc.Sel;
 const Class = objc.Class;
@@ -133,6 +134,8 @@ pub const AppKit = struct {
     menus: *nsmenu.Menus = undefined,
     post_win: ?*Win = null,
     key_win: ?*Win = null,
+    /// The Dock icon: its badge, its progress bar, and a request for attention.
+    dock: macdock.Dock = .{},
 
     pub fn init(gpa: std.mem.Allocator) !*AppKit {
         // AppKit makes windows only on the main thread.
@@ -165,6 +168,7 @@ pub const AppKit = struct {
             objc.release(o);
         }
         a.wins.deinit(a.gpa);
+        a.dock.deinit();
         a.menus.deinit();
         a.events.deinit(a.gpa);
         a.gpa.destroy(a);
@@ -198,7 +202,24 @@ pub const AppKit = struct {
         .postMenu = vPostMenu,
         .unpostMenu = vUnpostMenu,
         .setMenuHandler = vSetMenuHandler,
+        .taskbarBadge = vTaskbarBadge,
+        .taskbarProgress = vTaskbarProgress,
+        .taskbarAttention = vTaskbarAttention,
     };
+
+    // ---- The Dock ----
+
+    fn vTaskbarBadge(ptr: *anyopaque, _: ?*Window, text: []const u8) void {
+        self(ptr).dock.setBadge(text);
+    }
+
+    fn vTaskbarProgress(ptr: *anyopaque, _: ?*Window, value: ?f32) void {
+        self(ptr).dock.setProgress(value);
+    }
+
+    fn vTaskbarAttention(ptr: *anyopaque, _: ?*Window, attention: plat.Attention) void {
+        self(ptr).dock.setAttention(attention);
+    }
 
     // ---- The native menus ----
 

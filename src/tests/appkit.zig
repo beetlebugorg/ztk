@@ -327,3 +327,23 @@ test "appkit: native menus in the menu bar and as a popup" {
     p.menuDrop(1);
     p.menuDrop(2);
 }
+
+test "appkit: the badge, the progress bar, and the attention of the Dock icon" {
+    if (!windowsAllowed()) return;
+    const a = try appkit.AppKit.init(t.allocator);
+    const p = a.platform();
+    defer p.vtable.deinit(p.ptr);
+    try t.expect(p.hasTaskbar());
+    p.taskbarBadge(null, "7");
+    try t.expectEqualStrings("7", a.dock.badge());
+    p.taskbarBadge(null, "");
+    try t.expectEqualStrings("", a.dock.badge());
+    p.taskbarProgress(null, 0.5);
+    try t.expect(a.dock.view != null);
+    try t.expectEqual(@as(f64, 0.5), objc.call(fn (objc.Id, objc.Sel) callconv(.c) f64, a.dock.bar.?, "doubleValue", .{}));
+    p.taskbarProgress(null, null);
+    try t.expect(a.dock.view == null);
+    p.taskbarAttention(null, .informational);
+    p.taskbarAttention(null, .none);
+    try t.expect(a.dock.request == null);
+}

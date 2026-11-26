@@ -80,6 +80,10 @@ pub const Headless = struct {
     system: ?plat.Appearance = null,
     /// The trays: the last call of `traySet` for each, and the count of the ids.
     trays: std.ArrayListUnmanaged(TrayRec) = .empty,
+    /// The last calls of the taskbar entries.
+    badge: std.ArrayListUnmanaged(u8) = .empty,
+    progress: ?f32 = null,
+    attention: plat.Attention = .none,
     tray_next: u32 = 1,
     /// The file dialog: the paths that the next dialog gives (null: a cancel),
     /// the filter that it gives, and the options of the last call.
@@ -126,6 +130,7 @@ pub const Headless = struct {
         h.clip_set.deinit(h.gpa);
         for (h.trays.items) |*r| r.tooltip.deinit(h.gpa);
         h.trays.deinit(h.gpa);
+        h.badge.deinit(h.gpa);
         h.dialog_title.deinit(h.gpa);
         h.freeTexts(&h.ime_texts);
         h.freeTexts(&h.ime_texts_old);
@@ -164,9 +169,26 @@ pub const Headless = struct {
         .trayCreate = vTrayCreate,
         .traySet = vTraySet,
         .trayDrop = vTrayDrop,
+        .taskbarBadge = vTaskbarBadge,
+        .taskbarProgress = vTaskbarProgress,
+        .taskbarAttention = vTaskbarAttention,
     };
 
     pub const TrayRec = struct { id: plat.TrayId, width: u32 = 0, template: bool = false, tooltip: std.ArrayListUnmanaged(u8) = .empty, menu: plat.MenuId = 0 };
+
+    fn vTaskbarBadge(ptr: *anyopaque, _: ?*Window, text: []const u8) void {
+        const h = self(ptr);
+        h.badge.clearRetainingCapacity();
+        h.badge.appendSlice(h.gpa, text) catch {};
+    }
+
+    fn vTaskbarProgress(ptr: *anyopaque, _: ?*Window, value: ?f32) void {
+        self(ptr).progress = value;
+    }
+
+    fn vTaskbarAttention(ptr: *anyopaque, _: ?*Window, attention: plat.Attention) void {
+        self(ptr).attention = attention;
+    }
 
     fn vTrayCreate(ptr: *anyopaque, _: *Window, icon: plat.TrayIcon, template: bool, _: []const u8) plat.TrayId {
         const h = self(ptr);
