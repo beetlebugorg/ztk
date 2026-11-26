@@ -44,6 +44,7 @@ const Atlas = @import("../text/atlas.zig").Atlas;
 const mackeys = @import("mackeys.zig");
 const Pasteboard = @import("pasteboard.zig").Pasteboard;
 const Ime = @import("macime.zig").Ime;
+const nsmenu = @import("nsmenu.zig");
 const Id = objc.Id;
 const Sel = objc.Sel;
 const Class = objc.Class;
@@ -94,6 +95,8 @@ pub const Win = struct {
     ime_on: bool = false,
     ime_rect: geom.Rect = .{},
     ime: Ime = .{},
+    /// The menu bar of the window (`toplevel -menu`), or 0.
+    bar: plat.MenuId = 0,
 };
 
 pub const AppKit = struct {
@@ -112,6 +115,11 @@ pub const AppKit = struct {
     /// The texts of the events of the last poll, and of the events since.
     texts_given: std.ArrayListUnmanaged([]u8) = .empty,
     texts_new: std.ArrayListUnmanaged([]u8) = .empty,
+    /// The native menus, and the windows of their events: the window of a
+    /// post while it is open, and the key window for the bar.
+    menus: *nsmenu.Menus = undefined,
+    post_win: ?*Win = null,
+    key_win: ?*Win = null,
 
     pub fn init(gpa: std.mem.Allocator) !*AppKit {
         // AppKit makes windows only on the main thread.
@@ -122,7 +130,10 @@ pub const AppKit = struct {
         _ = objc.call(fn (Id, Sel, isize) callconv(.c) bool, app, "setActivationPolicy:", .{activation_regular});
         objc.call(fn (Id, Sel) callconv(.c) void, app, "finishLaunching", .{});
         const a = try gpa.create(AppKit);
+        errdefer gpa.destroy(a);
         a.* = .{ .gpa = gpa, .app = app, .view_class = viewClass(), .delegate_class = delegateClass(), .clip = Pasteboard.general() };
+        a.menus = try nsmenu.Menus.init(gpa, .{ .ctx = a, .menu = menuEvent, .command = appCommand, .key = menuKey });
+        a.menus.show(0);
         return a;
     }
 
@@ -131,12 +142,13 @@ pub const AppKit = struct {
         a.freeTexts(&a.texts_new);
         a.texts_given.deinit(a.gpa);
         a.texts_new.deinit(a.gpa);
+        a.menus.deinit();
         a.events.deinit(a.gpa);
         a.gpa.destroy(a);
     }
 
     pub fn platform(a: *AppKit) Platform {
-        return .{ .ptr = a, .vtable = &vtable, .live = true, .thread_safe_draw = true };
+        return .{ .ptr = a, .vtable = &vtable, .live = true, .thread_safe_draw = true, .native_menus = true };
     }
 
     const vtable: Platform.VTable = .{
@@ -155,7 +167,71 @@ pub const AppKit = struct {
         .clipboardSet = vClipboardSet,
         .clipboardGet = vClipboardGet,
         .textInput = vTextInput,
+        .menuSet = vMenuSet,
+        .menuEntrySet = vMenuEntrySet,
+        .menuDrop = vMenuDrop,
+        .setMenuBar = vSetMenuBar,
+        .postMenu = vPostMenu,
+        .unpostMenu = vUnpostMenu,
+        .setMenuHandler = vSetMenuHandler,
     };
+
+    // ---- The native menus ----
+
+    fn vMenuSet(ptr: *anyopaque, menu: *const plat.Menu) void {
+        self(ptr).menus.set(menu);
+    }
+
+    fn vMenuEntrySet(ptr: *anyopaque, id: plat.MenuId, index: u32, entry: *const plat.MenuEntry) void {
+        self(ptr).menus.entrySet(id, index, entry);
+    }
+
+    fn vMenuDrop(ptr: *anyopaque, id: plat.MenuId) void {
+        self(ptr).menus.drop(id);
+    }
+
+    fn vSetMenuBar(ptr: *anyopaque, win: *Window, id: plat.MenuId) void {
+        const a = self(ptr);
+        const w = winOf(win);
+        w.bar = id;
+        if (a.key_win == w) a.menus.show(id);
+    }
+
+    fn vPostMenu(ptr: *anyopaque, win: *Window, id: plat.MenuId, at: geom.Point, entry: i32) void {
+        const a = self(ptr);
+        const w = winOf(win);
+        const before = a.post_win;
+        a.post_win = w;
+        defer a.post_win = before;
+        // The view is flipped, so the point is in the view as the core gives it.
+        a.menus.post(w.view, id, .{ .x = at.x, .y = at.y }, entry);
+    }
+
+    fn vUnpostMenu(ptr: *anyopaque, id: plat.MenuId) void {
+        self(ptr).menus.unpost(id);
+    }
+
+    fn vSetMenuHandler(ptr: *anyopaque, h: plat.MenuHandler) void {
+        self(ptr).menus.handler = h;
+    }
+
+    /// A `menu` event, for the window of the post or the key window.
+    fn menuEvent(ctx: *anyopaque, id: plat.MenuId, entry: i32, action: event.MenuAction) void {
+        const a = self(ctx);
+        const w = a.post_win orelse a.key_win orelse return;
+        a.push(.{ .menu = .{ .window = &w.window, .menu = id, .entry = entry, .action = action } });
+    }
+
+    fn appCommand(ctx: *anyopaque, command: event.AppCommand) void {
+        self(ctx).push(.{ .app_command = .{ .command = command } });
+    }
+
+    /// A key equivalent chose an item: the key goes to the key window as
+    /// a key that no menu took.
+    fn menuKey(ctx: *anyopaque, ev: Id) void {
+        const w = self(ctx).key_win orelse return;
+        send(w.view, "keyDown:", .{ev});
+    }
 
     fn vClipboardSet(ptr: *anyopaque, typ: []const u8, data: []const u8) void {
         self(ptr).clip.set(typ, data);
@@ -258,6 +334,11 @@ pub const AppKit = struct {
         while (i < a.events.items.len) {
             if (a.events.items[i].window() == win) _ = a.events.orderedRemove(i) else i += 1;
         }
+        if (a.key_win == w) {
+            a.key_win = null;
+            a.menus.show(0);
+        }
+        if (a.post_win == w) a.post_win = null;
         if (w.link) |l| {
             send(l, "invalidate", .{});
             objc.release(l);
@@ -822,7 +903,10 @@ pub const AppKit = struct {
     }
 
     fn onBecomeKey(delegate: Id, _: Sel, _: Id) callconv(.c) void {
-        if (dataOf(delegate)) |w| w.owner.push(.{ .focus = .{ .window = &w.window, .focused = true } });
+        const w = dataOf(delegate) orelse return;
+        w.owner.key_win = w;
+        w.owner.menus.show(w.bar);
+        w.owner.push(.{ .focus = .{ .window = &w.window, .focused = true } });
     }
 
     fn onResignKey(delegate: Id, _: Sel, _: Id) callconv(.c) void {
