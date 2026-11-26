@@ -15,6 +15,14 @@
 // of the old window, so a check button keeps its state. An error shows
 // under the code, and the last good window stays.
 //
+// X-ray draws the box of each widget over the window, in the color of
+// its geometry manager, and the cells of each grid. Inspect shows the
+// path, the class, the manager, and the options of the widget under the
+// pointer. A click keeps it, and a change of an option in the table
+// configures the widget and writes the option into the line of the
+// code that makes the widget. Both read the widgets with winfo, so they
+// work for each snippet with no hook in ztk.
+//
 // The page draws the frames itself (the option loop: false of start()),
 // and only while the snippet is on the screen. It measures the CPU time
 // of each frame for the line under the window.
@@ -86,6 +94,66 @@ function globals(h) {
   }
   return out;
 }
+
+// A Tcl list as an array of strings.
+export function tclList(s) {
+  const out = [];
+  const n = s.length;
+  const unesc = (c) => (c === "n" ? "\n" : c === "t" ? "\t" : c);
+  let i = 0;
+  for (;;) {
+    while (i < n && /\s/.test(s[i])) i++;
+    if (i >= n) return out;
+    let w = "";
+    if (s[i] === "{") {
+      let d = 1, j = i + 1;
+      while (j < n && d) {
+        if (s[j] === "\\") j++;
+        else if (s[j] === "{") d++;
+        else if (s[j] === "}") d--;
+        j++;
+      }
+      w = s.slice(i + 1, j - 1);
+      i = j;
+    } else if (s[i] === '"') {
+      i++;
+      while (i < n && s[i] !== '"') w += s[i] === "\\" ? unesc(s[++i] ?? "") + (i++, "") : s[i++];
+      i++;
+    } else {
+      while (i < n && !/\s/.test(s[i])) w += s[i] === "\\" ? unesc(s[++i] ?? "") + (i++, "") : s[i++];
+    }
+    out.push(w);
+  }
+}
+
+// The widgets of the window, with their boxes in logical pixels from the
+// corner of the window, and the cells of each grid.
+const WALK = `proc ::ztk_docs_walk {} {
+  set x0 [winfo rootx .]; set y0 [winfo rooty .]
+  set out {}; set todo [winfo children .]
+  while {[llength $todo]} {
+    set w [lindex $todo 0]; set todo [lrange $todo 1 end]
+    if {[winfo toplevel $w] ne "." || ![winfo ismapped $w]} continue
+    set x [expr {[winfo rootx $w] - $x0}]; set y [expr {[winfo rooty $w] - $y0}]
+    set m [winfo manager $w]
+    lappend out [list w $w [winfo class $w] [expr {$m eq "" ? "-" : $m}] $x $y [winfo width $w] [winfo height $w]]
+    if {[llength [grid slaves $w]]} {
+      lassign [grid size $w] nc nr
+      for {set c 0} {$c < $nc} {incr c} {
+        for {set r 0} {$r < $nr} {incr r} {
+          lassign [grid bbox $w $c $r] cx cy cw ch
+          lappend out [list g $w $c $r [expr {$x + $cx}] [expr {$y + $cy}] $cw $ch]
+        }
+      }
+    }
+    set todo [concat [winfo children $w] $todo]
+  }
+  return $out
+}`;
+const COLORS = { pack: "var(--accent)", grid: "var(--tok-str)", place: "var(--tok-var)", panedwindow: "var(--tok-num)" };
+
+// A Tcl word for a value in the code: bare when it is plain, else in braces.
+const word = (v) => (/^[\w.#+:%@,-]+$/.test(v) ? v : /^[^{}\\]*$/.test(v) ? `{${v}}` : quote(v));
 
 const b64 = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(s))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const NAMES = { webgpu: "WebGPU", webgl2: "WebGL 2", cpu: "CPU" };
@@ -180,11 +248,28 @@ class Demo {
     pick.value = this.renderer;
     pick.addEventListener("change", () => { this.renderer = pick.value; this.run(true); });
     bar.appendChild(pick);
+    const toggle = (text, title, key) => {
+      const b = button(text, title, () => {
+        this[key] = !this[key];
+        b.setAttribute("aria-pressed", String(this[key]));
+        if (key === "inspecting" && !this.inspecting) this.pick(null);
+        this.overlay();
+      });
+      // ?xray or ?inspect in the URL turns the mode on for each snippet.
+      this[key] = params.has(key === "xray" ? "xray" : "inspect");
+      b.setAttribute("aria-pressed", String(this[key]));
+    };
+    toggle("X-ray", "Show the box of each widget and the cells of each grid", "xray");
+    toggle("Inspect", "Point at a widget to see its options; click it to edit them", "inspecting");
     this.hud = document.createElement("span");
     this.hud.className = "ld-hud";
     this.hud.setAttribute("aria-live", "off");
     bar.appendChild(this.hud);
     this.err = this.fig.querySelector(".ld-err");
+    this.panel = document.createElement("div");
+    this.panel.className = "ld-inspect";
+    this.panel.hidden = true;
+    this.fig.appendChild(this.panel);
   }
 
   link() {
@@ -252,6 +337,146 @@ class Demo {
     this.fig.dataset.live = "1";
     this.fig.dataset.renderer = h.renderer;
     this.tick();
+    h.eval(WALK);
+    this.layer = document.createElement("div");
+    this.layer.className = "ld-layer";
+    frame.appendChild(this.layer);
+    this.layer.addEventListener("pointermove", (e) => this.hover(e));
+    this.layer.addEventListener("pointerleave", () => { this.hot = null; this.overlay(); });
+    this.layer.addEventListener("click", (e) => { this.hover(e); this.pick(this.hot); });
+    if (this.picked && !h.eval(`winfo exists ${this.picked}`).result.startsWith("1")) this.picked = null;
+    this.pick(this.picked);
+  }
+
+  // The boxes of the widgets, for X-ray and Inspect.
+  boxes() {
+    const r = this.h.eval("::ztk_docs_walk");
+    if (!r.ok) return [];
+    return tclList(r.result).map((x) => {
+      const f = tclList(x);
+      return f[0] === "w"
+        ? { kind: "w", path: f[1], cls: f[2], mgr: f[3], x: +f[4], y: +f[5], w: +f[6], h: +f[7] }
+        : { kind: "g", path: f[1], c: +f[2], r: +f[3], x: +f[4], y: +f[5], w: +f[6], h: +f[7] };
+    });
+  }
+
+  overlay() {
+    if (!this.layer) return;
+    const on = this.xray || this.inspecting;
+    this.layer.classList.toggle("on", on);
+    this.layer.classList.toggle("pick", Boolean(this.inspecting));
+    this.layer.replaceChildren();
+    if (!on) return;
+    const k = this.h.canvas.getBoundingClientRect().width / W;
+    const add = (b, cls, color) => {
+      const d = document.createElement("div");
+      d.className = cls;
+      d.style.cssText = `left:${b.x * k}px;top:${b.y * k}px;width:${b.w * k}px;height:${b.h * k}px;${color ? `border-color:${color}` : ""}`;
+      this.layer.appendChild(d);
+      return d;
+    };
+    const all = this.boxes();
+    if (this.xray) {
+      for (const b of all) {
+        if (b.kind === "g") add(b, "ld-cell");
+        else add(b, "ld-box", COLORS[b.mgr] || "var(--text-3)").title = `${b.path} (${b.cls}, ${b.mgr})`;
+      }
+    }
+    for (const path of [this.hot, this.picked]) {
+      const b = path && all.find((x) => x.kind === "w" && x.path === path);
+      if (b) add(b, path === this.picked ? "ld-hot ld-picked" : "ld-hot").dataset.label = `${b.path} · ${b.cls}`;
+    }
+  }
+
+  // The smallest widget under the pointer.
+  hover(e) {
+    if (!this.inspecting) return;
+    const r = this.layer.getBoundingClientRect();
+    const k = r.width / W;
+    const x = (e.clientX - r.left) / k, y = (e.clientY - r.top) / k;
+    let best = null;
+    for (const b of this.boxes()) {
+      if (b.kind !== "w" || x < b.x || y < b.y || x >= b.x + b.w || y >= b.y + b.h) continue;
+      if (!best || b.w * b.h <= best.w * best.h) best = b;
+    }
+    const hot = best ? best.path : null;
+    if (hot !== this.hot) { this.hot = hot; this.overlay(); }
+  }
+
+  // The table of the options of the picked widget.
+  pick(path) {
+    this.picked = path;
+    this.overlay();
+    if (!path || !this.h) { this.panel.hidden = true; return; }
+    const ev = (s) => this.h.eval(s);
+    const cls = ev(`winfo class ${path}`).result;
+    const mgr = ev(`winfo manager ${path}`).result || "none";
+    const info = ["pack", "grid", "place"].includes(mgr) ? ev(`${mgr} info ${path}`).result : "";
+    const head = document.createElement("div");
+    head.className = "ld-ihead";
+    head.innerHTML = `<b></b> <span></span>`;
+    head.firstChild.textContent = path;
+    head.lastChild.textContent = `${cls} · ${mgr} ${info}`;
+    const table = document.createElement("table");
+    const conf = ev(`${path} configure`);
+    for (const row of conf.ok ? tclList(conf.result) : []) {
+      const f = tclList(row);
+      if (f.length < 5) continue;
+      const [opt, , , def, value] = f;
+      const tr = table.insertRow();
+      tr.insertCell().textContent = opt;
+      const td = tr.insertCell();
+      const input = document.createElement("input");
+      input.value = value;
+      input.setAttribute("aria-label", `${path} ${opt}`);
+      if (value !== def) tr.className = "set";
+      const apply = () => {
+        const r = ev(`${path} configure ${opt} ${quote(input.value)}`);
+        input.classList.toggle("bad", !r.ok);
+        input.title = r.ok ? "" : r.result;
+        if (!r.ok) return;
+        this.write(path, opt, input.value);
+        this.h.frame(performance.now());
+        this.overlay();
+      };
+      input.addEventListener("change", apply);
+      if (/^-?\d+(\.\d+)?$/.test(value)) {
+        input.type = "number";
+        input.addEventListener("input", apply);
+      }
+      td.appendChild(input);
+      if (/^#[0-9a-f]{6}$/i.test(value)) {
+        const c = document.createElement("input");
+        c.type = "color";
+        c.value = value;
+        c.setAttribute("aria-label", `${path} ${opt} color`);
+        c.addEventListener("input", () => { input.value = c.value; apply(); });
+        td.prepend(c);
+      }
+    }
+    this.note = document.createElement("p");
+    this.note.className = "ld-note";
+    this.panel.replaceChildren(head, this.note, table);
+    this.panel.hidden = false;
+  }
+
+  // Writes "-opt value" into the line of the code that makes the widget.
+  write(path, opt, value) {
+    const lines = this.ta.value.split("\n");
+    const esc = path.replace(/[.$]/g, "\\$&");
+    const at = lines.findIndex((l) => new RegExp(`^\\s*[\\w:]+\\s+${esc}(\\s|$)`).test(l));
+    if (at < 0) {
+      this.note.textContent = `No line of the code makes ${path} with this path, so the change is only in the window.`;
+      return;
+    }
+    const line = lines[at];
+    const m = new RegExp(`(\\s${opt.replace(/-/g, "\\-")}\\s+)(\\{[^}]*\\}|"[^"]*"|[^\\s;]+)`).exec(line);
+    lines[at] = m ? line.slice(0, m.index) + m[1] + word(value) + line.slice(m.index + m[0].length) : `${line} ${opt} ${word(value)}`;
+    this.ta.value = lines.join("\n");
+    this.paint();
+    this.note.textContent = `Line ${at + 1} of the code has the change.`;
+    // The code has the new value, so a later run keeps it.
+    this.first = globals(this.h);
   }
 
   fail(text) {
@@ -273,7 +498,11 @@ class Demo {
         this.times.push(performance.now() - t0);
         if (this.times.length > 120) this.times.shift();
       }
-      if (!this.shown || t - this.shown > 500) { this.shown = t; this.show(); }
+      if (!this.shown || t - this.shown > 500) {
+        this.shown = t;
+        this.show();
+        if (this.xray || this.inspecting) this.overlay();
+      }
       this.raf = requestAnimationFrame(loop);
     };
     this.raf = requestAnimationFrame(loop);
@@ -319,6 +548,18 @@ if (params.has("livetest")) {
       await d.run();
       out.checks.error = d.err.hidden ? "" : d.err.textContent.split("\n")[0];
       out.checks.stayed = d.h.eval("set ::ld_new").result;
+      // X-ray and Inspect: the boxes, and an option from the table.
+      d.xray = true;
+      d.overlay();
+      out.checks.boxes = d.layer.querySelectorAll(".ld-box").length > 0 ? "yes" : "no";
+      const first = d.boxes().find((b) => b.kind === "w");
+      d.inspecting = true;
+      d.pick(first.path);
+      const input = d.panel.querySelector(`input[aria-label="${first.path} -cursor"]`);
+      input.value = "hand2";
+      input.dispatchEvent(new Event("change"));
+      out.checks.cursor = d.h.eval(`${first.path} cget -cursor`).result;
+      out.checks.written = d.ta.value.includes("-cursor hand2") || d.note.textContent.startsWith("No line") ? "yes" : "no";
     }
     const pre = document.createElement("pre");
     pre.id = "result";
