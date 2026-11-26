@@ -15,6 +15,10 @@
   .stage { position: relative; border: 1px solid var(--line); border-radius: 8px; overflow: auto; height: 70vh; }
   /* ztk.js gives the canvas the CSS size of the window of the script. */
   canvas { display: block; touch-action: none; }
+  .download { margin: 0 16px 16px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 8px; }
+  .download div { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+  .download button.mine { font-weight: 600; outline: 2px solid currentColor; }
+  .download p { margin: 0; opacity: .8; }
   #log { font: 12px ui-monospace, monospace; white-space: pre-wrap; padding: 0 16px 16px; }
 </style>
 </head>
@@ -29,9 +33,11 @@
   <textarea class="code" id="code" spellcheck="false" aria-label="Tcl script"></textarea>
   <div class="stage"><canvas id="screen" aria-label="The window of the script"></canvas></div>
 </main>
+<section id="download" hidden></section>
 <div id="log" role="log"></div>
 <script type="module">
 import { start } from "./ztk.js";
+import { panel } from "./download.js";
 const examples = ["gallery", "themes", "themes-classic", "counter", "demo", "signin", "calculator", "settings", "dashboard", "spreadsheet", "vector"];
 const params = new URLSearchParams(location.search);
 const pick = document.getElementById("pick");
@@ -81,6 +87,8 @@ if (shared != null) {
 }
 await load(pick.value);
 await run();
+// The native download, when the site has the runtimes and the build core.
+panel(document.getElementById("download"), { base: new URL("./", location.href), script: () => code.value, name: pick.value || "app" });
 window.ztk = ztk;
 if (params.has("test")) {
   // The browser test: the script of the page runs a check and writes the result into the page.
