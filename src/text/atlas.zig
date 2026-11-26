@@ -55,9 +55,13 @@ pub const Atlas = struct {
     pub fn get(a: *Atlas, font: *Font, glyph: u16, sub: u2) !AtlasGlyph {
         const key: Key = .{ .font = font, .glyph = glyph, .sub = sub };
         if (a.map.get(key)) |g| return g;
-        const o = try font.face.outline(a.gpa, glyph);
-        defer o.deinit(a.gpa);
-        const bm = try raster.rasterize(a.gpa, o, font.unitScale(), @as(f32, @floatFromInt(sub)) * 0.25);
+        const sub_x = @as(f32, @floatFromInt(sub)) * 0.25;
+        // A font of the system gets its images from the system.
+        const bm = if (font.system) |s| try s.raster(a.gpa, font.sys_face, glyph, font.size * font.scale, sub_x) else blk: {
+            const o = try font.face.outline(a.gpa, glyph);
+            defer o.deinit(a.gpa);
+            break :blk try raster.rasterize(a.gpa, o, font.unitScale(), sub_x);
+        };
         defer bm.deinit(a.gpa);
         var entry: AtlasGlyph = .{ .uv = .{ 0, 0, 0, 0 }, .left = @floatFromInt(bm.left), .top = @floatFromInt(bm.top), .w = 0, .h = 0 };
         if (bm.width > 0 and bm.height > 0) {

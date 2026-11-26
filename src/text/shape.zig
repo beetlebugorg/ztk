@@ -72,7 +72,7 @@ pub fn shape(gpa: std.mem.Allocator, font: *Font, text: []const u8) !Run {
     errdefer glyphs.deinit(gpa);
     try glyphs.ensureTotalCapacityPrecise(gpa, text.len);
     const us = font.unitScale();
-    const face = font.face;
+
     var pen: f32 = 0;
     var prev: ?u16 = null;
     var i: usize = 0;
@@ -81,7 +81,7 @@ pub fn shape(gpa: std.mem.Allocator, font: *Font, text: []const u8) !Run {
         const gid: u16 = if (d.valid) font.glyph(d.cp) else 0;
         if (prev) |p| pen += @as(f32, @floatFromInt(font.kern(p, gid))) * us;
         try glyphs.append(gpa, .{ .id = gid, .x = pen, .y = 0, .cluster = std.math.cast(u32, i) orelse std.math.maxInt(u32) });
-        pen += @as(f32, @floatFromInt(face.advance(gid))) * us;
+        pen += @as(f32, @floatFromInt(font.advance(gid))) * us;
         prev = gid;
         i += d.len;
     }
@@ -110,7 +110,7 @@ pub fn measure(fonts: *Fonts, font: *Font, text: []const u8) i32 {
 
 fn computeWidth(font: *Font, text: []const u8) i32 {
     const us = font.unitScale();
-    const face = font.face;
+
     var pen: f32 = 0;
     var prev: ?u16 = null;
     var i: usize = 0;
@@ -118,7 +118,7 @@ fn computeWidth(font: *Font, text: []const u8) i32 {
         const d = decode(text, i);
         const gid: u16 = if (d.valid) font.glyph(d.cp) else 0;
         if (prev) |p| pen += @as(f32, @floatFromInt(font.kern(p, gid))) * us;
-        pen += @as(f32, @floatFromInt(face.advance(gid))) * us;
+        pen += @as(f32, @floatFromInt(font.advance(gid))) * us;
         prev = gid;
         i += d.len;
     }

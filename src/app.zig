@@ -255,6 +255,7 @@ pub const App = struct {
         const app = try gpa.create(App);
         errdefer gpa.destroy(app);
         var fonts = try font_mod.Fonts.init(gpa);
+        fonts.system = opts.platform.textSystem();
         errdefer fonts.deinit();
         const rc = try gpa.dupe(u8, opts.root_class);
         errdefer gpa.free(rc);
@@ -610,7 +611,7 @@ pub const App = struct {
                     .len_us = @max(sp.totalUs() - delay, 1),
                     .timing = sp.timing,
                     .iterations = k.spec.count,
-                    .direction = @enumFromInt(@intFromEnum(k.spec.direction)),
+                    .direction = @fromBackingInt(@intCast(@backingInt(k.spec.direction))),
                     .fill_backwards = k.spec.fill == .backwards or k.spec.fill == .both,
                     .fill_forwards = k.spec.fill == .forwards or k.spec.fill == .both,
                     .base = true,
@@ -1096,7 +1097,7 @@ pub const App = struct {
                     .ok => return true,
                     .@"error" => error.TclError,
                     .@"break", .@"continue" => it.fail("invoked \"{s}\" outside of a loop", .{@tagName(it.ret_code)}),
-                    else => it.fail("command returned bad code: {d}", .{@intFromEnum(it.ret_code)}),
+                    else => it.fail("command returned bad code: {d}", .{@backingInt(it.ret_code)}),
                 },
                 error.TclCustom => it.fail("command returned bad code: {d}", .{it.custom_code}),
                 error.TclBreak => it.fail("invoked \"break\" outside of a loop", .{}),
