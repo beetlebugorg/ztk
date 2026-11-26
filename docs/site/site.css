@@ -416,5 +416,13 @@ figure.chart { margin: 0; }
 .toy-switches label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
 .toy-layer { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 50; image-rendering: pixelated; }
 .live-demo.toy .ld-frame { position: static; }
-.live-demo.toy .ld-view { position: sticky; top: 60px; align-self: start; }
 .toy-pad { order: 2; }
+/* A toy: one column, the handheld first and large, and the code under "Show the code". */
+.live-demo.toy { grid-template-columns: minmax(0, 1fr); }
+.live-demo.toy .ld-view { padding: 20px 16px; }
+.live-demo.toy .ld-frame { width: 480px; position: static; }
+.live-demo.toy .toy-pad { width: 480px; }
+.live-demo.toy .ld-more { border-top: 1px solid var(--line); }
+.live-demo.toy .ld-more > summary { cursor: pointer; padding: 10px 14px; font-size: 14px; color: var(--text-2); }
+.live-demo.toy .ld-more > summary:hover { color: var(--accent); }
+.live-demo.toy .ld-more .ld-code { border-right: 0; border-top: 1px solid var(--line); }
