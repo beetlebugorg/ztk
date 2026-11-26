@@ -283,7 +283,11 @@ pub fn cmdImage(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztc
         const gpa = app.gpa;
         if (reg.find(name)) |old| {
             // A new image with the name of an old one replaces it.
+            // The command map keys the command by the name of the old
+            // photo, so the command goes before that name is freed.
             const i = reg.index(name).?;
+            _ = it.commands.remove(old.name);
+            it.epoch += 1;
             old.deinit(gpa);
             gpa.destroy(old);
             _ = reg.list.orderedRemove(i);

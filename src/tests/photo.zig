@@ -70,3 +70,21 @@ test "photo: an image quad stretched to twice its size" {
     // Below the image the clear color stays.
     try t.expectEqual([4]u8{ 255, 255, 255, 255 }, pixel(out, 0, 2));
 }
+
+test "photo: a new photo with the name of an old one replaces it" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    // The name of each new photo is a new string. The command map keeps
+    // one entry for the name.
+    _ = try h.eval("image create photo shot -width 2 -height 2");
+    const count = h.it.commands.map.count();
+    _ = try h.eval(
+        \\image create photo [string range xshot 1 end] -width 3 -height 1
+        \\image create photo [string range xshot 1 end] -width 5 -height 4
+    );
+    try t.expectEqual(count, h.it.commands.map.count());
+    try t.expectEqualStrings("5", try h.eval("image width shot"));
+    try t.expectEqualStrings("4", try h.eval("shot cget -height"));
+    try t.expectEqualStrings("shot", try h.eval("image names"));
+}
