@@ -57,7 +57,7 @@ pub fn call(comptime Fn: type, target: anytype, selector: [*:0]const u8, args: a
     const f: *const Fn = @ptrCast(&objc_msgSend);
     // The receiver has the type of the first parameter of `Fn`: an Id for
     // an instance method, a Class for a class method.
-    const Receiver = @typeInfo(Fn).@"fn".params[0].type.?;
+    const Receiver = @typeInfo(Fn).@"fn".param_types[0].?;
     switch (@TypeOf(target)) {
         Id, Class => {},
         else => @compileError("the receiver must be an Id or a Class"),

@@ -183,7 +183,7 @@ test "wintray: an icon from RGBA pixels, and the size of the tray data" {
 
 test "wintray: a long tooltip is cut at 127 units" {
     var r: Rec = .{ .id = 1, .hwnd = undefined };
-    const long = "x" ** 200;
+    const long = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
     Trays.setTip(&r, long);
     try std.testing.expectEqual(@as(u16, 'x'), r.tip[126]);
     try std.testing.expectEqual(@as(u16, 0), r.tip[127]);

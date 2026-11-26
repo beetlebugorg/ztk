@@ -56,7 +56,7 @@ test "review B4: a binding that rebinds itself keeps running its own text" {
     _ = try h.eval("frame .f");
     _ = try h.eval("bind .f <<X>> {bind .f <<X>> {}; set a [string repeat z 64]; set out \"still running $a\"}");
     _ = try h.eval("event generate .f <<X>>");
-    try t.expectEqualStrings("still running " ++ "z" ** 64, try h.eval("set out"));
+    try t.expectEqualStrings("still running " ++ "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz", try h.eval("set out"));
 }
 
 test "review M2: a binding that changes the bindtags does not use freed tag names" {

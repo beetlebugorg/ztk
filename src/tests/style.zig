@@ -235,7 +235,7 @@ test "style-speed: a pass over 1000 widgets" {
     const ns = t0.untilNow(t.io, .awake).toNanoseconds();
     const ms = @as(f64, @floatFromInt(ns)) / 1e6;
     std.debug.print("style-speed: {d:.2} ms for {d} widgets ({s})\n", .{ ms, h.app.widgets.count(), @tagName(@import("builtin").mode) });
-    if (@import("builtin").mode == .ReleaseFast) try t.expect(ms < 3.0);
+    if (@import("builtin").mode == .fast) try t.expect(ms < 3.0);
 }
 
 test "style-cache: equal widgets share rules, and a change of class or variable shows" {

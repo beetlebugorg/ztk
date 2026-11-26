@@ -4,7 +4,7 @@ ztk has a native backend for Windows 10 and 11. It uses Win32 for the windows an
 
 ## Build and run
 
-Install [Zig 0.16.0](https://ziglang.org/download/). The build needs no other tool: the shaders compile at run time with the shader compiler that Windows has.
+Install [Zig 0.17.0](https://ziglang.org/download/). The build needs no other tool: the shaders compile at run time with the shader compiler that Windows has.
 
 ```sh
 git clone https://github.com/beetlebugorg/ztk

@@ -9,7 +9,7 @@
 const std = @import("std");
 
 pub const Stage = enum { events, style, layout, paint, render };
-const stage_count = @typeInfo(Stage).@"enum".fields.len;
+const stage_count = @typeInfo(Stage).@"enum".field_names.len;
 const ring_size = 4096;
 
 pub const slow_us: i64 = 100_000;
@@ -79,8 +79,8 @@ pub const Stats = struct {
     /// Prints the counts and the 50th and 99th percentile of each stage.
     pub fn report(s: *const Stats, w: *std.Io.Writer) !void {
         try w.print("frames: {d}\nlate: {d}\nfirst frame: {d} us\n", .{ s.frames, s.late, s.first_frame_us });
-        inline for (@typeInfo(Stage).@"enum".fields, 0..) |f, i| {
-            try w.print("{s}: count {d}, p50 {d} us, p99 {d} us\n", .{ f.name, s.counts[i], s.percentile(i, 50), s.percentile(i, 99) });
+        inline for (@typeInfo(Stage).@"enum".field_names, 0..) |f_name, i| {
+            try w.print("{s}: count {d}, p50 {d} us, p99 {d} us\n", .{ f_name, s.counts[i], s.percentile(i, 50), s.percentile(i, 99) });
         }
         if (s.rows_frames > 0) try w.print("rows written: mean {d}\n", .{s.rows_sum / s.rows_frames});
     }
@@ -92,8 +92,8 @@ test "stats: report of three frames" {
     var s: Stats = .{};
     var now: i64 = 0;
     for (0..3) |_| {
-        inline for (@typeInfo(Stage).@"enum".fields) |f| {
-            const st: Stage = @enumFromInt(f.value);
+        inline for (@typeInfo(Stage).@"enum".field_values) |f_value| {
+            const st: Stage = @enumFromInt(f_value);
             s.begin(st, now);
             now += 100;
             s.end(st, now);

@@ -46,20 +46,7 @@ const cpu = @import("../render/cpu.zig");
 const Image = @import("../render/renderer.zig").Image;
 const renderer = @import("../render/renderer.zig");
 
-const c = @cImport({
-    @cInclude("wayland-client.h");
-    @cInclude("xdg-shell-client-protocol.h");
-    @cInclude("xdg-decoration-unstable-v1-client-protocol.h");
-    @cInclude("viewporter-client-protocol.h");
-    @cInclude("fractional-scale-v1-client-protocol.h");
-    @cInclude("cursor-shape-v1-client-protocol.h");
-    @cInclude("xkbcommon/xkbcommon.h");
-    @cInclude("sys/mman.h");
-    @cInclude("sys/syscall.h");
-    @cInclude("unistd.h");
-    @cInclude("poll.h");
-    @cInclude("errno.h");
-});
+const c = @import("wayland_c");
 
 const Buf = struct {
     buffer: ?*c.wl_buffer = null,

@@ -234,5 +234,5 @@ test "grid-speed: a layout pass of 1000 widgets" {
     }
     const ms = best;
     std.debug.print("grid-speed: {d:.3} ms for 1000 widgets ({s})\n", .{ ms, @tagName(@import("builtin").mode) });
-    if (@import("builtin").mode == .ReleaseFast) try t.expect(ms < 1.0);
+    if (@import("builtin").mode == .fast) try t.expect(ms < 1.0);
 }

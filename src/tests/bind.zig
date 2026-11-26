@@ -263,7 +263,7 @@ test "bind-speed: 100000 motion events" {
     const ms = @as(f64, @floatFromInt(ns)) / 1e6;
     std.debug.print("bind-speed: {d:.1} ms for 100000 motion events ({s})\n", .{ ms, @tagName(@import("builtin").mode) });
     try t.expectEqualStrings("100000", try h.eval("set n"));
-    if (@import("builtin").mode == .ReleaseFast) try t.expect(ms < 150.0);
+    if (@import("builtin").mode == .fast) try t.expect(ms < 150.0);
 }
 
 const Counting = struct {

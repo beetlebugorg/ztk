@@ -20,9 +20,7 @@ const Scene = scene_mod.Scene;
 const Quad = scene_mod.Quad;
 const Image = renderer_mod.Image;
 
-pub const c = @cImport({
-    @cInclude("vulkan/vulkan.h");
-});
+pub const c = @import("vulkan_c");
 
 pub const available = true;
 
@@ -237,10 +235,10 @@ pub const Vulkan = struct {
     }
 
     fn loadFns(comptime T: type, table: *T, getter: anytype, handle: anytype) void {
-        inline for (@typeInfo(T).@"struct".fields) |f| {
-            const name: [:0]const u8 = f.name;
+        inline for (@typeInfo(T).@"struct".field_names) |f_name| {
+            const name: [:0]const u8 = f_name;
             const p = if (@TypeOf(handle) == @TypeOf(null)) getter(null, name.ptr) else getter(handle, name.ptr);
-            @field(table, f.name) = @ptrCast(p);
+            @field(table, f_name) = @ptrCast(p);
         }
     }
 
