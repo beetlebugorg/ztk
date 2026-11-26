@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "description": "Tk widgets for the web: Tcl scripts with Tk commands, drawn by ztk in WebAssembly",
   "license": "BSD-2-Clause",
-  "author": "The ztk authors",
+  "author": "The ztk authors <opensource@beetlebug.org>",
   "homepage": "https://beetlebug.org/ztk/",
   "repository": {
     "type": "git",
