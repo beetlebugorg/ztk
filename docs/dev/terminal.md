@@ -20,4 +20,4 @@ ztcl has the PTY (`ztcl::pty`, ztcl `docs/dev/pty.md`). The widget runs `ztcl::p
 
 - No combining marks, no reflow on resize, no hyperlinks (OSC 8), no Kitty keyboard protocol, no images.
 - The headless backend has only the Inter font, so the shots use a proportional font in a grid of cells.
-- macOS has no `ztcl::pty` yet. Windows needs ConPTY in ztcl.
+- `ztcl::pty` runs on Linux, macOS, and Windows. On Windows the widget reads the output pipe and writes the input pipe of the pseudo console, and asks `ztcl::pty status` when the output is quiet, because the output pipe stays open after the program ends.
