@@ -34,7 +34,7 @@ pub const GUID = extern struct {
 /// The function at `index` of the table of `obj`, with the type `F`.
 fn method(comptime F: type, obj: anytype, comptime index: usize) F {
     const table: *const [*]const *const anyopaque = @ptrCast(@alignCast(obj));
-    return @ptrCast(table.*[index]);
+    return @ptrCast(@alignCast(table.*[index]));
 }
 
 /// The pointer type of a method: the object, then the types of `Args`.

@@ -306,7 +306,7 @@ fn open(comptime name: []const u8) !HMODULE {
 }
 
 fn get(comptime T: type, module: HMODULE, name: [*:0]const u8) !T {
-    return @ptrCast(GetProcAddress(module, name) orelse return error.NoD3D12);
+    return @ptrCast(@alignCast(GetProcAddress(module, name) orelse return error.NoD3D12));
 }
 
 /// Opens `d3d12.dll`, `dxgi.dll`, and `d3dcompiler_47.dll`. A DLL or a
