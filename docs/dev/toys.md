@@ -26,6 +26,8 @@ This file is the state of the toys and the rules for the next ones. It is not on
 
 The Toys page is one handheld and the code (#204): a game list in a listbox, a pick runs the game and puts its code in the editor, Menu or Escape goes back, and `?game=SLUG` keeps the game. A new toy needs a heading `### Play: NAME` before its marker on its widget page, and a row in the list of `docs/toys.md` (its name without `toy-`, its title, and its widget). The list has 8 rows that fit in 240 pixels: a ninth game needs a smaller font or a scroll.
 
+Since then (2026-11-26): the keys of each handheld on a click, P to pause, and one molded shell (#207); the Inspect panel in view (#208); a page-wide fallback from a blank WebGPU to WebGL 2 (#206, #209). The code column of the Toys page wraps long lines at a width of about 200 pixels: give the Toys page a wider main column or a smaller code font.
+
 ## Next, in order
 
 1. Pixel Pad on the text page: a game whose rules are Tcl in a `text` widget. The draft below runs: `<<Modified>>` makes the proc `frame` again, and an error tags its line `err`. It needs a goal: for example, keep a falling ball out of a hole for 60 seconds by editing the rules.
