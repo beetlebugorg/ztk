@@ -7,6 +7,10 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # The macOS and Windows jobs run every 6 hours on main; pull requests
+  # and pushes run the quick Linux jobs only.
+  schedule:
+    - cron: "41 */6 * * *"
 
 permissions:
   contents: read
@@ -79,6 +83,7 @@ jobs:
     # The core, the headless backend, and the AppKit backend with Metal on
     # macOS. The runner has a desktop session, so the window tests run.
     name: Test (macOS)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     env:
       ZTK_TEST_WINDOWS: "1"
@@ -111,6 +116,7 @@ jobs:
   test-windows:
     # The core and the headless backend on Windows, as on macOS.
     name: Test (Windows)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     env:
       # The tests of the Win32 backend make hidden windows.
@@ -192,3 +198,21 @@ jobs:
           else
             echo "::notice::The build has no wasm step. The wasm build is skipped."
           fi
+
+  # A failure of the scheduled full run opens an issue, so it is fixed
+  # in the next batch of work.
+  report:
+    name: Report a failure of the full run
+    if: failure() && github.event_name == 'schedule'
+    needs: [check, docs, test, test-macos, test-windows, cross, wasm]
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open an issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create -R "${{ github.repository }}" \
+            --title "The full CI run failed on $(date -u +%Y-%m-%d)" \
+            --body "The scheduled full run failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
