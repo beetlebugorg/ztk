@@ -286,7 +286,8 @@ function cpu(canvas, ex) {
 /// color scheme of the page), width and height (a fixed logical size),
 /// scale (in place of devicePixelRatio), and log (gets the text of puts
 /// and the errors).
-export async function start(canvas, options = {}) {
+export async function start(firstCanvas, options = {}) {
+  let canvas = firstCanvas;
   const enc = new TextEncoder();
   const dec = new TextDecoder();
   let ex = null;
@@ -357,7 +358,7 @@ export async function start(canvas, options = {}) {
   const want = options.renderer || query || "auto";
   let lastN = 0;
   const makers = {
-    webgpu: () => createWebGPU(canvas, ex, { colorSpace: options.colorSpace, restored: () => draw(lastN) }),
+    webgpu: () => createWebGPU(canvas, ex, { colorSpace: options.colorSpace, restored: () => draw(lastN), failed: (why) => fallback(why) }),
     webgl2: () => webgl2(canvas, ex),
     cpu: () => cpu(canvas, ex),
   };
@@ -379,6 +380,42 @@ export async function start(canvas, options = {}) {
     console.info(`ztk: the renderer is ${renderer.name}`);
   }
 
+  // A WebGPU canvas can stay blank on the screen, as on some
+  // software adapters. The first frame of WebGPU goes into a 1 by 1 2D
+  // canvas: an opaque canvas gives an alpha of 255 there, and a blank one
+  // gives 0. A blank first frame, a GPU error, or a loss with no new
+  // device makes the page render with WebGL 2, or with the CPU renderer
+  // when WebGL 2 is not there. A canvas has one context type, so a new
+  // canvas goes in the place of the old one. A forced "webgpu" stays.
+  let firstFrame = true;
+  const blank = () => {
+    try {
+      const probe = document.createElement("canvas");
+      probe.width = probe.height = 1;
+      const g = probe.getContext("2d", { willReadFrequently: true });
+      g.drawImage(canvas, 0, 0, 1, 1);
+      return g.getImageData(0, 0, 1, 1).data[3] === 0;
+    } catch (_) {
+      return false;
+    }
+  };
+  let falling = false;
+  const fallback = (why) => {
+    if (falling || renderer?.name !== "webgpu" || want === "webgpu" || signal.aborted) return;
+    falling = true;
+    console.warn(`ztk: WebGPU ${why}, so the renderer is now WebGL 2`);
+    renderer.destroy();
+    const next = canvas.cloneNode(false);
+    canvas.replaceWith(next);
+    canvas = next;
+    bindCanvas();
+    renderer = null;
+    try { renderer = webgl2(canvas, ex); } catch (_) { /* no WebGL 2 */ }
+    renderer ??= cpu(canvas, ex);
+    falling = false;
+    draw(lastN);
+  };
+
   const draw = (n) => {
     lastN = n;
     const w = ex.ztk_scene_width(), h = ex.ztk_scene_height();
@@ -387,6 +424,10 @@ export async function start(canvas, options = {}) {
     const cw = `${(w * k) / sc}px`, ch = `${(h * k) / sc}px`;
     if (canvas.style.width !== cw || canvas.style.height !== ch) { canvas.style.width = cw; canvas.style.height = ch; }
     renderer.draw(n, w, h);
+    if (firstFrame && renderer.name === "webgpu") {
+      firstFrame = false;
+      if (blank()) return fallback("rendered a blank frame");
+    }
     updateA11y();
   };
 
@@ -402,22 +443,26 @@ export async function start(canvas, options = {}) {
     return [(e.clientX - r.left) / k, (e.clientY - r.top) / k];
   };
   const mods = (e) => ex.ztk_mods(e.shiftKey, e.ctrlKey || e.metaKey, e.altKey);
-  on(canvas, "pointermove", (e) => { mods(e); ex.ztk_pointer(...pos(e)); });
-  on(canvas, "pointerdown", (e) => {
-    mods(e); ex.ztk_pointer(...pos(e)); ex.ztk_button([1, 2, 3][e.button] || 1, true);
-    try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* a synthetic event has no capture */ }
-    input.focus({ preventScroll: true }); e.preventDefault();
-  });
-  on(canvas, "pointerup", (e) => { mods(e); ex.ztk_pointer(...pos(e)); ex.ztk_button([1, 2, 3][e.button] || 1, false); });
-  on(canvas, "pointerleave", () => ex.ztk_leave());
-  // A wheel step is 100 pixels in deltaMode 0 and 3 lines in deltaMode 1.
-  canvas.addEventListener("wheel", (e) => {
-    e.preventDefault();
-    mods(e); ex.ztk_pointer(...pos(e));
-    const k = e.deltaMode === 1 ? 1 / 3 : e.deltaMode === 2 ? 10 : 1 / 100;
-    ex.ztk_wheel(e.deltaX * k, e.deltaY * k);
-  }, { passive: false, signal });
-  on(canvas, "contextmenu", (e) => e.preventDefault());
+  // The listeners of the canvas. A fallback of the renderer puts them on the new canvas.
+  const bindCanvas = () => {
+    on(canvas, "pointermove", (e) => { mods(e); ex.ztk_pointer(...pos(e)); });
+    on(canvas, "pointerdown", (e) => {
+      mods(e); ex.ztk_pointer(...pos(e)); ex.ztk_button([1, 2, 3][e.button] || 1, true);
+      try { canvas.setPointerCapture(e.pointerId); } catch (_) { /* a synthetic event has no capture */ }
+      input.focus({ preventScroll: true }); e.preventDefault();
+    });
+    on(canvas, "pointerup", (e) => { mods(e); ex.ztk_pointer(...pos(e)); ex.ztk_button([1, 2, 3][e.button] || 1, false); });
+    on(canvas, "pointerleave", () => ex.ztk_leave());
+    // A wheel step is 100 pixels in deltaMode 0 and 3 lines in deltaMode 1.
+    canvas.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      mods(e); ex.ztk_pointer(...pos(e));
+      const k = e.deltaMode === 1 ? 1 / 3 : e.deltaMode === 2 ? 10 : 1 / 100;
+      ex.ztk_wheel(e.deltaX * k, e.deltaY * k);
+    }, { passive: false, signal });
+    on(canvas, "contextmenu", (e) => e.preventDefault());
+  };
+  bindCanvas();
   let composing = false;
   on(input, "compositionstart", () => { composing = true; });
   on(input, "compositionend", (e) => { composing = false; withBytes(e.data || "", (p, n) => ex.ztk_text(p, n)); input.value = ""; });
@@ -581,7 +626,7 @@ export async function start(canvas, options = {}) {
   const snapshot = (type = "image/png") => { redraw(); return canvas.toDataURL(type); };
   // A test: the GPU device is lost, and the renderer draws on a new one.
   const loseDevice = async () => (renderer.lose ? renderer.lose() : false);
-  return { eval: evalScript, exports: ex, frame, tree, addFile, canvas, resize, setTheme, destroy, renderer: renderer.name, redraw, snapshot, loseDevice, signal };
+  return { eval: evalScript, exports: ex, frame, tree, addFile, get canvas() { return canvas; }, resize, setTheme, destroy, get renderer() { return renderer.name; }, redraw, snapshot, loseDevice, signal };
 }
 
 /// Mounts a ztk app on an element. `el` is a canvas, or an element that
@@ -631,7 +676,7 @@ export async function mount(el, options = {}) {
   app.destroy = () => {
     observer?.disconnect();
     destroy();
-    if (own) canvas.remove();
+    if (own) app.canvas.remove();
   };
   for (const [name, text] of Object.entries(options.files || {})) app.addFile(name, text);
   if (options.script != null) {

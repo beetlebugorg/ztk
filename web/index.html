@@ -95,8 +95,9 @@ if (params.has("test")) {
   const out = document.createElement("pre");
   out.id = "result";
   const ex = ztk.exports;
-  const canvas = document.getElementById("screen");
+  // The first frame can put a new canvas in place (the fallback of WebGPU), so the canvas is read after it.
   ztk.frame(performance.now());
+  const canvas = ztk.canvas;
   // ?pre=script runs before the input, for example a post of a menu.
   if (params.get("pre")) {
     ztk.eval(params.get("pre"));

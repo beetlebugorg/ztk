@@ -36,7 +36,7 @@ With no build step, import `https://cdn.jsdelivr.net/npm/@beetlebug/ztk@VERSION/
 | `files` | Files by name for `ztk::style load`. |
 | `theme` | `"auto"` (the color scheme of the page), `"light"`, or `"dark"`. |
 | `size` | `"auto"`: the size of the element at the start, and then the size that the toplevel computes. `"fill"`: the window follows the size of the element through a `ResizeObserver`. `[width, height]`: a fixed logical size. |
-| `renderer` | `"auto"`, `"webgl2"`, `"cpu"`, or `"webgpu"`. `"auto"` selects WebGPU when the browser gives an adapter, else WebGL 2, else the CPU renderer. A forced renderer that the browser does not have rejects. |
+| `renderer` | `"auto"`, `"webgl2"`, `"cpu"`, or `"webgpu"`. `"auto"` selects WebGPU when the browser gives an adapter, else WebGL 2, else the CPU renderer. With `"auto"`, a blank first WebGPU frame, a GPU error, or a lost device with no new device makes the app render with WebGL 2 on a new canvas in the place of the old one. Read `app.canvas` again after the first frame. A forced renderer that the browser does not have rejects. |
 | `scale` | The device pixels in one logical pixel. The default is `devicePixelRatio`. |
 | `module`, `wasm` | A compiled module, or the URL of `ztk.wasm`. |
 | `log` | Gets the text of `puts` and the error messages. |

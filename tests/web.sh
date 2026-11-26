@@ -12,7 +12,8 @@
 # WebGPU device. It reports the CPU time of a frame with WebGPU and with
 # WebGL 2 for the gallery and a stress scene. The browser runs in real
 # time through tests/browser.mjs, with SwiftShader for Vulkan (WebGPU)
-# and for ANGLE (WebGL 2).
+# and for ANGLE (WebGL 2). A WebGPU canvas that stays blank makes the
+# page go on with WebGL 2, and that image must equal the CPU renderer.
 # Use: tests/web.sh      (after: zig build wasm && zig build)
 # Exit status: 0 pass, 1 fail, 77 when a tool or the build is missing.
 set -u
@@ -33,11 +34,14 @@ server=$!
 trap 'kill $server 2>/dev/null; rm -rf "$work"' EXIT
 sleep 1
 # page QUERY [WEBGPU]: the result of index.html?QUERY. WEBGPU=off runs
-# the browser without WebGPU.
+# the browser without WebGPU. WEBGPU=blank runs it with WebGPU on
+# SwiftShader with no Vulkan for the compositor: the adapter and the
+# device work, and the canvas stays blank.
 gpu="--use-angle=vulkan --enable-features=Vulkan --use-vulkan=swiftshader"
 page() {
     flags="$gpu"
     [ "${2:-on}" = on ] && flags="$gpu --enable-unsafe-webgpu"
+    [ "${2:-on}" = blank ] && flags="--use-angle=swiftshader --enable-unsafe-swiftshader --enable-unsafe-webgpu"
     n=$((n + 1))
     # $flags has several flags on purpose.
     # shellcheck disable=SC2086
@@ -148,6 +152,7 @@ page "$q&renderer=webgpu&lose" > "$work/webgpu.json"
 page "$q" > "$work/auto-on.json"
 page "$q&renderer=webgpu&colorspace=display-p3" > "$work/p3.json"
 page "$q" off > "$work/webgl2.json"
+page "$q" blank > "$work/fallback.json"
 page "$q&renderer=cpu" > "$work/cpu-web.json"
 # The stress scene for the frame time: 1 200 labels in a grid of 30
 # columns over the demo, in a window of 720 by 440. About 200 of them show.
@@ -203,6 +208,12 @@ auto = load("auto-on.json").get("renderer")
 ok = auto == "webgpu"
 fail |= not ok
 print(("ok" if ok else "FAIL") + f": with WebGPU on, the automatic choice is {auto}; with WebGPU off, it is {runs['webgl2'].get('renderer')}")
+# A blank first frame of WebGPU: the automatic choice goes on with WebGL 2.
+fb = load("fallback.json")
+ok = fb.get("renderer") == "webgl2" and fb.get("png", "").startswith("data:")
+fail |= not ok
+print(("ok" if ok else "FAIL") + f": with a WebGPU canvas that stays blank, the page renders with {fb.get('renderer')}")
+if ok: check("the fallback to WebGL 2 against the CPU renderer", image(fb["png"]), cpu)
 imgs = {n: image(r["png"]) for n, r in runs.items() if r.get("png", "").startswith("data:")}
 if "webgpu" in imgs: check("WebGPU against the CPU renderer", imgs["webgpu"], cpu)
 if "webgl2" in imgs: check("WebGL 2 against the CPU renderer", imgs["webgl2"], cpu)
