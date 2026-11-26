@@ -75,6 +75,14 @@ The backend calls the Objective-C runtime with `objc_msgSend` through typed func
 - Scroll: `scrollWheel:` with `hasPreciseScrollingDeltas` gives fractional deltas in logical pixels. The momentum phase of the event goes to the scroll code of the core. Line deltas from a mouse wheel scale by the line height of Tk.
 - Input methods: the view adopts `NSTextInputClient`. `setMarkedText:selectedRange:replacementRange:` gives `preedit`, `insertText:replacementRange:` gives `commit`, and `firstRectForCharacterRange:actualRange:` returns the rectangle from `textInput`. While `textInput` is on, a key goes through `interpretKeyEvents:`. A key that the input method does not use, with no composition before or after it, stays a `key` event with its text, so plain typing reaches the bindings as before. A key with Command or Control skips the input method. The text of the widget stays in the core, so `selectedRange` is empty and the input method does not read the text around the caret.
 
+## Menus
+
+- `src/platform/nsmenu.zig` keeps one `NSMenu` for each menu of the core and fills it again at each `menuSet`. The tag of an item has the menu id and the index of the entry.
+- The system menu bar shows the bar of the key window, or a default bar with the application menu alone. The application menu has About, Settings, Services, Hide, Hide Others, Show All, and Quit. About, Settings, and Quit give the `app_command` event. Services, Hide, Hide Others, and Show All stay in AppKit.
+- The cascade `.apple` of a bar stays hidden, and its entries go at the top of the application menu in place of About. `.help` and `.window` become the Help menu and the Window menu of the system.
+- An accelerator such as `Command-O`, `Cmd+Shift+S`, or `F5` shows as the key equivalent of its item. When the key chooses the item, the key goes to the core as a `key` event and the entry is not invoked, so the binding of the script runs, as in Tk. An accelerator that names no key of macOS shows no key.
+- `menuNeedsUpdate:` calls the handler of the core with `opening`, and `menu:willHighlightItem:` with `select`. `postMenu` runs `popUpMenuPositioningItem:atLocation:inView:` and returns when the menu closes.
+
 ## CI
 
 The `test` job gets a matrix entry for `macos-latest`. The macOS runner has no Linux build tools to install. The step runs `zig build`, `zig build test`, and the headless script that the Linux job runs. From PR 4 on, the Metal tests run when `MTLCreateSystemDefaultDevice` gives a device, and they print `SKIP: no Metal device` when it gives none. It is not yet checked if the virtual machines of `macos-latest` have a Metal device. PR 4 says which result CI gives.
