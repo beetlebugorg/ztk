@@ -1,8 +1,9 @@
 //! Fonts and font descriptions. `Fonts` holds the faces that the program
 //! adds, and a cache of `Font` values, one for each face, size, and
-//! scale. The package has two faces (Regular and Bold). A
-//! weight of 600 or more selects Bold. Each family name selects one of
-//! them. With a text engine of the system (`system.zig`, DirectWrite on
+//! scale. The package has three faces: Inter Regular and Bold, and
+//! JetBrains Mono Regular. A family name of a monospace font (see
+//! `isMono`) selects JetBrains Mono, and each other name selects Inter,
+//! where a weight of 600 or more selects Bold. With a text engine of the system (`system.zig`, DirectWrite on
 //! Windows), `get` opens a face of the system for the description, and
 //! the methods of `Font` ask the system for its glyphs and metrics.
 //! `parseTk` reads the font values of Tk.
@@ -98,12 +99,16 @@ pub const Fonts = struct {
 
     const regular = @embedFile("inter_regular");
     const bold = @embedFile("inter_bold");
+    const mono = @embedFile("mono_regular");
+    /// The index of the monospace face in `faces`.
+    pub const mono_face = 2;
 
     pub fn init(gpa: std.mem.Allocator) !Fonts {
         var f: Fonts = .{ .gpa = gpa };
         errdefer f.deinit();
         try f.add(regular);
         try f.add(bold);
+        try f.add(mono);
         return f;
     }
 
@@ -136,6 +141,7 @@ pub const Fonts = struct {
     pub fn get(f: *Fonts, desc: FontDesc, scale: f32) !*Font {
         const want_bold = desc.weight >= 600;
         var idx: usize = if (want_bold and f.faces.items.len > 1) 1 else 0;
+        if (isMono(desc.family) and f.faces.items.len > mono_face) idx = mono_face;
         if (idx >= f.faces.items.len) idx = 0;
         if (f.faces.items.len == 0) return error.NoFont;
         // The size can come from a script, and the scale from a backend.
@@ -150,6 +156,15 @@ pub const Fonts = struct {
         font.* = .{ .face = f.faces.items[idx], .size = size, .scale = safe_scale, .system = if (sys_face != null) f.system else null, .sys_face = sys_face orelse 0 };
         try f.cache.put(f.gpa, key, font);
         return font;
+    }
+
+    /// True for a family name of a monospace font: `monospace` (the
+    /// family of TkFixedFont), `fixed`, and the usual monospace families
+    /// of Tk scripts. The case does not matter.
+    pub fn isMono(family: []const u8) bool {
+        const names = [_][]const u8{ "monospace", "fixed", "courier", "courier new", "menlo", "monaco", "consolas", "dejavu sans mono", "liberation mono", "jetbrains mono", "ui-monospace" };
+        for (names) |n| if (std.ascii.eqlIgnoreCase(family, n)) return true;
+        return false;
     }
 
     pub fn metrics(font: *const Font) Metrics {

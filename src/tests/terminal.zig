@@ -5,6 +5,7 @@
 
 const std = @import("std");
 const Harness = @import("../testing.zig").Harness;
+const testing_h = @import("../testing.zig");
 const t = std.testing;
 
 test "terminal: size, write, and get" {
@@ -123,4 +124,19 @@ test "terminal: -shell runs the shell of ztcl" {
     _ = try h.eval(".t send \"\\x15destroy .t\\r\"");
     try t.expectEqualStrings("0", try h.eval("winfo exists .t"));
     _ = try h.eval("ztk::terminal .u -shell 1; .u configure -shell 0; destroy .u");
+}
+
+test "terminal: hello in the cells of the monospace face" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    // TkFixedFont is JetBrains Mono, so each letter fills its cell, and
+    // the golden image has no gap after the narrow l.
+    const fonts = &h.app.fonts;
+    const f = try fonts.get(.{ .family = "monospace", .size = 12 }, 1);
+    try t.expect(f.face == fonts.faces.items[@import("../text/font.zig").Fonts.mono_face]);
+    _ = try h.eval("wm geometry . 120x40; ztk::terminal .t -width 8 -height 1; pack .t; .t write hello; update");
+    try h.update();
+    try testing_h.expectGolden("terminal-hello", h.head.image(h.win).?, .{});
+    try testing_h.expectScene("terminal-hello", h.app.lastScene());
 }

@@ -29,8 +29,11 @@ The rule of the plan: ztk needs only the interfaces of the platform, ztcl, and t
 | Data | Use | License | Stage |
 |---|---|---|---|
 | Inter 4.1 (in `assets/fonts/`) | The fallback font and the font of the tests | SIL Open Font License 1.1 | 1 |
+| JetBrains Mono 2.304 (in `assets/fonts/`) | The fallback font of `monospace` and `TkFixedFont`, and of the terminal | SIL Open Font License 1.1 | 1 |
 
 The license of Inter was read in `LICENSE.txt` of its release archive 4.1, and the file is `assets/fonts/LICENSE-Inter.txt`. The files `Inter-Regular.ttf` and `Inter-Bold.ttf` come from `extras/ttf/` of that archive. https://github.com/rsms/inter
+
+The license of JetBrains Mono was read in `OFL.txt` of its release archive 2.304, and the file is `assets/fonts/LICENSE-JetBrainsMono.txt`. The file `JetBrainsMono-Regular.ttf` comes from `fonts/ttf/` of that archive. The package has no bold face of it: a bold monospace text uses the regular face. https://github.com/JetBrains/JetBrainsMono
 
 ## Build tools and headers
 

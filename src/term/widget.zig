@@ -514,6 +514,17 @@ fn send(w: *Widget, bytes: []const u8) void {
 
 // Size and paint.
 
+/// The font of the cells: the `-font` of the script, or else the size
+/// and the weight of the style with the monospace face. The family of
+/// the stylesheet is proportional, and the default of `-font` is
+/// TkFixedFont, so a terminal with no `-font` gets the monospace face.
+fn cellFont(w: *const Widget, st: *const style_mod.Style) font_mod.FontDesc {
+    var f = st.font;
+    const set = if (options.maybe(w, "-font")) |o| o.set else false;
+    if (!set) f.family = "monospace";
+    return f;
+}
+
 fn cellSize(w: *Widget, desc: font_mod.FontDesc) void {
     const d = data(w);
     d.cell_w = @max(paint.zeroWidth(w.app, desc), 1);
@@ -524,7 +535,7 @@ fn measure(w: *Widget) geom.Size {
     const app = w.app;
     app.ensureStyle(w);
     const st = &w.style;
-    cellSize(w, st.font);
+    cellSize(w, cellFont(w, st));
     const d = data(w);
     const cols = std.math.clamp(optInt(w, "-width", 80), 1, 1000);
     const rows = std.math.clamp(optInt(w, "-height", 24), 1, 1000);
@@ -622,7 +633,7 @@ fn paintTerminal(w: *Widget, b: *scene.Builder) anyerror!void {
     const st = &solid_style;
     const d = data(w);
     try paint.box(w, b, st);
-    cellSize(w, st.font);
+    cellSize(w, cellFont(w, st));
     const r = paint.contentRect(w, st);
     // The size of the grid follows the size of the widget.
     const cols: u16 = @intCast(std.math.clamp(@divFloor(r.w, d.cell_w), 1, 1000));
@@ -669,7 +680,8 @@ fn paintTerminal(w: *Widget, b: *scene.Builder) anyerror!void {
         }
     }
     // Pass 2: the text.
-    const mfont = app.fonts.get(st.font, 1) catch return;
+    const cfont = cellFont(w, st);
+    const mfont = app.fonts.get(cfont, 1) catch return;
     const ascent = font_mod.Fonts.metrics(mfont).ascent;
     var text: std.ArrayList(u8) = .empty;
     var starts: std.ArrayList(u16) = .empty;
@@ -703,7 +715,7 @@ fn paintTerminal(w: *Widget, b: *scene.Builder) anyerror!void {
             if (end == x) end = x + 1;
             const run_x = r.x + @as(i32, x) * d.cell_w;
             const fg = here.fg;
-            if (std.mem.trim(u8, text.items, " ").len > 0) try drawRun(app, b, st.font, c0.attrs, text.items, starts.items, run_x, y + ascent, d.cell_w, fg);
+            if (std.mem.trim(u8, text.items, " ").len > 0) try drawRun(app, b, cfont, c0.attrs, text.items, starts.items, run_x, y + ascent, d.cell_w, fg);
             if (c0.attrs.underline) try b.box(.{ .x = run_x, .y = y + ascent + 1, .w = @as(i32, end - x) * d.cell_w, .h = 1 }, .{ .fill = fg });
             if (c0.attrs.strike) try b.box(.{ .x = run_x, .y = y + @divFloor(d.cell_h, 2), .w = @as(i32, end - x) * d.cell_w, .h = 1 }, .{ .fill = fg });
             x = end;

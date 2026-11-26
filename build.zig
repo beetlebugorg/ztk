@@ -109,6 +109,7 @@ pub fn build(b: *std.Build) void {
     }
     ztk.addAnonymousImport("inter_regular", .{ .root_source_file = b.path("assets/fonts/Inter-Regular.ttf") });
     ztk.addAnonymousImport("inter_bold", .{ .root_source_file = b.path("assets/fonts/Inter-Bold.ttf") });
+    ztk.addAnonymousImport("mono_regular", .{ .root_source_file = b.path("assets/fonts/JetBrainsMono-Regular.ttf") });
 
     const libc_on = vulkan_on or wayland_on or appkit_on;
     // The self-hosted backend covers x86-64 Linux. Each other target uses LLVM.
@@ -151,6 +152,7 @@ pub fn build(b: *std.Build) void {
         wasm_mod.addOptions("build_options", wasm_opts);
         wasm_mod.addAnonymousImport("inter_regular", .{ .root_source_file = b.path("assets/fonts/Inter-Regular.ttf") });
         wasm_mod.addAnonymousImport("inter_bold", .{ .root_source_file = b.path("assets/fonts/Inter-Bold.ttf") });
+        wasm_mod.addAnonymousImport("mono_regular", .{ .root_source_file = b.path("assets/fonts/JetBrainsMono-Regular.ttf") });
         const wasm = b.addExecutable(.{ .name = "ztk", .root_module = wasm_mod });
         wasm.entry = .disabled;
         wasm.rdynamic = true;
@@ -175,6 +177,7 @@ pub fn build(b: *std.Build) void {
     bench_ztk.addOptions("build_options", opts);
     bench_ztk.addAnonymousImport("inter_regular", .{ .root_source_file = b.path("assets/fonts/Inter-Regular.ttf") });
     bench_ztk.addAnonymousImport("inter_bold", .{ .root_source_file = b.path("assets/fonts/Inter-Bold.ttf") });
+    bench_ztk.addAnonymousImport("mono_regular", .{ .root_source_file = b.path("assets/fonts/JetBrainsMono-Regular.ttf") });
     if (vulkan_on) {
         bench_ztk.link_libc = true;
         bench_ztk.addIncludePath(b.dependency("vulkan_headers", .{}).path("include"));
