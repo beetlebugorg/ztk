@@ -50,6 +50,7 @@ flat in vec4 f_fill; flat in vec4 f_fill2; flat in vec4 f_border_color; flat in 
 flat in vec4 f_params; flat in uint f_kind;
 uniform vec2 u_target;
 uniform sampler2D u_atlas;
+uniform sampler2D u_images;
 out vec4 out_color;
 float clamp01(float x) { return clamp(x, 0.0, 1.0); }
 float roundedDistance(vec2 p, vec4 rect, vec4 radii) {
@@ -101,6 +102,15 @@ void main() {
     ivec2 t = ivec2(f_uv.xy) + ivec2(floor(p)) - ivec2(f_rect.xy);
     float a = f_fill.a * texelFetch(u_atlas, t, 0).r * opacity;
     out_color = vec4(f_fill.rgb * a, a);
+  } else if (f_kind == 3u) {
+    // The bilinear filter of the CPU renderer, on four texels of the image page.
+    vec2 u = clamp(f_uv.xy + (p - f_rect.xy) * (f_uv.zw / f_rect.zw) - 0.5, 0.0, 1022.0);
+    vec2 f = u - floor(u);
+    ivec2 i = ivec2(floor(u));
+    vec4 c = mix(mix(texelFetch(u_images, i, 0), texelFetch(u_images, i + ivec2(1, 0), 0), f.x),
+                 mix(texelFetch(u_images, i + ivec2(0, 1), 0), texelFetch(u_images, i + ivec2(1, 1), 0), f.x), f.y);
+    float a = c.a * opacity;
+    out_color = vec4(c.rgb * a, a);
   } else {
     discard;
   }
@@ -195,6 +205,17 @@ function webgl2(canvas, ex) {
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, ATLAS, ATLAS, 0, gl.RED, gl.UNSIGNED_BYTE, null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  // The RGBA image page, on texture unit 1.
+  const imgTex = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, imgTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, ATLAS, ATLAS, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.useProgram(prog);
+  gl.uniform1i(gl.getUniformLocation(prog, "u_atlas"), 0);
+  gl.uniform1i(gl.getUniformLocation(prog, "u_images"), 1);
   const uTarget = gl.getUniformLocation(prog, "u_target");
   let atlasVersion = -1;
   return {
@@ -205,6 +226,14 @@ function webgl2(canvas, ex) {
         atlasVersion = v;
         const p = ex.ztk_atlas();
         if (p) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, ATLAS, ATLAS, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array(ex.memory.buffer, p, ATLAS * ATLAS));
+        const ip = ex.ztk_images ? ex.ztk_images() : 0;
+        if (ip) {
+          gl.activeTexture(gl.TEXTURE1);
+          gl.bindTexture(gl.TEXTURE_2D, imgTex);
+          gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, ATLAS, ATLAS, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(ex.memory.buffer, ip, ATLAS * ATLAS * 4));
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, tex);
+        }
       }
       const c = new Float32Array(ex.memory.buffer, ex.ztk_clear_color(), 4);
       gl.viewport(0, 0, w, h);
@@ -225,6 +254,7 @@ function webgl2(canvas, ex) {
     destroy() {
       gl.deleteBuffer(buf);
       gl.deleteTexture(tex);
+      gl.deleteTexture(imgTex);
       gl.deleteVertexArray(vao);
       gl.deleteProgram(prog);
     },

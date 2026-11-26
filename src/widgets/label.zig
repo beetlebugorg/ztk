@@ -17,6 +17,7 @@ const paint = @import("../paint.zig");
 const scene = @import("../scene.zig");
 const App = @import("../app.zig").App;
 const image_mod = @import("../image.zig");
+const Atlas = @import("../text/atlas.zig").Atlas;
 const style_mod = @import("../style.zig");
 const Spec = options.Spec;
 const Widget = widget.Widget;
@@ -290,7 +291,7 @@ pub fn paintLabel(w: *Widget, b: *scene.Builder) anyerror!void {
         },
         else => {},
     }
-    if (photoOf(w)) |ph| try drawPhoto(b, ph, img_at.x, img_at.y, st.opacity);
+    if (photoOf(w)) |ph| try drawPhoto(b, &w.app.atlas, ph, img_at.x, img_at.y, st.opacity);
     if (cs.show_text) try paint.label(w, b, txt_at, text(w), st, .center, justify);
 }
 
@@ -312,7 +313,15 @@ fn anchored(r: geom.Rect, size: geom.Size, anchor: options.Anchor) geom.Rect {
 }
 
 /// Draws a photo as one box for each run of equal pixels in a row.
-pub fn drawPhoto(b: *scene.Builder, ph: *const image_mod.Photo, x: i32, y: i32, opacity: f32) !void {
+/// Draws a photo at its size in logical pixels. The pixels go in the
+/// image page of the atlas once for each version, and the photo is one
+/// image quad. A photo larger than the page is boxes of runs of pixels.
+pub fn drawPhoto(b: *scene.Builder, atlas: *Atlas, ph: *const image_mod.Photo, x: i32, y: i32, opacity: f32) !void {
+    if (ph.width == 0 or ph.height == 0) return;
+    const key = (@as(u64, ph.serial) << 32) | ph.version;
+    if (try atlas.image(key, ph.width, ph.height, ph.pixels)) |uv| {
+        return b.image(.{ .x = x, .y = y, .w = @intCast(ph.width), .h = @intCast(ph.height) }, uv, opacity);
+    }
     var row: u32 = 0;
     while (row < ph.height) : (row += 1) {
         var col: u32 = 0;

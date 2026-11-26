@@ -178,6 +178,12 @@ pub const Vulkan = struct {
     atlas_view: c.VkImageView = null,
     atlas_staging: Buffer = .{},
     atlas_generation: ?u32 = null,
+    /// The RGBA image page of the atlas, at binding 1.
+    image_image: c.VkImage = null,
+    image_mem: c.VkDeviceMemory = null,
+    image_view: c.VkImageView = null,
+    image_staging: Buffer = .{},
+    image_generation: ?u32 = null,
     instances: Buffer = .{},
     readback: Buffer = .{},
     target: ?*Target = null,
@@ -215,6 +221,10 @@ pub const Vulkan = struct {
             v.destroyBuffer(&v.instances);
             v.destroyBuffer(&v.readback);
             v.destroyBuffer(&v.atlas_staging);
+            v.destroyBuffer(&v.image_staging);
+            if (v.image_view != null) v.dfn.vkDestroyImageView.?(v.device, v.image_view, null);
+            if (v.image_image != null) v.dfn.vkDestroyImage.?(v.device, v.image_image, null);
+            if (v.image_mem != null) v.dfn.vkFreeMemory.?(v.device, v.image_mem, null);
             if (v.atlas_view != null) v.dfn.vkDestroyImageView.?(v.device, v.atlas_view, null);
             if (v.atlas_image != null) v.dfn.vkDestroyImage.?(v.device, v.atlas_image, null);
             if (v.atlas_mem != null) v.dfn.vkFreeMemory.?(v.device, v.atlas_mem, null);
@@ -535,17 +545,20 @@ pub const Vulkan = struct {
         rp.pSubpasses = &sub;
         try check(v.dfn.vkCreateRenderPass.?(v.device, &rp, null, &v.render_pass));
 
-        // The descriptor set of the atlas.
-        var binding = std.mem.zeroes(c.VkDescriptorSetLayoutBinding);
-        binding.binding = 0;
-        binding.descriptorType = c.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-        binding.descriptorCount = 1;
-        binding.stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT;
+        // The descriptor set of the atlas: the coverage page at binding 0
+        // and the image page at binding 1.
+        var bindings: [2]c.VkDescriptorSetLayoutBinding = .{ std.mem.zeroes(c.VkDescriptorSetLayoutBinding), std.mem.zeroes(c.VkDescriptorSetLayoutBinding) };
+        for (&bindings, 0..) |*binding, k| {
+            binding.binding = @intCast(k);
+            binding.descriptorType = c.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+            binding.descriptorCount = 1;
+            binding.stageFlags = c.VK_SHADER_STAGE_FRAGMENT_BIT;
+        }
         var li = zero(c.VkDescriptorSetLayoutCreateInfo, c.VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO);
-        li.bindingCount = 1;
-        li.pBindings = &binding;
+        li.bindingCount = 2;
+        li.pBindings = &bindings;
         try check(v.dfn.vkCreateDescriptorSetLayout.?(v.device, &li, null, &v.set_layout));
-        const psize = c.VkDescriptorPoolSize{ .type = c.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, .descriptorCount = 1 };
+        const psize = c.VkDescriptorPoolSize{ .type = c.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, .descriptorCount = 2 };
         var dpi = zero(c.VkDescriptorPoolCreateInfo, c.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO);
         dpi.maxSets = 1;
         dpi.poolSizeCount = 1;
@@ -561,14 +574,23 @@ pub const Vulkan = struct {
         try v.createImage(atlas_size, atlas_size, c.VK_FORMAT_R8_UNORM, c.VK_IMAGE_USAGE_SAMPLED_BIT | c.VK_IMAGE_USAGE_TRANSFER_DST_BIT, &v.atlas_image, &v.atlas_mem);
         v.atlas_view = try v.createView(v.atlas_image, c.VK_FORMAT_R8_UNORM);
         try v.createBuffer(&v.atlas_staging, @as(u64, atlas_size) * atlas_size, c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-        var ii = c.VkDescriptorImageInfo{ .sampler = null, .imageView = v.atlas_view, .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
-        var wr = zero(c.VkWriteDescriptorSet, c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET);
-        wr.dstSet = v.desc_set;
-        wr.dstBinding = 0;
-        wr.descriptorCount = 1;
-        wr.descriptorType = c.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-        wr.pImageInfo = &ii;
-        v.dfn.vkUpdateDescriptorSets.?(v.device, 1, &wr, 0, null);
+        try v.createImage(atlas_size, atlas_size, c.VK_FORMAT_R8G8B8A8_UNORM, c.VK_IMAGE_USAGE_SAMPLED_BIT | c.VK_IMAGE_USAGE_TRANSFER_DST_BIT, &v.image_image, &v.image_mem);
+        v.image_view = try v.createView(v.image_image, c.VK_FORMAT_R8G8B8A8_UNORM);
+        try v.createBuffer(&v.image_staging, @as(u64, atlas_size) * atlas_size * 4, c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+        const infos = [2]c.VkDescriptorImageInfo{
+            .{ .sampler = null, .imageView = v.atlas_view, .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
+            .{ .sampler = null, .imageView = v.image_view, .imageLayout = c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL },
+        };
+        var writes: [2]c.VkWriteDescriptorSet = undefined;
+        for (&writes, 0..) |*wr, k| {
+            wr.* = zero(c.VkWriteDescriptorSet, c.VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET);
+            wr.dstSet = v.desc_set;
+            wr.dstBinding = @intCast(k);
+            wr.descriptorCount = 1;
+            wr.descriptorType = c.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+            wr.pImageInfo = &infos[k];
+        }
+        v.dfn.vkUpdateDescriptorSets.?(v.device, 2, &writes, 0, null);
 
         // The pipeline.
         v.vert_module = try v.shaderModule(vert_spv);
@@ -716,25 +738,30 @@ pub const Vulkan = struct {
         try check(v.dfn.vkBeginCommandBuffer.?(v.cmd, &bi));
     }
 
-    /// Uploads the atlas page when its generation changed since the last upload.
+    /// Uploads the pages of the atlas when their generation changed since
+    /// the last upload: the coverage page and the RGBA image page.
     fn syncAtlas(v: *Vulkan, atlas: *const Atlas) void {
-        if (v.atlas_generation) |g| if (g == atlas.generation) return;
-        const page = atlas.page();
+        v.syncPage(v.atlas_image, &v.atlas_staging, &v.atlas_generation, atlas.generation, atlas.page());
+        v.syncPage(v.image_image, &v.image_staging, &v.image_generation, atlas.images.generation, atlas.imagePage());
+    }
+
+    fn syncPage(v: *Vulkan, image: c.VkImage, staging: *Buffer, seen: *?u32, generation: u32, page: []const u8) void {
+        if (seen.*) |g| if (g == generation) return;
         if (page.len == 0) {
             // No page yet: give the image a defined layout so that the shader can read it.
-            if (v.atlas_generation == null) v.barrier(v.atlas_image, c.VK_IMAGE_LAYOUT_UNDEFINED, c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, c.VK_ACCESS_SHADER_READ_BIT, c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, c.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-            v.atlas_generation = atlas.generation;
+            if (seen.* == null) v.barrier(image, c.VK_IMAGE_LAYOUT_UNDEFINED, c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0, c.VK_ACCESS_SHADER_READ_BIT, c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, c.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+            seen.* = generation;
             return;
         }
-        @memcpy(v.atlas_staging.mapped.?[0..page.len], page);
-        const first = v.atlas_generation == null;
-        v.barrier(v.atlas_image, if (first) c.VK_IMAGE_LAYOUT_UNDEFINED else c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, c.VK_ACCESS_TRANSFER_WRITE_BIT, c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT | c.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, c.VK_PIPELINE_STAGE_TRANSFER_BIT);
+        @memcpy(staging.mapped.?[0..page.len], page);
+        const first = seen.* == null;
+        v.barrier(image, if (first) c.VK_IMAGE_LAYOUT_UNDEFINED else c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, c.VK_ACCESS_TRANSFER_WRITE_BIT, c.VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT | c.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, c.VK_PIPELINE_STAGE_TRANSFER_BIT);
         var region = std.mem.zeroes(c.VkBufferImageCopy);
         region.imageSubresource = .{ .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel = 0, .baseArrayLayer = 0, .layerCount = 1 };
         region.imageExtent = .{ .width = atlas_size, .height = atlas_size, .depth = 1 };
-        v.dfn.vkCmdCopyBufferToImage.?(v.cmd, v.atlas_staging.buf, v.atlas_image, c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-        v.barrier(v.atlas_image, c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, c.VK_ACCESS_TRANSFER_WRITE_BIT, c.VK_ACCESS_SHADER_READ_BIT, c.VK_PIPELINE_STAGE_TRANSFER_BIT, c.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-        v.atlas_generation = atlas.generation;
+        v.dfn.vkCmdCopyBufferToImage.?(v.cmd, staging.buf, image, c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+        v.barrier(image, c.VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, c.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, c.VK_ACCESS_TRANSFER_WRITE_BIT, c.VK_ACCESS_SHADER_READ_BIT, c.VK_PIPELINE_STAGE_TRANSFER_BIT, c.VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        seen.* = generation;
     }
 
     /// Draws a scene to the current target.

@@ -136,7 +136,8 @@ const shader_source =
     \\}
     \\
     \\fragment float4 quad_fragment(Out in [[stage_in]], const device Quad *quads [[buffer(0)]],
-    \\                              texture2d<float, access::read> atlas [[texture(0)]]) {
+    \\                              texture2d<float, access::read> atlas [[texture(0)]],
+    \\                              texture2d<float, access::read> images [[texture(1)]]) {
     \\    Quad q = quads[in.index];
     \\    float2 p = in.pos.xy;
     \\    if (p.x < q.clip.x || p.y < q.clip.y || p.x >= q.clip.x + q.clip.z || p.y >= q.clip.y + q.clip.w) discard_fragment();
@@ -155,6 +156,15 @@ const shader_source =
     \\        int2 t = int2(q.uv.xy) + int2(floor(p)) - int2(q.rect.xy);
     \\        float a = q.fill.a * atlas.read(uint2(t)).r * opacity;
     \\        return float4(q.fill.rgb * a, a);
+    \\    } else if (q.kind == 3u) {
+    \\        // The bilinear filter of the CPU renderer, on four texels of the image page.
+    \\        float2 u = clamp(q.uv.xy + (p - q.rect.xy) * (q.uv.zw / q.rect.zw) - 0.5, 0.0, 1022.0);
+    \\        float2 f = u - floor(u);
+    \\        uint2 i = uint2(floor(u));
+    \\        float4 c = mix(mix(images.read(i), images.read(i + uint2(1, 0)), f.x),
+    \\                       mix(images.read(i + uint2(0, 1)), images.read(i + uint2(1, 1)), f.x), f.y);
+    \\        float a = c.a * opacity;
+    \\        return float4(c.rgb * a, a);
     \\    }
     \\    discard_fragment();
     \\    return float4(0.0);
@@ -178,6 +188,9 @@ pub const Metal = struct {
     pipeline_bgra: Id,
     atlas_texture: Id,
     atlas_generation: ?u32 = null,
+    /// The RGBA image page of the atlas.
+    image_texture: Id,
+    image_generation: ?u32 = null,
     instances: ?Id = null,
     instances_size: usize = 0,
     readback: ?Id = null,
@@ -217,9 +230,13 @@ pub const Metal = struct {
         const tdesc = objc.call(fn (objc.Class, Sel, usize, usize, usize, bool) callconv(.c) Id, objc.class("MTLTextureDescriptor").?, "texture2DDescriptorWithPixelFormat:width:height:mipmapped:", .{ pixel_r8, atlas_size, atlas_size, false });
         callVoid(tdesc, "setUsage:", .{@as(usize, usage_shader_read)});
         const atlas_texture = call(Id, device, "newTextureWithDescriptor:", .{tdesc});
+        errdefer objc.release(atlas_texture);
+        const idesc = objc.call(fn (objc.Class, Sel, usize, usize, usize, bool) callconv(.c) Id, objc.class("MTLTextureDescriptor").?, "texture2DDescriptorWithPixelFormat:width:height:mipmapped:", .{ pixel_rgba8, atlas_size, atlas_size, false });
+        callVoid(idesc, "setUsage:", .{@as(usize, usage_shader_read)});
+        const image_texture = call(Id, device, "newTextureWithDescriptor:", .{idesc});
 
         const m = try gpa.create(Metal);
-        m.* = .{ .gpa = gpa, .device = device, .queue = queue, .pipeline = pipeline, .pipeline_bgra = pipeline_bgra, .atlas_texture = atlas_texture };
+        m.* = .{ .gpa = gpa, .device = device, .queue = queue, .pipeline = pipeline, .pipeline_bgra = pipeline_bgra, .atlas_texture = atlas_texture, .image_texture = image_texture };
         return m;
     }
 
@@ -227,6 +244,7 @@ pub const Metal = struct {
         if (m.instances) |b| objc.release(b);
         if (m.readback) |b| objc.release(b);
         objc.release(m.atlas_texture);
+        objc.release(m.image_texture);
         objc.release(m.pipeline);
         objc.release(m.pipeline_bgra);
         objc.release(m.queue);
@@ -260,13 +278,22 @@ pub const Metal = struct {
     }
 
     fn syncAtlas(m: *Metal, atlas: *const Atlas) void {
-        if (m.atlas_generation == atlas.generation) return;
-        const page = atlas.page();
-        if (page.len == atlas_size * atlas_size) {
-            const region = Region{ .origin = .{ .x = 0, .y = 0, .z = 0 }, .size = .{ .w = atlas_size, .h = atlas_size, .d = 1 } };
-            objc.call(fn (Id, Sel, Region, usize, [*]const u8, usize) callconv(.c) void, m.atlas_texture, "replaceRegion:mipmapLevel:withBytes:bytesPerRow:", .{ region, 0, page.ptr, atlas_size });
+        if (m.atlas_generation != atlas.generation) {
+            const page = atlas.page();
+            if (page.len == atlas_size * atlas_size) {
+                const region = Region{ .origin = .{ .x = 0, .y = 0, .z = 0 }, .size = .{ .w = atlas_size, .h = atlas_size, .d = 1 } };
+                objc.call(fn (Id, Sel, Region, usize, [*]const u8, usize) callconv(.c) void, m.atlas_texture, "replaceRegion:mipmapLevel:withBytes:bytesPerRow:", .{ region, 0, page.ptr, atlas_size });
+            }
+            m.atlas_generation = atlas.generation;
         }
-        m.atlas_generation = atlas.generation;
+        if (m.image_generation != atlas.images.generation) {
+            const images = atlas.imagePage();
+            if (images.len == atlas_size * atlas_size * 4) {
+                const region = Region{ .origin = .{ .x = 0, .y = 0, .z = 0 }, .size = .{ .w = atlas_size, .h = atlas_size, .d = 1 } };
+                objc.call(fn (Id, Sel, Region, usize, [*]const u8, usize) callconv(.c) void, m.image_texture, "replaceRegion:mipmapLevel:withBytes:bytesPerRow:", .{ region, 0, images.ptr, atlas_size * 4 });
+            }
+            m.image_generation = atlas.images.generation;
+        }
     }
 
     /// A shared buffer of at least `need` bytes in `slot`, grown by a factor of two.
@@ -333,6 +360,7 @@ pub const Metal = struct {
             const size = [2]f32{ @floatFromInt(width), @floatFromInt(height) };
             objc.call(fn (Id, Sel, *const anyopaque, usize, usize) callconv(.c) void, enc, "setVertexBytes:length:atIndex:", .{ &size, @sizeOf([2]f32), 1 });
             objc.call(fn (Id, Sel, Id, usize) callconv(.c) void, enc, "setFragmentTexture:atIndex:", .{ m.atlas_texture, 0 });
+            objc.call(fn (Id, Sel, Id, usize) callconv(.c) void, enc, "setFragmentTexture:atIndex:", .{ m.image_texture, 1 });
             objc.call(fn (Id, Sel, usize, usize, usize, usize) callconv(.c) void, enc, "drawPrimitives:vertexStart:vertexCount:instanceCount:", .{ primitive_triangle_strip, 0, 4, n });
         }
         callVoid(enc, "endEncoding", .{});

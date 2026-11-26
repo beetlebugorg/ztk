@@ -39,8 +39,9 @@ pub const Quad = extern struct {
     _pad: [3]u32 = .{ 0, 0, 0 },
 };
 
-/// A region of the atlas page with its new bytes (rows of `w` bytes).
-pub const AtlasPatch = struct { x: u32, y: u32, w: u32, h: u32, bytes: []const u8 };
+/// A region of a page of the atlas with its new bytes: rows of `w` bytes
+/// of the coverage page, or of `w * 4` bytes of the image page (`rgba`).
+pub const AtlasPatch = struct { x: u32, y: u32, w: u32, h: u32, bytes: []const u8, rgba: bool = false };
 
 pub const Scene = struct {
     quads: std.ArrayListUnmanaged(Quad) = .empty,
@@ -63,17 +64,17 @@ pub const Scene = struct {
     pub fn dump(s: *const Scene, w: *std.Io.Writer) !void {
         try w.print("scene {d}x{d} clear {s}\n", .{ s.width, s.height, hex(s.clear)[0..] });
         for (s.quads.items) |q| {
-            const name = switch (@as(Kind, @enumFromInt(q.kind))) {
+            const name = switch (@as(Kind, @fromBackingInt(@intCast(q.kind)))) {
                 .box => "box",
                 .shadow => "shadow",
                 .glyph => "glyph",
                 .image => "image",
             };
             try w.print("{s} rect {f} clip {f} radii {f} border {f} fill {s} fill2 {s} bcolor {s} params {f}", .{
-                name,           N4{ .v = q.rect },   N4{ .v = q.clip },   N4{ .v = q.radii },    N4{ .v = q.border },
+                name,             N4{ .v = q.rect }, N4{ .v = q.clip },        N4{ .v = q.radii },  N4{ .v = q.border },
                 hex(q.fill)[0..], hex(q.fill2)[0..], hex(q.border_color)[0..], N4{ .v = q.params },
             });
-            if (q.kind >= @intFromEnum(Kind.glyph)) try w.print(" uv {f}", .{N4{ .v = q.uv }});
+            if (q.kind >= @backingInt(Kind.glyph)) try w.print(" uv {f}", .{N4{ .v = q.uv }});
             try w.writeByte('\n');
         }
     }
@@ -216,7 +217,7 @@ pub const Builder = struct {
             .border_color = .{ 0, 0, 0, 0 },
             .uv = .{ 0, 0, 0, 0 },
             .params = .{ 0, 0, 0, 1 },
-            .kind = @intFromEnum(kind),
+            .kind = @backingInt(kind),
         };
     }
 
@@ -243,6 +244,20 @@ pub const Builder = struct {
         q.border_color = colorF(style.border_color);
         const a = style.gradient_angle_deg * std.math.pi / 180.0;
         q.params = .{ @sin(a), -@cos(a), 0, style.opacity };
+        try b.scene.quads.append(b.gpa, q);
+    }
+
+    /// An image of the image page of the atlas, stretched to `r` with a
+    /// filter. `uv` is its place in the page (`Atlas.image`), in texels.
+    pub fn image(b: *Builder, r: geom.Rect, uv: [4]f32, opacity: f32) !void {
+        if (b.failed) return error.NestingTooDeep;
+        const rect = b.deviceRect(r);
+        if (rect[2] <= 0 or rect[3] <= 0 or uv[2] <= 0 or uv[3] <= 0) return;
+        const vis = intersect(rect, b.clip);
+        if (vis[2] <= 0 or vis[3] <= 0) return;
+        var q = b.base(.image, rect);
+        q.uv = uv;
+        q.params[3] = opacity;
         try b.scene.quads.append(b.gpa, q);
     }
 

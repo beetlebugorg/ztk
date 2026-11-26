@@ -228,3 +228,26 @@ test "metal: the demo scene equals the CPU renderer" {
     try h.update();
     try compare(v, "demo-start", h.app.lastScene(), &h.app.atlas);
 }
+
+test "metal: image quads equal the CPU renderer" {
+    const v = open() orelse return;
+    defer v.deinit();
+    var atlas = atlas_mod.Atlas.init(t.allocator);
+    defer atlas.deinit();
+    // A 6 by 4 image with a color ramp and a ramp of alpha.
+    var px: [6 * 4 * 4]u8 = undefined;
+    for (0..4) |y| for (0..6) |x| {
+        const o = (y * 6 + x) * 4;
+        px[o..][0..4].* = .{ @intCast(x * 50), @intCast(y * 80), 200, @intCast(255 - x * 30) };
+    };
+    const uv = (try atlas.image(1, 6, 4, &px)).?;
+    var s: Scene = .{};
+    defer s.deinit(t.allocator);
+    s.reset(80, 40);
+    s.clear = .{ 0.9, 0.9, 0.9, 1 };
+    var b = scene_mod.Builder.init(t.allocator, &s, 1);
+    try b.image(.{ .x = 2, .y = 2, .w = 6, .h = 4 }, uv, 1);
+    try b.image(.{ .x = 12, .y = 2, .w = 18, .h = 12 }, uv, 1);
+    try b.image(.{ .x = 40, .y = 2, .w = 30, .h = 30 }, uv, 0.5);
+    try compare(v, "image-quads", &s, &atlas);
+}

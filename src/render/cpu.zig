@@ -195,6 +195,45 @@ fn drawGlyph(comptime alpha: bool, q: *const Quad, atlas: *const Atlas, img: Ima
     }
 }
 
+/// Draws an image quad: a bilinear sample of the image page of the
+/// atlas at each pixel center, with the straight average of the four
+/// texels, as the filter of a GPU does it. The border of each image in
+/// the page keeps the sample inside the image.
+fn drawImage(comptime alpha: bool, q: *const Quad, atlas: *const Atlas, img: Image) void {
+    const page = atlas.imagePage();
+    if (page.len == 0) return;
+    const b = bounds(q, 0, img);
+    const stride: usize = @as(usize, img.width) * 4;
+    const sx = q.uv[2] / q.rect[2];
+    const sy = q.uv[3] / q.rect[3];
+    const size: f32 = @floatFromInt(Atlas.page_size);
+    var y = b[1];
+    while (y < b[3]) : (y += 1) {
+        const row = img.pixels[@as(usize, @intCast(y)) * stride ..][0..stride];
+        const v = q.uv[1] + (@as(f32, @floatFromInt(y)) + 0.5 - q.rect[1]) * sy - 0.5;
+        const ty = std.math.clamp(v, 0, size - 2);
+        const y0: usize = @intFromFloat(@floor(ty));
+        const fy = ty - @floor(ty);
+        var x = b[0];
+        while (x < b[2]) : (x += 1) {
+            const u = q.uv[0] + (@as(f32, @floatFromInt(x)) + 0.5 - q.rect[0]) * sx - 0.5;
+            const tx = std.math.clamp(u, 0, size - 2);
+            const x0: usize = @intFromFloat(@floor(tx));
+            const fx = tx - @floor(tx);
+            var c: [4]f32 = .{ 0, 0, 0, 0 };
+            const taps = [_]struct { usize, usize, f32 }{
+                .{ x0, y0, (1 - fx) * (1 - fy) }, .{ x0 + 1, y0, fx * (1 - fy) },
+                .{ x0, y0 + 1, (1 - fx) * fy },   .{ x0 + 1, y0 + 1, fx * fy },
+            };
+            for (taps) |tap| {
+                const t = page[(tap[1] * Atlas.page_size + tap[0]) * 4 ..][0..4];
+                inline for (0..4) |k| c[k] += @as(f32, @floatFromInt(t[k])) / 255 * tap[2];
+            }
+            blend(alpha, row[@as(usize, @intCast(x)) * 4 ..][0..4], .{ c[0], c[1], c[2] }, c[3] * q.params[3]);
+        }
+    }
+}
+
 /// Draws the scene. `atlas` is the glyph atlas, or null for a scene
 /// with no glyphs.
 pub fn render(scene: *const Scene, atlas_ptr: ?*const anyopaque, out: *Image) void {
@@ -214,11 +253,11 @@ fn renderWith(comptime alpha: bool, scene: *const Scene, atlas_ptr: ?*const anyo
         out.pixels[i + 3] = num.byte(ca * 255);
     }
     for (scene.quads.items) |*q| {
-        switch (@as(scene_mod.Kind, @enumFromInt(q.kind))) {
+        switch (@as(scene_mod.Kind, @fromBackingInt(@intCast(q.kind)))) {
             .box => drawBox(alpha, q, out.*),
             .shadow => drawShadow(alpha, q, out.*),
             .glyph => if (atlas) |a| drawGlyph(alpha, q, a, out.*),
-            .image => {},
+            .image => if (atlas) |a| drawImage(alpha, q, a, out.*),
         }
     }
 }

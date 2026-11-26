@@ -146,6 +146,7 @@ test {
     _ = @import("tests/bind.zig");
     _ = @import("tests/focus.zig");
     _ = @import("tests/button.zig");
+    _ = @import("tests/photo.zig");
     _ = @import("tests/renderthread.zig");
     _ = @import("text/edit.zig");
     _ = vulkan;
