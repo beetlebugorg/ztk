@@ -290,8 +290,17 @@ class Build:
         data = f' data-name="{html.escape(name)}"' if name else ""
         # A shot of a plain run ("shot: update") equals the first frame of the snippet.
         data += ' data-still="1"' if meta.get("still") and meta.get("shot") else ""
+        code_html = f'<div class="ld-code"><pre><code class="language-tcl">{html.escape(code)}</code></pre></div>'
+        if name and name.startswith("toy-"):
+            # A toy: the handheld first and large, and its code under a
+            # toggle, so that the page next to the game is short.
+            return (f'<figure class="live-demo toy" id="{meta["id"]}"{data}>'
+                    f'<div class="ld-view"><div class="ld-frame">{pic}</div></div>'
+                    f'<details class="ld-more"><summary>Show the code</summary>{code_html}</details>'
+                    f'<figcaption class="ld-bar"><span class="ld-tag">Live</span></figcaption>'
+                    f'<div class="ld-err" role="status" hidden></div></figure>\n')
         return (f'<figure class="live-demo" id="{meta["id"]}"{data}>'
-                f'<div class="ld-code"><pre><code class="language-tcl">{html.escape(code)}</code></pre></div>'
+                f'{code_html}'
                 f'<div class="ld-view"><div class="ld-frame">{pic}</div></div>'
                 f'<figcaption class="ld-bar"><span class="ld-tag">Live</span></figcaption>'
                 f'<div class="ld-err" role="status" hidden></div></figure>\n')
