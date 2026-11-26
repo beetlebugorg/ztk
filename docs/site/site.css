@@ -339,3 +339,12 @@ figure.chart { margin: 0; }
   .live-demo .ld-bar { order: 3; }
   .live-demo .ld-err { order: 4; }
 }
+
+/* The overview grid of the widgets page (tools/build-docs.py). */
+.wgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin: 8px 0 32px; }
+.wgrid .wcard { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 8px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--text); text-decoration: none; }
+.wgrid .wcard:hover { border-color: var(--accent); box-shadow: var(--shadow); }
+.wgrid picture { grid-column: 1 / -1; }
+.wgrid img { display: block; width: 100%; height: auto; aspect-ratio: 3 / 2; border-radius: 8px; border: 1px solid var(--line); }
+.wgrid .wname { font-weight: 600; font-size: 15px; }
+.wgrid .wkind { font: 12px var(--mono); color: var(--text-3); border: 1px solid var(--line-strong); border-radius: 999px; padding: 1px 8px; }
