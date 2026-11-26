@@ -35,7 +35,7 @@ bind . <Button-3> {tk_popup .bar.edit %X %Y}
 
 ### Play: Puffshot
 
-Puffshot is a shooter, and its menus run the game. The Game menu has New game, a Pause `checkbutton` entry with `-variable paused`, and Fire a comet. The Speed menu has three `radiobutton` entries on `-variable speed`, and the puffs fall at that speed. A right-click on the sky runs `tk_popup` with a second menu: a comet, three shots at once, and Pause. Press Space or click the canvas, then use Left and Right to move and Space to shoot, or B, A, and Up on the handheld. A comet clears the sky. With "Play on the page" on, the comet flies out over the page first and bounces off the headings and the code, and each one that it hits gives 100 points when it comes back.
+Puffshot is a shooter, and its menus run the game. The Game menu has New game, a Pause `checkbutton` entry with `-variable paused`, Fire a comet, a Sound `checkbutton` entry, and a Difficulty cascade: a submenu of three `radiobutton` entries for 3, 5, or 7 puffs. The Speed menu has three `radiobutton` entries on `-variable speed`, and the puffs fall at that speed. A right-click on the sky runs `tk_popup` with a second menu: a comet, three shots at once, and Pause. Press Space or click the canvas, then use Left and Right to move and Space to shoot, or B, A, and Up on the handheld. A comet clears the sky. With "Play on the page" on, the comet flies out over the page first and bounces off the headings and the code, and each one that it hits gives 100 points when it comes back.
 
 <!-- widget: toy-puffshot; shot: update -->
 ```tcl
@@ -51,16 +51,23 @@ foreach {m t} {game Game speed Speed} {
 .bar.game add checkbutton -label Pause -accelerator P -variable paused
 .bar.game add separator
 .bar.game add command -label "Fire a comet" -accelerator C -command comet
+.bar.game add separator
+.bar.game add checkbutton -label Sound -variable sound
+menu .bar.game.level -tearoff 0
+.bar.game add cascade -label Difficulty -menu .bar.game.level
+foreach {t n} {Easy 3 Normal 5 Hard 7} { .bar.game.level add radiobutton -label $t -variable level -value $n -command new }
 foreach {t v} {Slow 0.5 Normal 1 Fast 1.8} { .bar.speed add radiobutton -label $t -variable speed -value $v }
 menu .pop -tearoff 0
 .pop add command -label "Fire a comet" -command comet
 .pop add command -label "Three shots" -command {fire -2; fire 0; fire 2}
 .pop add checkbutton -label Pause -variable paused
-set paused 1; set speed 1
+set paused 1; set speed 1; set sound 1; set level 5
 canvas .c -width 360 -height 200 -bg [lindex $ink 0] -highlightthickness 0
 pack .c -fill both -expand 1
 bind .c <Button-3> {tk_popup .pop %X %Y}
 array set toy {spill 0 out {} back {} sfx {}}
+# A sound goes to the page only with the Sound entry on.
+proc sfx {name} { if {$::sound} { lappend ::toy(sfx) $name } }
 proc sprite {tags rows color x0 y0} {
     foreach row $rows {
         set x $x0
@@ -79,8 +86,8 @@ proc new {} {
     global puffs score ship
     .c delete puff
     set puffs {}
-    for {set i 0} {$i < 5} {incr i} {
-        set x [expr {20 + $i*68}]; set y [expr {-20 - $i*30}]
+    for {set i 0} {$i < $::level} {incr i} {
+        set x [expr {20 + $i * 320 / $::level}]; set y [expr {-20 - $i*30}]
         sprite "puff p$i" {.#.#. ##### .###. ##### .#.#.} [lindex $::ink 1] $x $y
         lappend puffs [list $x $y]
     }
@@ -94,7 +101,7 @@ proc fire {dx} {
     if {$paused} return
     lassign [.c bbox ship] x
     lappend shots [list [.c create rectangle [expr {$x+6}] 172 [expr {$x+8}] 178 -tags shot -fill [lindex $::ink 3] -width 0] $dx]
-    lappend ::toy(sfx) hit
+    sfx hit
 }
 # A comet clears the sky. With play on the page, it flies over the page first.
 proc comet {} {
@@ -103,14 +110,14 @@ proc comet {} {
     if {$toy(spill)} {
         lassign [.c bbox ship] x
         set toy(out) [list [expr {$x+6}] [expr {[winfo y .c] + 170}] [expr {rand()*6-3}] -13 0.3]
-        lappend toy(sfx) smash
+        sfx smash
     } else { clear 0 }
 }
 proc clear {hits} {
     global puffs score
     for {set i 0} {$i < [llength $puffs]} {incr i} { respawn $i }
     incr score [expr {50 * [llength $puffs] + 100 * $hits}]
-    lappend ::toy(sfx) point
+    sfx point
 }
 proc respawn {i} {
     global puffs
@@ -152,7 +159,7 @@ proc tick {} {
             set hit 0
             for {set i 0} {$i < [llength $puffs]} {incr i} {
                 lassign [lindex $puffs $i] x y
-                if {$sx >= $x - 2 && $sx <= $x + 10 && $sy >= $y && $sy <= $y + 10} { set hit 1; respawn $i; incr score 10; lappend toy(sfx) wall; break }
+                if {$sx >= $x - 2 && $sx <= $x + 10 && $sy >= $y && $sy <= $y + 10} { set hit 1; respawn $i; incr score 10; sfx wall; break }
             }
             if {$hit} { .c delete $id } else { lappend keep $s }
         }
