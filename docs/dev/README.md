@@ -16,6 +16,7 @@ These files are the plan, the task lists, the reviews, and the reports of ztk. T
 | [windows.md](windows.md) | The plan of the Windows backend and the platform interface that it shares with macOS. |
 | [widget-pages.md](widget-pages.md) | The shape of a widget page: the fixed size of its screenshot and its live snippet. |
 | [menus.md](menus.md) | The design of the menus: the native menus of macOS and Windows, and the drawn menus of Linux and the web. |
+| [platform-features.md](platform-features.md) | The plan of the platform features in ztk and in ztcl: the rules of the namespaces and of `ztk::has`, the features by priority, and the platform interface for them. |
 
 The user page [Differences from Tk](../differences.md) has the short form of the limits.
 
