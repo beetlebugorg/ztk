@@ -435,3 +435,19 @@ figure.chart { margin: 0; }
 .toy-console .toy-page { margin-left: auto; }
 .toy-console .toy-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 @media (max-width: 1000px) { .live-demo.toy-console { grid-template-columns: minmax(0, 1fr); } .live-demo.toy-console .ld-code { border-left: 0; border-top: 1px solid var(--line); } }
+/* The keyboard focus of a toy: a ring on the device, and PAUSED over the screen. */
+.live-demo.toy .ld-view:focus-within .ld-frame { outline: 3px solid var(--accent); outline-offset: 4px; }
+.live-demo.toy-paused .ld-frame::after { content: "PAUSED"; position: absolute; inset: 0; display: grid; place-items: center; font: 700 24px/1 var(--mono); letter-spacing: .2em; color: #ffcf5c; background: rgb(29 26 51 / 70%); }
+.toy-keys { grid-column: 1 / -1; margin: 0; font-size: 12px; color: var(--text-3); text-align: center; }
+/* The shell of the handheld: one molded body around the screen and the pad,
+   lit from the top, with a speaker grille. */
+.live-demo.toy .ld-view { justify-self: center; align-self: start; width: fit-content; margin: 20px 16px; padding: 22px 22px 26px; gap: 14px; border-radius: 30px 30px 72px 30px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 26%, #ece6f6) 0%, color-mix(in srgb, var(--accent) 34%, #d9d0ea) 100%);
+  box-shadow: inset 0 2px 1px rgb(255 255 255 / 70%), inset 0 -5px 10px rgb(40 20 80 / 22%), 0 1px 2px rgb(0 0 0 / 20%), 0 14px 28px rgb(40 20 80 / 22%); }
+.live-demo.toy .ld-frame { box-shadow: inset 0 0 0 2px #3a3560, 0 1px 0 rgb(255 255 255 / 60%); border-radius: 12px 12px 34px 12px; }
+.live-demo.toy .toy-pad { background: none; border: 0; box-shadow: none; padding: 4px 6px 0; }
+.toy-pad::after { content: ""; grid-column: 3; justify-self: end; width: 52px; height: 30px; transform: rotate(-12deg); background: radial-gradient(circle, rgb(40 20 80 / 45%) 1.6px, transparent 2.2px) 0 0 / 8px 8px; }
+@media (prefers-color-scheme: dark) {
+  .live-demo.toy .ld-view { background: linear-gradient(180deg, #4a4470 0%, #34304f 100%); box-shadow: inset 0 2px 1px rgb(255 255 255 / 22%), inset 0 -5px 10px rgb(0 0 0 / 40%), 0 14px 28px rgb(0 0 0 / 45%); }
+  .toy-pad::after { background: radial-gradient(circle, rgb(0 0 0 / 55%) 1.6px, transparent 2.2px) 0 0 / 8px 8px; }
+}
