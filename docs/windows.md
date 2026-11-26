@@ -33,6 +33,7 @@ The variable `ZTK_RENDERER` picks the output of the window:
 - Pointer: motion, the buttons 1, 2, and 3, the two side buttons as 8 and 9, the wheel in both directions, and the cursor of each widget (`-cursor` and the CSS `cursor`).
 - Input methods: the Text Services Framework. The text of an input method goes into an entry or a spinbox.
 - Clipboard: `clipboard` and the copy and paste of an entry use the clipboard of Windows, as Unicode text.
+- Global shortcuts: `ztk::hotkey add <Control-Alt-k> script` runs the script when the keys go down in any app, with `RegisterHotKey`. It needs `--allow hotkey`, and a shortcut that another app has is an error.
 - Dark mode: with no `--dark`, ztk follows the dark mode of Windows, also when it changes while the program runs.
 - Menus: the `-menu` of a toplevel is a menu bar of Windows, and `tk_popup` shows a menu of Windows. Alt and F10 open the bar.
 - Tray: `ztk::tray` shows an icon in the notification area, with its tooltip, its clicks, and its menu.

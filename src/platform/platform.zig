@@ -153,6 +153,8 @@ pub const FileDialogResult = struct {
         gpa.free(r.paths);
     }
 };
+/// The id of one global shortcut. 0 is no shortcut.
+pub const HotkeyId = u32;
 
 /// The appearance of the system.
 pub const Appearance = struct {
@@ -325,6 +327,16 @@ pub const Platform = struct {
         traySet: ?*const fn (ptr: *anyopaque, id: TrayId, icon: TrayIcon, template: bool, tooltip: []const u8, menu: MenuId) void = null,
         /// Removes a tray icon.
         trayDrop: ?*const fn (ptr: *anyopaque, id: TrayId) void = null,
+
+        // The global shortcuts (ztk#63).
+
+        /// Registers a shortcut that works when the app has no focus: the
+        /// key `keysym` with the modifiers `shift`, `control`, `mod1` (Alt),
+        /// and `mod4` (the logo key) of `mods`. Its presses come as `hotkey`
+        /// events for `w`. Gives 0 when the system refuses it, for example
+        /// when another app has the shortcut.
+        hotkeyAdd: ?*const fn (ptr: *anyopaque, w: *Window, mods: event.Mods, keysym: u32) HotkeyId = null,
+        hotkeyRemove: ?*const fn (ptr: *anyopaque, id: HotkeyId) void = null,
     };
 
     pub fn hasNativeMenus(p: Platform) bool {
@@ -360,6 +372,16 @@ pub const Platform = struct {
     }
     pub fn trayDrop(p: Platform, id: TrayId) void {
         if (p.vtable.trayDrop) |f| f(p.ptr, id);
+    }
+    pub fn hasHotkeys(p: Platform) bool {
+        return p.vtable.hotkeyAdd != null and p.vtable.hotkeyRemove != null;
+    }
+    pub fn hotkeyAdd(p: Platform, w: *Window, mods: event.Mods, keysym: u32) HotkeyId {
+        const f = p.vtable.hotkeyAdd orelse return 0;
+        return f(p.ptr, w, mods, keysym);
+    }
+    pub fn hotkeyRemove(p: Platform, id: HotkeyId) void {
+        if (p.vtable.hotkeyRemove) |f| f(p.ptr, id);
     }
     pub fn setMenuHandler(p: Platform, h: MenuHandler) void {
         if (p.vtable.setMenuHandler) |f| f(p.ptr, h);
