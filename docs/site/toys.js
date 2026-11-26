@@ -7,11 +7,12 @@
 //
 // The Tcl code of a toy keeps the array `toy`:
 //   toy(spill)  1 when the page lets a ball leave the screen. This file sets it.
-//   toy(out)    {x y vx vy} of a ball that left the screen, in pixels of
-//               the window and pixels for each frame. This file reads and
-//               clears it.
-//   toy(back)   {x vx vy} of the ball when it comes back at the top of
-//               the screen. This file sets it.
+//   toy(out)    {x y vx vy ?gravity?} of a ball that left the screen, in
+//               pixels of the window and pixels for each frame. This file
+//               reads and clears it.
+//   toy(back)   {x vx vy hits} of the ball when it comes back at the top
+//               of the screen, with the count of walls that it hit. This
+//               file sets it.
 //   toy(sfx)    a list of sound names: hit, wall, smash, point.
 // and the proc `toy_press KEY` for the keys up, down, a, and b of the pad.
 //
@@ -144,7 +145,7 @@ class Toy {
       if (m?.length === 2) {
         if (this.sound) for (const s of m[1].split(/\s+/).filter(Boolean)) sound(s);
         const out = parse(m[0]);
-        if (out.length === 4 && !this.ball) this.launch(out);
+        if (out.length >= 4 && !this.ball) this.launch(out);
       }
       this.fig.classList.toggle("toy-on", Boolean(this.h));
       requestAnimationFrame(step);
@@ -156,7 +157,7 @@ class Toy {
     return this.h?.canvas?.getBoundingClientRect() ?? null;
   }
 
-  launch([x, y, vx, vy]) {
+  launch([x, y, vx, vy, gravity = 0]) {
     const r = this.screen();
     if (!r) return;
     const k = r.width / W;
@@ -164,7 +165,7 @@ class Toy {
     layer.className = "toy-layer";
     layer.setAttribute("aria-hidden", "true");
     document.body.appendChild(layer);
-    this.ball = { x: r.left + x * k, y: r.top + y * k, vx: vx * k, vy: vy * k, size: Math.max(6, Math.round(8 * k)), t0: performance.now(), trail: [], hits: new Map(), layer, home: false };
+    this.ball = { x: r.left + x * k, y: r.top + y * k, vx: vx * k, vy: vy * k, size: Math.max(6, Math.round(8 * k)), gravity: gravity * k, count: 0, t0: performance.now(), trail: [], hits: new Map(), layer, home: false };
     const step = (now) => {
       if (!this.ball) return;
       this.move(now);
@@ -194,20 +195,22 @@ class Toy {
     if (b.home) {
       const tx = r.left + r.width / 2, ty = r.top - s;
       const dx = tx - b.x, dy = ty - b.y, d = Math.hypot(dx, dy);
-      const sp = Math.max(6, Math.hypot(b.vx, b.vy));
-      b.vx += (dx / d * sp - b.vx) * 0.15;
-      b.vy += (dy / d * sp - b.vy) * 0.15;
-      if (d < sp * 1.5) return this.end();
+      const sp = Math.max(10, Math.min(24, d / 20));
+      if (d < sp) return this.end();
+      b.vx = dx / d * sp;
+      b.vy = dy / d * sp;
     }
+    if (!b.home) b.vy += b.gravity;
     let nx = b.x + b.vx, ny = b.y + b.vy;
-    if (nx < 0 || nx + s > innerWidth) { b.vx = -b.vx; nx = b.x; }
-    if (ny < 0 || ny + s > innerHeight) { b.vy = -b.vy; ny = b.y; }
+    if (!b.home && (nx < 0 || nx + s > innerWidth)) { b.vx = -b.vx; nx = b.x; }
+    if (!b.home && (ny < 0 || ny + s > innerHeight)) { b.vy = -b.vy * (b.gravity ? 0.85 : 1); ny = b.y; }
     if (!b.home) {
       for (const [el, w] of this.walls()) {
         if (nx + s < w.left || nx > w.right || ny + s < w.top || ny > w.bottom) continue;
         // Reflect on the side with the smallest overlap.
         const ox = Math.min(nx + s - w.left, w.right - nx), oy = Math.min(ny + s - w.top, w.bottom - ny);
         if (ox < oy) { b.vx = -b.vx; nx = b.x; } else { b.vy = -b.vy; ny = b.y; }
+        if (!b.hits.has(el)) b.count++;
         b.hits.set(el, now);
         if (this.sound) sound("wall");
         break;
@@ -243,7 +246,7 @@ class Toy {
     const r = this.screen();
     const k = r ? r.width / W : 1;
     const x = r ? Math.min(Math.max((b.x - r.left) / k, 40), 320) : 180;
-    this.eval(`set ::toy(back) {${Math.round(x)} ${Math.max(2, Math.abs(b.vx / k) / 2).toFixed(2)} 2}`);
+    this.eval(`set ::toy(back) {${Math.round(x)} ${Math.max(2, Math.abs(b.vx / k) / 2).toFixed(2)} 2 ${b.count}}`);
   }
 }
 
