@@ -41,6 +41,7 @@ PAGES = [
     ("README.md", "overview/", "Start", "Overview"),
     ("docs/install.md", "install/", "Start", "Install"),
     ("docs/quickstart.md", "quickstart/", "Start", "Quick start"),
+    ("docs/agents.md", "agents/", "Start", "For agents"),
     ("docs/widgets/README.md", "widgets/", "Widgets", "All widgets"),
     ("docs/widgets/basic.md", "widgets/basic/", "Widgets", "Frames, labels, and buttons"),
     ("docs/widgets/toggles.md", "widgets/toggles/", "Widgets", "Check and radio buttons"),
