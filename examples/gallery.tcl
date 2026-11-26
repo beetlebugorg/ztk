@@ -193,4 +193,27 @@ $cv.c bind shape <B1-Motion> {
 }
 pack .cols.left.canvas -fill x -pady 4
 
+# Menus: two menu buttons, and a context menu on the hint.
+set mn [card .cols.left.menus "Menus"]
+menu .gedit -tearoff 0
+.gedit add command -label Cut -accelerator Ctrl+X
+.gedit add command -label Copy -accelerator Ctrl+C
+.gedit add command -label Paste -accelerator Ctrl+V
+.gedit add separator
+.gedit add checkbutton -label "Word wrap" -variable gwrap
+.gedit add cascade -label Insert -menu .gedit.ins
+menu .gedit.ins -tearoff 0
+.gedit.ins add command -label Date
+.gedit.ins add command -label Time
+menu .galign -tearoff 0
+foreach a {Left Center Right} { .galign add radiobutton -label $a -variable galign -value $a }
+set galign Left
+menubutton $mn.mb -text Edit -menu .gedit
+ttk::menubutton $mn.tb -textvariable galign -menu .galign
+label $mn.hint -text "Right-click here"
+cls $mn.hint muted
+bind $mn.hint <Button-3> {tk_popup .gedit %X %Y}
+grid $mn.mb $mn.tb $mn.hint -sticky w -padx 4 -pady 3
+pack .cols.left.menus -fill x -pady 4
+
 set status ""
