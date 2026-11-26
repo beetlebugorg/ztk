@@ -57,7 +57,10 @@ const Widget = widget.Widget;
 const Value = ztcl.Value;
 
 /// True on the platforms where `ztcl::pty` starts a program.
-const pty_ok = ztcl.pty.supported;
+// The widget reads the PTY by its descriptor, and the PTY is a channel of
+// ztcl. The PTY of ztcl on Windows is a pseudo console with handles, so
+// Windows has no -command yet. x86-64 macOS has no channels in ztcl.
+const pty_ok = ztcl.pty.supported and ztcl.sys.supported and builtin.os.tag != .windows;
 
 pub const specs = [_]Spec{
     .{ .name = "-background", .db_name = "background", .db_class = "Background", .type = .color, .default = "#ffffff", .from_style = true, .style_prop = .background },
