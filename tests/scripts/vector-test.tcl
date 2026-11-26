@@ -171,8 +171,8 @@ check "the console API: shape, move, select, and get" [lindex $vec::conlines end
 check "the result of a script" $vec::sel [last]
 vec::run {set n 0; each shape {incr n}; set n}
 check "each runs a body for each shape" [lindex $vec::conlines end] [llength $vec::order]
-check "a script that does not end stops at the step limit" [catch {vec::run {while 1 {}}} e] 1
-check "the step limit error shows in the console" [lindex $vec::conlines end] "error: step limit reached"
+check "a script that does not end stops at the compute limit" [catch {vec::run {while 1 {}}} e] 1
+check "the compute limit error shows in the console" [lindex $vec::conlines end] "error: compute limit reached"
 catch {vec::run {set s x; while 1 {append s $s}}}
 check "a script that uses too much memory stops" [lindex $vec::conlines end] "error: the script used too much memory"
 catch {vec::run {shape bogus}}

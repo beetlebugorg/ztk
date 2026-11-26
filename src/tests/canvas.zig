@@ -366,11 +366,11 @@ test "canvas: ztk::limit bounds a child interpreter of the console of the vector
     try h.init();
     defer h.deinit();
     _ = try h.eval("interp create con");
-    try t.expectEqualStrings("step limit reached", try h.eval("catch {ztk::limit -steps 1000 {interp eval con {while 1 {}}}} e; set e"));
-    try t.expectEqualStrings("the script used too much memory", try h.eval("catch {ztk::limit -steps 100000 -memory 1000000 {interp eval con {set s x; while 1 {append s $s}}}} e; set e"));
+    try t.expectEqualStrings("compute limit reached", try h.eval("catch {ztk::limit -compute 1000 {interp eval con {while 1 {}}}} e; set e"));
+    try t.expectEqualStrings("the script used too much memory", try h.eval("catch {ztk::limit -compute 100000 -memory 1000000 {interp eval con {set s x; while 1 {append s $s}}}} e; set e"));
     // One large request: the heap refuses it before the allocation.
     try t.expectEqualStrings("the script used too much memory", try h.eval("catch {ztk::limit -memory 1000000 {interp eval con {string repeat x 5000000}}} e; set e"));
-    try t.expectEqualStrings("10", try h.eval("ztk::limit -steps 1000 {interp eval con {set a 0; for {set i 0} {$i < 10} {incr i} {incr a}; set a}}"));
+    try t.expectEqualStrings("10", try h.eval("ztk::limit -compute 1000 {interp eval con {set a 0; for {set i 0} {$i < 10} {incr i} {incr a}; set a}}"));
     try t.expectEqualStrings("100", try h.eval("set n 0; for {set i 0} {$i < 100} {incr i} {incr n}; set n"));
-    try t.expectEqualStrings("wrong # args: should be \"ztk::limit ?-steps count? ?-memory bytes? script\"", try h.evalError("ztk::limit -steps 1"));
+    try t.expectEqualStrings("wrong # args: should be \"ztk::limit ?-compute units? ?-memory bytes? script\"", try h.evalError("ztk::limit -compute 1"));
 }

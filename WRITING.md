@@ -36,6 +36,10 @@ Use one name for one thing. The plan uses these names:
 
 Do not name an AI model or an AI vendor in the repository.
 
+## Terms
+
+The limit of CPU work of ztcl is the compute limit, and it counts compute units. Use these two terms. Do not call the limit a step limit or fuel. `ztk::limit -compute N` sets it.
+
 ## Commit messages
 
 Keep the subject under 72 characters. Wrap the body at 72. Give what changed and the one fact a reviewer needs. Add no attribution trailers or session links, and no references to ignored paths.
