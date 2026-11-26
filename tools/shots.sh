@@ -15,7 +15,7 @@ ztk="$root/zig-out/bin/ztk"
 mkdir -p "$out"
 log="$(mktemp)"
 trap 'rm -f "$log"' EXIT
-for name in demo signin calculator settings dashboard gallery spreadsheet vector themes themes-classic counter; do
+for name in demo signin calculator settings dashboard gallery spreadsheet vector themes themes-classic counter editor files; do
     for scheme in light dark; do
         flag=""
         [ "$scheme" = dark ] && flag="--dark"
