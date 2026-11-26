@@ -616,3 +616,13 @@ Menubutton:disabled {
 Menubutton::indicator {
   color: var(--muted);
 }
+
+Terminal {
+  color: var(--fg);
+  background-color: var(--field-bg);
+}
+
+Terminal::selection {
+  background-color: var(--accent);
+  color: var(--accent-fg);
+}

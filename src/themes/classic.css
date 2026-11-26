@@ -384,3 +384,13 @@ Menubutton:disabled {
 Menubutton::indicator {
   color: var(--fg);
 }
+
+Terminal {
+  color: var(--fg);
+  background-color: var(--field-bg);
+}
+
+Terminal::selection {
+  background-color: var(--select);
+  color: var(--fg);
+}
