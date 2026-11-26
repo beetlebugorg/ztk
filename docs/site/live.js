@@ -248,6 +248,16 @@ class Demo {
     pick.value = this.renderer;
     pick.addEventListener("change", () => { this.renderer = pick.value; this.run(true); });
     bar.appendChild(pick);
+    // The theme: the ztk look, or the sizes and colors of Tk on X11.
+    const look = document.createElement("select");
+    look.title = "The theme of the window";
+    look.setAttribute("aria-label", "Theme");
+    look.add(new Option("Modern", "modern"));
+    look.add(new Option("Classic Tk", "classic"));
+    this.theme = params.get("theme") === "classic" ? "classic" : "modern";
+    look.value = this.theme;
+    look.addEventListener("change", () => { this.theme = look.value; this.run(); });
+    bar.appendChild(look);
     const toggle = (text, title, key) => {
       const b = button(text, title, () => {
         this[key] = !this[key];
@@ -308,7 +318,12 @@ class Demo {
       return this.fail(e.message);
     }
     if (seq !== this.seq) { h.destroy(); frame.remove(); return; }
-    h.eval(PRE);
+    const pre = h.eval(PRE + (this.theme === "classic" ? "ztk::style theme classic\n" : ""));
+    if (!pre.ok) {
+      h.destroy();
+      frame.remove();
+      return this.fail(pre.result);
+    }
     const r = h.eval(this.ta.value);
     if (!r.ok) {
       const info = h.eval("set ::errorInfo");
@@ -548,6 +563,7 @@ if (params.has("livetest")) {
       await d.run();
       out.checks.error = d.err.hidden ? "" : d.err.textContent.split("\n")[0];
       out.checks.stayed = d.h.eval("set ::ld_new").result;
+      d.ta.value = d.ta.value.replace("no_such_command\n", "");
       // X-ray and Inspect: the boxes, and an option from the table.
       d.xray = true;
       d.overlay();
@@ -559,6 +575,10 @@ if (params.has("livetest")) {
       input.value = "hand2";
       input.dispatchEvent(new Event("change"));
       out.checks.cursor = d.h.eval(`${first.path} cget -cursor`).result;
+      d.theme = "classic";
+      await d.run();
+      out.checks.classic = d.err.hidden ? d.h.eval("ztk::style theme").result : d.err.textContent;
+      d.theme = "modern";
       out.checks.written = d.ta.value.includes("-cursor hand2") || d.note.textContent.startsWith("No line") ? "yes" : "no";
     }
     const pre = document.createElement("pre");
