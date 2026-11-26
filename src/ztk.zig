@@ -87,6 +87,7 @@ test {
     _ = touch;
     _ = keymap;
     _ = @import("platform/mackeys.zig");
+    _ = @import("platform/macime.zig");
     _ = direct;
     _ = vkdisplay;
     _ = @import("sys/host.zig");
