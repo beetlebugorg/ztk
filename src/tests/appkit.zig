@@ -363,3 +363,23 @@ test "appkit: a tray icon in the menu bar" {
     try t.expect(a.trays.find(id) == null);
     p.menuDrop(5);
 }
+
+test "appkit: the badge, the progress bar, and the attention of the Dock icon" {
+    if (!windowsAllowed()) return;
+    const a = try appkit.AppKit.init(t.allocator);
+    const p = a.platform();
+    defer p.vtable.deinit(p.ptr);
+    try t.expect(p.hasTaskbar());
+    const win = try p.createWindow(.{ .title = "ztk dock", .size = .{ .w = 200, .h = 100 } });
+    defer p.destroyWindow(win);
+    p.taskbarSet(win, .{ .progress = .normal, .value = 0.5, .badge = 7 });
+    try t.expectEqualStrings("7", a.dock.badge());
+    try t.expect(a.dock.view != null);
+    try t.expectEqual(@as(f64, 0.5), objc.call(fn (objc.Id, objc.Sel) callconv(.c) f64, a.dock.bar.?, "doubleValue", .{}));
+    p.taskbarSet(win, .{ .progress = .indeterminate });
+    try t.expect(objc.call(fn (objc.Id, objc.Sel) callconv(.c) bool, a.dock.bar.?, "isIndeterminate", .{}));
+    p.taskbarSet(win, .{});
+    try t.expectEqualStrings("", a.dock.badge());
+    try t.expect(a.dock.view == null);
+    p.attention(win, false);
+}
