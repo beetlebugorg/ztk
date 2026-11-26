@@ -15,7 +15,7 @@ ztk="$root/zig-out/bin/ztk"
 mkdir -p "$out"
 log="$(mktemp)"
 trap 'rm -f "$log"' EXIT
-for name in demo signin calculator settings dashboard gallery spreadsheet vector themes themes-classic counter; do
+for name in demo signin calculator settings dashboard gallery spreadsheet vector themes themes-classic counter editor files; do
     for scheme in light dark; do
         flag=""
         [ "$scheme" = dark ] && flag="--dark"
@@ -36,11 +36,31 @@ for name in demo signin calculator settings dashboard gallery spreadsheet vector
     done
 done
 
+# The gallery in the middle of an animation: the knob of the switch
+# "Airplane mode" moves for 320 ms after a click at the time 0, and the
+# shot is the frame at 120 ms (`--time`). Animations are on for this shot.
+# The script is in examples/, so `ztk::style load` finds gallery.css.
+motion="$(mktemp "$root/examples/.motion-XXXXXX.tcl")"
+trap 'rm -f "$log" "$motion"' EXIT
+{ cat "$root/examples/gallery.tcl"; echo 'update; .cols.left.checks.body.air invoke'; } >"$motion"
+for scheme in light dark; do
+    flag=""
+    [ "$scheme" = dark ] && flag="--dark"
+    file="$out/gallery-motion-$scheme.png"
+    if ! timeout 60 "$ztk" --headless $flag --scale 2 --time 120 \
+        --exit-after-frames 1 --screenshot "$file" "$motion" >/dev/null 2>"$log" || grep -qv '^frames: ' "$log"; then
+        echo "error: the motion shot of examples/gallery.tcl failed:" >&2
+        cat "$log" >&2
+        exit 1
+    fi
+    echo "wrote $file ($(wc -c <"$file") bytes)"
+done
+
 # The shot of the live snippet of the landing page: docs/site/hero.tcl in
 # a window of 360 by 240 logical pixels, as widget-hero-light.png and
 # widget-hero-dark.png.
 hero="$(mktemp)"
-trap 'rm -f "$log" "$hero"' EXIT
+trap 'rm -f "$log" "$motion" "$hero"' EXIT
 { echo 'wm geometry . 360x240'; cat "$root/docs/site/hero.tcl"; echo update; } >"$hero"
 for scheme in light dark; do
     flag=""
@@ -61,7 +81,7 @@ done
 # 240 logical pixels, runs SCRIPT, and writes widget-NAME-light.png and
 # widget-NAME-dark.png.
 snippet="$(mktemp)"
-trap 'rm -f "$log" "$hero" "$snippet"' EXIT
+trap 'rm -f "$log" "$motion" "$hero" "$snippet"' EXIT
 for page in "$root"/docs/widgets/*.md; do
     grep -o '<!-- widget: [a-z0-9-]*' "$page" | sed 's/<!-- widget: //' | while read -r name; do
         {

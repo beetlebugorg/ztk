@@ -6,7 +6,7 @@ The screenshots of the site show each widget in a program, in the modern theme, 
 
 ## Files
 
-- `examples/`: `gallery.tcl`, `editor.tcl` (menus, a text widget with tags, scrollbars), `files.tcl` (a tree, a combobox, a paned window), `draw.tcl` (a canvas), and `settings.tcl` (a notebook, checkbuttons, radiobuttons, scales, spinboxes, a progress bar)
+- `examples/`: `gallery.tcl`, `editor.tcl` (menus, a text widget with tags, scrollbars), `files.tcl` (a tree, a combobox, a paned window), `vector.tcl` (a canvas), and `settings.tcl` (a notebook, checkbuttons, radiobuttons, scales, spinboxes, a progress bar)
 - `tools/shots.sh`, `docs/site/shots/`, `docs/site/index.html`, `docs/site/run/`, `README.md`
 
 ## Steps
