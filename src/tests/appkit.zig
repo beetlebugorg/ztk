@@ -306,3 +306,39 @@ test "appkit: native menus in the menu bar and as a popup" {
     p.menuDrop(1);
     p.menuDrop(2);
 }
+
+test "appkit: a tray icon in the menu bar" {
+    if (!windowsAllowed()) return;
+    const a = try appkit.AppKit.init(t.allocator);
+    const p = a.platform();
+    defer p.vtable.deinit(p.ptr);
+    try t.expect(p.hasTray());
+    const win = try p.createWindow(.{ .title = "ztk tray", .size = .{ .w = 200, .h = 100 } });
+    defer p.destroyWindow(win);
+    _ = try waitFor(p, .frame);
+
+    var px: [16 * 16 * 4]u8 = @splat(255);
+    const id = p.trayCreate(win, .{ .width = 16, .height = 16, .pixels = &px }, true, "ztk test");
+    try t.expect(id != 0);
+    const rec = a.trays.find(id).?;
+    const button = objc.call(fn (objc.Id, objc.Sel) callconv(.c) objc.Id, rec.item, "button", .{});
+    const image = objc.call(fn (objc.Id, objc.Sel) callconv(.c) ?objc.Id, button, "image", .{}) orelse return error.NoImage;
+    try t.expect(objc.call(fn (objc.Id, objc.Sel) callconv(.c) bool, image, "isTemplate", .{}));
+
+    // A click on a tray with no menu is a `click` of its window.
+    makeCurrent(a.app, otherEvent());
+    objc.call(fn (objc.Id, objc.Sel, ?objc.Id) callconv(.c) void, button, "performClick:", .{null});
+    const click = try waitFor(p, .tray);
+    try t.expect(click.tray.window == win);
+    try t.expectEqual(id, click.tray.id);
+    try t.expectEqual(event.TrayAction.click, click.tray.action);
+
+    // A menu goes on the status item, and the menu bar shows it on a click.
+    p.menuSet(&.{ .id = 5, .entries = &.{.{ .label = "Quit" }} });
+    p.traySet(id, .{ .width = 0, .height = 0, .pixels = "" }, false, "", 5);
+    const menu = objc.call(fn (objc.Id, objc.Sel) callconv(.c) ?objc.Id, rec.item, "menu", .{});
+    try t.expect(menu == a.menus.menus.get(5).?.ns);
+    p.trayDrop(id);
+    try t.expect(a.trays.find(id) == null);
+    p.menuDrop(5);
+}

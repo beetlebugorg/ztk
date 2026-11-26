@@ -51,6 +51,7 @@ const mackeys = @import("mackeys.zig");
 const Pasteboard = @import("pasteboard.zig").Pasteboard;
 const Ime = @import("macime.zig").Ime;
 const nsmenu = @import("nsmenu.zig");
+const mactray = @import("mactray.zig");
 const Id = objc.Id;
 const Sel = objc.Sel;
 const Class = objc.Class;
@@ -133,6 +134,8 @@ pub const AppKit = struct {
     menus: *nsmenu.Menus = undefined,
     post_win: ?*Win = null,
     key_win: ?*Win = null,
+    /// The status items of the menu bar.
+    trays: *mactray.Trays = undefined,
 
     pub fn init(gpa: std.mem.Allocator) !*AppKit {
         // AppKit makes windows only on the main thread.
@@ -148,6 +151,8 @@ pub const AppKit = struct {
         a.observe();
         a.menus = try nsmenu.Menus.init(gpa, .{ .ctx = a, .menu = menuEvent, .command = appCommand, .key = menuKey });
         a.menus.show(0);
+        errdefer a.menus.deinit();
+        a.trays = try mactray.Trays.init(gpa, .{ .ctx = a, .action = trayAction });
         return a;
     }
 
@@ -165,6 +170,7 @@ pub const AppKit = struct {
             objc.release(o);
         }
         a.wins.deinit(a.gpa);
+        a.trays.deinit();
         a.menus.deinit();
         a.events.deinit(a.gpa);
         a.gpa.destroy(a);
@@ -198,7 +204,31 @@ pub const AppKit = struct {
         .postMenu = vPostMenu,
         .unpostMenu = vUnpostMenu,
         .setMenuHandler = vSetMenuHandler,
+        .trayCreate = vTrayCreate,
+        .traySet = vTraySet,
+        .trayDrop = vTrayDrop,
     };
+
+    // ---- The tray ----
+
+    fn vTrayCreate(ptr: *anyopaque, win: *Window, icon: plat.TrayIcon, template: bool, tooltip: []const u8) plat.TrayId {
+        return self(ptr).trays.create(winOf(win), icon, template, tooltip);
+    }
+
+    fn vTraySet(ptr: *anyopaque, id: plat.TrayId, icon: plat.TrayIcon, template: bool, tooltip: []const u8, menu: plat.MenuId) void {
+        const a = self(ptr);
+        const ns: ?Id = if (a.menus.menus.get(menu)) |m| m.ns else null;
+        a.trays.set(id, icon, template, tooltip, ns);
+    }
+
+    fn vTrayDrop(ptr: *anyopaque, id: plat.TrayId) void {
+        self(ptr).trays.drop(id);
+    }
+
+    fn trayAction(ctx: *anyopaque, owner: *anyopaque, id: plat.TrayId, action: event.TrayAction) void {
+        const w: *Win = @ptrCast(@alignCast(owner));
+        self(ctx).push(.{ .tray = .{ .window = &w.window, .id = id, .action = action } });
+    }
 
     // ---- The native menus ----
 
@@ -242,7 +272,9 @@ pub const AppKit = struct {
     /// A `menu` event, for the window of the post or the key window.
     fn menuEvent(ctx: *anyopaque, id: plat.MenuId, entry: i32, action: event.MenuAction) void {
         const a = self(ctx);
-        const w = a.post_win orelse a.key_win orelse return;
+        // A menu of a tray can open with no key window, in an app that
+        // lives in the menu bar.
+        const w = a.post_win orelse a.key_win orelse (if (a.wins.items.len > 0) a.wins.items[0] else return);
         a.push(.{ .menu = .{ .window = &w.window, .menu = id, .entry = entry, .action = action } });
     }
 
@@ -364,6 +396,7 @@ pub const AppKit = struct {
             a.menus.show(0);
         }
         if (a.post_win == w) a.post_win = null;
+        a.trays.dropOwner(w);
         if (w.link) |l| {
             send(l, "invalidate", .{});
             objc.release(l);
