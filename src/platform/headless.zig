@@ -14,6 +14,12 @@
 //! are off until a test sets `native_menus`. Then each menu call adds one
 //! line of text to `menu_log`. `menuAction` calls the menu handler of the
 //! core or queues a `menu` event, and `appCommand` queues an `app_command`.
+//!
+//! The clock of a test moves only in `wait`, by the full timeout, so a
+//! timer is due at once. With `real_clock`, the clock is the monotonic
+//! clock of the system, and `wait` sleeps. A program that shows a
+//! headless window to a person, such as the preview of dockyard, uses
+//! `real_clock`, so `after 1000` waits one second.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -21,6 +27,7 @@ const geom = @import("../geom.zig");
 const event = @import("../event.zig");
 const keysym = @import("../keysym.zig");
 const plat = @import("platform.zig");
+const host = @import("../sys/host.zig");
 const Event = event.Event;
 const Mods = event.Mods;
 const Window = plat.Window;
@@ -44,6 +51,8 @@ const WinRec = struct { win: *Window, frame_wanted: bool = false, surface: *Surf
 pub const Headless = struct {
     gpa: std.mem.Allocator,
     now_us: i64 = 0,
+    /// True: the clock is the clock of the system, and `wait` sleeps.
+    real_clock: bool = false,
     queue: std.ArrayListUnmanaged(Event) = .empty,
     windows: std.ArrayListUnmanaged(WinRec) = .empty,
     px: f32 = 0,
@@ -636,9 +645,20 @@ pub const Headless = struct {
         return false;
     }
 
+    /// The longest sleep of `wait` with `real_clock`. The loop polls
+    /// pipes and sockets with timers, and no file descriptor ends the
+    /// sleep, so a wait with no timeout sleeps this long and returns.
+    const max_sleep_us = 10_000;
+
     fn vWait(ptr: *anyopaque, timeout_us: ?i64) void {
         const h = self(ptr);
         if (h.pending()) return;
+        if (h.real_clock) {
+            const t = @min(timeout_us orelse max_sleep_us, max_sleep_us);
+            host.sleepUs(t);
+            h.now_us = host.nowUs();
+            return;
+        }
         if (timeout_us) |t| h.now_us += @max(t, 0);
     }
 
@@ -656,7 +676,9 @@ pub const Headless = struct {
     }
 
     fn vNowUs(ptr: *anyopaque) i64 {
-        return self(ptr).now_us;
+        const h = self(ptr);
+        if (h.real_clock) h.now_us = host.nowUs();
+        return h.now_us;
     }
 
     fn freeSurface(h: *Headless, surf: *Surface) void {
