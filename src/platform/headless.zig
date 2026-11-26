@@ -80,6 +80,10 @@ pub const Headless = struct {
     system: ?plat.Appearance = null,
     /// The trays: the last call of `traySet` for each, and the count of the ids.
     trays: std.ArrayListUnmanaged(TrayRec) = .empty,
+    /// The recent documents: the paths of `recentAdd` since the last
+    /// `recentClear`, and the count of the clears.
+    recent: std.ArrayListUnmanaged([]u8) = .empty,
+    recent_clears: u32 = 0,
     tray_next: u32 = 1,
     /// The texts of the input method events in the queue, freed at the next `poll`.
     ime_texts: std.ArrayListUnmanaged([]u8) = .empty,
@@ -117,6 +121,8 @@ pub const Headless = struct {
         h.clip_set.deinit(h.gpa);
         for (h.trays.items) |*r| r.tooltip.deinit(h.gpa);
         h.trays.deinit(h.gpa);
+        for (h.recent.items) |p| h.gpa.free(p);
+        h.recent.deinit(h.gpa);
         h.freeTexts(&h.ime_texts);
         h.freeTexts(&h.ime_texts_old);
         h.ime_texts.deinit(h.gpa);
@@ -153,6 +159,8 @@ pub const Headless = struct {
         .trayCreate = vTrayCreate,
         .traySet = vTraySet,
         .trayDrop = vTrayDrop,
+        .recentAdd = vRecentAdd,
+        .recentClear = vRecentClear,
     };
 
     pub const TrayRec = struct { id: plat.TrayId, width: u32 = 0, template: bool = false, tooltip: std.ArrayListUnmanaged(u8) = .empty, menu: plat.MenuId = 0 };
@@ -185,6 +193,23 @@ pub const Headless = struct {
     }
 
     /// The record of a tray, or null after its drop.
+    fn vRecentAdd(ptr: *anyopaque, path: []const u8) bool {
+        const h = self(ptr);
+        const copy = h.gpa.dupe(u8, path) catch return false;
+        h.recent.append(h.gpa, copy) catch {
+            h.gpa.free(copy);
+            return false;
+        };
+        return true;
+    }
+
+    fn vRecentClear(ptr: *anyopaque) void {
+        const h = self(ptr);
+        for (h.recent.items) |p| h.gpa.free(p);
+        h.recent.clearRetainingCapacity();
+        h.recent_clears += 1;
+    }
+
     pub fn tray(h: *Headless, id: plat.TrayId) ?*TrayRec {
         for (h.trays.items) |*r| if (r.id == id) return r;
         return null;

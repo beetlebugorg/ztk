@@ -8,7 +8,7 @@
 //! replaced by the action: `click`, `double`, or `menu`.
 //!
 //! `ztk::has feature` gives 1 when this program has the feature on this
-//! platform, and 0 when it does not. It knows `tray` and `native-menus`,
+//! platform, and 0 when it does not. It knows `tray`, `recent`, and `native-menus`,
 //! and another name gives an error.
 //! SPDX-License-Identifier: BSD-2-Clause
 
@@ -188,9 +188,11 @@ pub fn cmdHas(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.
     const name = try it.str(argv[1]);
     const on = if (std.mem.eql(u8, name, "tray"))
         app.platform.hasTray()
+    else if (std.mem.eql(u8, name, "recent"))
+        app.platform.hasRecent()
     else if (std.mem.eql(u8, name, "native-menus"))
         app.platform.hasNativeMenus()
     else
-        return it.fail("bad feature \"{s}\": must be native-menus or tray", .{name});
+        return it.fail("bad feature \"{s}\": must be native-menus, recent, or tray", .{name});
     return .{ .int = @intFromBool(on) };
 }

@@ -154,13 +154,13 @@ pub const Cursor = enum {
     /// for a name with no shape here.
     pub fn fromTk(name: []const u8) ?Cursor {
         const map = [_]struct { []const u8, Cursor }{
-            .{ "arrow", .default },         .{ "left_ptr", .default },         .{ "top_left_arrow", .default },
-            .{ "xterm", .text },            .{ "hand1", .pointer },            .{ "hand2", .pointer },
-            .{ "watch", .wait },            .{ "crosshair", .crosshair },      .{ "cross", .crosshair },
-            .{ "tcross", .crosshair },      .{ "fleur", .move },               .{ "question_arrow", .help },
+            .{ "arrow", .default },               .{ "left_ptr", .default },            .{ "top_left_arrow", .default },
+            .{ "xterm", .text },                  .{ "hand1", .pointer },               .{ "hand2", .pointer },
+            .{ "watch", .wait },                  .{ "crosshair", .crosshair },         .{ "cross", .crosshair },
+            .{ "tcross", .crosshair },            .{ "fleur", .move },                  .{ "question_arrow", .help },
             .{ "sb_h_double_arrow", .ew_resize }, .{ "sb_v_double_arrow", .ns_resize }, .{ "X_cursor", .not_allowed },
-            .{ "size_we", .ew_resize },     .{ "size_ns", .ns_resize },        .{ "size_nw_se", .nwse_resize },
-            .{ "size_ne_sw", .nesw_resize }, .{ "size", .move },
+            .{ "size_we", .ew_resize },           .{ "size_ns", .ns_resize },           .{ "size_nw_se", .nwse_resize },
+            .{ "size_ne_sw", .nesw_resize },      .{ "size", .move },
         };
         for (map) |m| if (std.mem.eql(u8, m[0], name)) return m[1];
         return null;
@@ -284,7 +284,27 @@ pub const Platform = struct {
         traySet: ?*const fn (ptr: *anyopaque, id: TrayId, icon: TrayIcon, template: bool, tooltip: []const u8, menu: MenuId) void = null,
         /// Removes a tray icon.
         trayDrop: ?*const fn (ptr: *anyopaque, id: TrayId) void = null,
+
+        // The recent documents of the app (ztk#64).
+
+        /// Adds a file to the recent documents of the app. `path` is a
+        /// full host path in UTF-8 with `/` between the parts. Gives false
+        /// when the system refuses it.
+        recentAdd: ?*const fn (ptr: *anyopaque, path: []const u8) bool = null,
+        /// Empties the recent documents of the app, and only of the app.
+        recentClear: ?*const fn (ptr: *anyopaque) void = null,
     };
+
+    pub fn hasRecent(p: Platform) bool {
+        return p.vtable.recentAdd != null and p.vtable.recentClear != null;
+    }
+    pub fn recentAdd(p: Platform, path: []const u8) bool {
+        const f = p.vtable.recentAdd orelse return false;
+        return f(p.ptr, path);
+    }
+    pub fn recentClear(p: Platform) void {
+        if (p.vtable.recentClear) |f| f(p.ptr);
+    }
 
     pub fn hasNativeMenus(p: Platform) bool {
         return p.native_menus and p.vtable.menuSet != null and p.vtable.postMenu != null;

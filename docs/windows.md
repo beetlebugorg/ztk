@@ -33,6 +33,7 @@ The variable `ZTK_RENDERER` picks the output of the window:
 - Pointer: motion, the buttons 1, 2, and 3, the two side buttons as 8 and 9, the wheel in both directions, and the cursor of each widget (`-cursor` and the CSS `cursor`).
 - Input methods: the Text Services Framework. The text of an input method goes into an entry or a spinbox.
 - Clipboard: `clipboard` and the copy and paste of an entry use the clipboard of Windows, as Unicode text.
+- Recent documents: `ztk::recent add path` puts a file in the recent items of Windows and in the jump list of the app, when the app opens files of that type. `ztk::recent clear` empties the jump list of the app. `add` needs the real paths of the host, the default of the `ztk` program.
 - Dark mode: with no `--dark`, ztk follows the dark mode of Windows, also when it changes while the program runs.
 
 ## Limits
