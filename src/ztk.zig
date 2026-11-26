@@ -82,6 +82,8 @@ test {
     _ = @import("tests/taskbar.zig");
     _ = @import("tests/recent.zig");
     _ = @import("textinput.zig");
+    _ = @import("peres.zig");
+    _ = @import("tests/peres.zig");
     _ = @import("tests/tree.zig");
     _ = @import("tests/options.zig");
     _ = @import("tests/loop.zig");
