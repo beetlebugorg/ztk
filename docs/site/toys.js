@@ -107,7 +107,7 @@ class Toy {
     pad.innerHTML = `<span class="toy-led" aria-hidden="true"></span>
 <span class="toy-dpad"><button type="button" data-key="up" aria-label="Up">▲</button><button type="button" data-key="down" aria-label="Down">▼</button></span>
 <span class="toy-brand" aria-hidden="true">ZTK·PLAY</span>
-<span class="toy-ab"><button type="button" data-key="b" aria-label="B: serve">B</button><button type="button" data-key="a" aria-label="A: serve">A</button></span>
+<span class="toy-ab"><button type="button" data-key="b" aria-label="Button B">B</button><button type="button" data-key="a" aria-label="Button A">A</button></span>
 <span class="toy-switches"><label><input type="checkbox" class="toy-spill"> Play on the page</label><label><input type="checkbox" class="toy-sound"> Sound</label></span>`;
     this.fig.querySelector(".ld-view").appendChild(pad);
     const spill = pad.querySelector(".toy-spill");
