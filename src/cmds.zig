@@ -35,6 +35,7 @@ pub fn register(app: *App) !void {
     try it.register("ztk::tooltip", @import("grab.zig").cmdTooltip);
     try it.register("ztk::clock", @import("animate.zig").cmdClock);
     try it.register("ztk::limit", cmdLimit);
+    try @import("snapshot.zig").register(it);
     try it.register("interp", cmdInterp);
     try it.register("destroy", cmdDestroy);
     try it.register("exit", cmdExit);
