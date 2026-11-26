@@ -21,6 +21,7 @@ layout(location = 8) flat in vec4 f_params;
 layout(location = 9) flat in uint f_kind;
 
 layout(set = 0, binding = 0) uniform texture2D atlas;
+layout(set = 0, binding = 1) uniform texture2D images;
 
 layout(location = 0) out vec4 out_color;
 
@@ -106,6 +107,15 @@ void main() {
         float cov = texelFetch(atlas, t, 0).r;
         float a = f_fill.a * cov * opacity;
         out_color = vec4(f_fill.rgb * a, a);
+    } else if (f_kind == 3u) {
+        // The bilinear filter of the CPU renderer, on four texels of the image page.
+        vec2 u = clamp(f_uv.xy + (p - f_rect.xy) * (f_uv.zw / f_rect.zw) - 0.5, 0.0, 1022.0);
+        vec2 f = u - floor(u);
+        ivec2 i = ivec2(floor(u));
+        vec4 c = mix(mix(texelFetch(images, i, 0), texelFetch(images, i + ivec2(1, 0), 0), f.x),
+                     mix(texelFetch(images, i + ivec2(0, 1), 0), texelFetch(images, i + ivec2(1, 1), 0), f.x), f.y);
+        float a = c.a * opacity;
+        out_color = vec4(c.rgb * a, a);
     } else {
         discard;
     }

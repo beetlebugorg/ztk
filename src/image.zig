@@ -28,6 +28,9 @@ pub const Photo = struct {
     data: []u8 = &.{},
     /// Counts up at each change of the pixels.
     version: u32 = 0,
+    /// A number of this photo alone, so the image page of the atlas never
+    /// gives it the place of a photo that was deleted.
+    serial: u32 = 0,
 
     fn deinit(p: *Photo, gpa: std.mem.Allocator) void {
         gpa.free(p.name);
@@ -57,6 +60,8 @@ pub const Registry = struct {
     next: u32 = 1,
     /// Counts up at each change of an image.
     generation: u32 = 0,
+    /// The serial of the last photo made.
+    serials: u32 = 0,
 
     pub fn deinit(r: *Registry, gpa: std.mem.Allocator) void {
         for (r.list.items) |p| {
@@ -284,7 +289,8 @@ pub fn cmdImage(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztc
             _ = reg.list.orderedRemove(i);
         }
         const p = try gpa.create(Photo);
-        p.* = .{ .name = try gpa.dupe(u8, name) };
+        reg.serials +%= 1;
+        p.* = .{ .name = try gpa.dupe(u8, name), .serial = reg.serials };
         configurePhoto(app, it, p, rest) catch |e| {
             p.deinit(gpa);
             gpa.destroy(p);

@@ -452,7 +452,7 @@ pub fn paintText(w: *Widget, b: *scene.Builder) anyerror!void {
                 if (pc.emb) |e| {
                     if (e.kind == .image) if (app.images.find(e.image)) |ph| {
                         const r = textembed.box(w, e, dl, pc);
-                        try label.drawPhoto(b, ph, c.x + r.x - xoff, top + r.y, 1);
+                        try label.drawPhoto(b, &w.app.atlas, ph, c.x + r.x - xoff, top + r.y, 1);
                     };
                     continue;
                 }

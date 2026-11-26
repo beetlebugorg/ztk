@@ -704,6 +704,12 @@ pub const Headless = struct {
         return null;
     }
 
+    /// The RGBA image page of the atlas of a window, 4 bytes for each texel.
+    pub fn imagePage(h: *Headless, w: *Window) ?[]const u8 {
+        for (h.windows.items) |r| if (r.win == w) return r.surface.atlas.imagePage();
+        return null;
+    }
+
     pub fn image(h: *Headless, w: *Window) ?Image {
         for (h.windows.items) |r| if (r.win == w) return r.surface.image;
         return null;

@@ -124,6 +124,14 @@ export fn ztk_atlas() ?[*]const u8 {
     return page.ptr;
 }
 
+/// The RGBA image page of the atlas, 1024 by 1024 texels of 4 bytes, or
+/// null before the first image. It changes with `ztk_atlas_version`.
+export fn ztk_images() ?[*]const u8 {
+    const page = head.imagePage(app.window.?) orelse return null;
+    if (page.len == 0) return null;
+    return page.ptr;
+}
+
 export fn ztk_resize(w: i32, h: i32, scale: f32) void {
     const win = app.window orelse return;
     win.scale = scale;
@@ -328,4 +336,3 @@ export fn ztk_popup_dismiss() void {
     const win = popupWin(0) orelse return;
     head.close(win);
 }
-

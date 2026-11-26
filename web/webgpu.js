@@ -34,6 +34,7 @@ struct Uniforms { size: vec2f, p3: u32, pad: u32 };
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var<storage, read> quads: array<Quad>;
 @group(0) @binding(2) var atlas: texture_2d<f32>;
+@group(0) @binding(3) var images: texture_2d<f32>;
 
 struct V {
   @builtin(position) pos: vec4f,
@@ -158,6 +159,17 @@ fn gradientT(q: Quad, p: vec2f) -> f32 {
     let a = v.fill.a * textureLoad(atlas, t, 0).r * opacity;
     return vec4f(v.fill.rgb * a, a);
   }
+  if (q.kind == 3u) {
+    // The bilinear filter of the CPU renderer, on four texels of the image page.
+    let uu = clamp(q.uv.xy + (p - q.rect.xy) * (q.uv.zw / q.rect.zw) - 0.5, vec2f(0.0), vec2f(1022.0));
+    let f = uu - floor(uu);
+    let i = vec2i(floor(uu));
+    var c = mix(mix(textureLoad(images, i, 0), textureLoad(images, i + vec2i(1, 0), 0), f.x),
+                mix(textureLoad(images, i + vec2i(0, 1), 0), textureLoad(images, i + vec2i(1, 1), 0), f.x), f.y);
+    if (u.p3 != 0u) { c = toP3(c); }
+    let a = c.a * opacity;
+    return vec4f(c.rgb * a, a);
+  }
   discard;
   return vec4f(0.0);
 }
@@ -210,7 +222,7 @@ export async function createWebGPU(canvas, ex, options = {}) {
   if (!ctx) return null;
   const format = navigator.gpu.getPreferredCanvasFormat();
   const p3 = (options.colorSpace ?? (globalThis.matchMedia?.("(color-gamut: p3)").matches ? "display-p3" : "srgb")) === "display-p3";
-  let pipeline, uniforms, atlasTex, quadBuf, quadCap = 0, bindGroup = null;
+  let pipeline, uniforms, atlasTex, imageTex, quadBuf, quadCap = 0, bindGroup = null;
   let atlasVersion = -1, configured = "", ready = false, closed = false;
   let restoring = null;
 
@@ -230,6 +242,7 @@ export async function createWebGPU(canvas, ex, options = {}) {
     });
     uniforms = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     atlasTex = device.createTexture({ size: [ATLAS, ATLAS], format: "r8unorm", usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+    imageTex = device.createTexture({ size: [ATLAS, ATLAS], format: "rgba8unorm", usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
     quadCap = 0;
     bindGroup = null;
     atlasVersion = -1;
@@ -267,6 +280,8 @@ export async function createWebGPU(canvas, ex, options = {}) {
       const p = ex.ztk_atlas();
       if (p) {
         device.queue.writeTexture({ texture: atlasTex }, new Uint8Array(ex.memory.buffer, p, ATLAS * ATLAS), { bytesPerRow: ATLAS }, [ATLAS, ATLAS]);
+        const ip = ex.ztk_images ? ex.ztk_images() : 0;
+        if (ip) device.queue.writeTexture({ texture: imageTex }, new Uint8Array(ex.memory.buffer, ip, ATLAS * ATLAS * 4), { bytesPerRow: ATLAS * 4 }, [ATLAS, ATLAS]);
         atlasVersion = v;
       }
     }
@@ -286,6 +301,7 @@ export async function createWebGPU(canvas, ex, options = {}) {
         { binding: 0, resource: { buffer: uniforms } },
         { binding: 1, resource: { buffer: quadBuf } },
         { binding: 2, resource: atlasTex.createView() },
+        { binding: 3, resource: imageTex.createView() },
       ],
     });
     const u = new ArrayBuffer(16);
@@ -329,6 +345,7 @@ export async function createWebGPU(canvas, ex, options = {}) {
       quadBuf?.destroy();
       uniforms?.destroy();
       atlasTex?.destroy();
+      imageTex?.destroy();
     },
   };
 }
