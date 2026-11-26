@@ -257,3 +257,44 @@ test "textw: tag bindings with Enter and Leave, and the paint of tags" {
     const x1 = try h.eval(".t count -xpixels 1.0 1.6");
     try t.expect(!std.mem.eql(u8, x0, x1));
 }
+
+test "textw: the view, wrap, see, bbox, and dlineinfo" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval(
+        \\text .t -height 5 -width 20; pack .t
+        \\for {set i 1} {$i <= 100} {incr i} { .t insert end "Line $i\n" }
+        \\update
+    );
+    try expectEvals(&h, &.{
+        .{ ".t xview", "0.0 1.0" },
+        .{ ".t yview 10; .t index @0,0", "11.0" },
+        .{ ".t see 1.0; .t index @0,0", "1.0" },
+        .{ ".t bbox 90.0", "" },
+        .{ "llength [.t bbox 1.0]", "4" },
+        .{ "llength [.t dlineinfo 1.0]", "5" },
+        .{ ".t count -displaylines 1.0 10.0", "9" },
+        .{ ".t yview scroll 2 units; .t index @0,0", "3.0" },
+        .{ ".t see 90.0; expr {[.t bbox 90.0] ne {}}", "1" },
+        .{ ".t yview moveto 0; .t yview -pickplace 1.0; .t index @0,0", "1.0" },
+        .{ "lindex [.t yview] 0", "0.0" },
+        // A long line wraps at the width of the window. The fonts of ztk
+        // differ from those of wish, so the count of display lines differs.
+        .{ ".t delete 1.0 end; .t insert end [string repeat {word } 40]; expr {[.t count -displaylines 1.0 1.end] > 4}", "1" },
+        .{ ".t configure -wrap none; update; .t count -displaylines 1.0 1.end", "0" },
+        .{ "expr {[lindex [.t xview] 1] < 1.0}", "1" },
+        .{ ".t xview moveto 1.0; expr {[lindex [.t xview] 0] > 0}", "1" },
+    });
+    try expectErrors(&h, &.{
+        .{ ".t see", "wrong # args: should be \".t see index\"" },
+        .{ ".t bbox", "wrong # args: should be \".t bbox index\"" },
+        .{ ".t dlineinfo", "wrong # args: should be \".t dlineinfo index\"" },
+        .{ ".t yview foo", "bad text index \"foo\"" },
+        .{ ".t yview -pickplace", "wrong # args: should be \".t yview -pickplace lineNum|index\"" },
+        .{ ".t xview foo", "bad option \"foo\": must be moveto or scroll" },
+        .{ ".t yview moveto", "bad text index \"moveto\"" },
+        .{ ".t yview scroll 1", "wrong # args: should be \".t yview scroll number units|pages|pixels\"" },
+        .{ ".t yview scroll 1 foo", "bad argument \"foo\": must be units, pages, or pixels" },
+    });
+}

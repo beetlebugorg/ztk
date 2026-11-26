@@ -26,6 +26,7 @@ CPU milliseconds for one frame. Lower is faster.
 | `type-entry`: one key in an entry | 0.028 | 0.036 | 2026-11-25 |
 | `menu-open`: `tk_popup` of a menu of 20 entries beside 1,000 widgets, with the open move | 1.01 | 1.61 | 2026-11-25 |
 | `sash-drag`: a drag of the sash of a `panedwindow` with 500 widgets in each pane, one motion for each frame | 0.88 | 1.00 | 2026-11-25 |
+| `text-1mb-scroll`: a `text` widget with 1 MB of text (16,384 lines, `-wrap word`) scrolls by wheel steps from its middle | 0.42 | 0.54 | 2026-11-25 |
 | `tab-change`: a notebook of 3 tabs with 300 labels on each page changes its tab each 10 frames, with the slide and the fade | 0.29 | 0.56 | 2026-11-25 |
 
 ## Start, memory, and idle

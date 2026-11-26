@@ -466,6 +466,36 @@ pub fn main(init: std.process.Init) !void {
         report("canvas-drag", buf[0..runs]);
     }
 
+    // text-1mb-scroll: a text widget with 1 MB of text (16,384 lines of 64 bytes, with
+    // -wrap word) scrolls by wheel steps from its middle, one step for each frame.
+    {
+        var tx: World = undefined;
+        try tx.it.init(gpa);
+        tx.head = try ztk.headless.Headless.init(gpa);
+        tx.app = try ztk.App.init(gpa, &tx.it, .{ .platform = tx.head.platform(), .io = io, .animations = true });
+        defer tx.deinit();
+        tx.head.skip_draw = true;
+        tx.eval(
+            \\text .t -width 100 -height 40 -wrap word
+            \\pack .t -fill both -expand 1
+            \\.t insert end [string repeat "abcdefg hijklmn opqrstu vwxyz01 2345678 9ABCDEF GHIJKLM NOPQRS\n" 16384]
+            \\.t yview moveto 0.5
+            \\update
+        );
+        const win = tx.app.window.?;
+        tx.head.pointerMove(win, 300, 300);
+        tx.eval("update");
+        const runs = 200;
+        for (buf[0..runs], 0..) |*slot, i| {
+            tx.head.advance(16);
+            tx.head.pointerScroll(win, 0, if ((i / 100) % 2 == 0) 3 else -3);
+            const t0 = nowNs();
+            tx.eval("update");
+            slot.* = nowNs() - t0;
+        }
+        report("text-1mb-scroll", buf[0..runs]);
+    }
+
     // sheet-10000-scroll: examples/spreadsheet.tcl with 10 000 rows of numbers and a formula in
     // each row scrolls by fine wheel steps, one step for each frame, with transitions on. The
     // grid makes the items of a new block of rows every 16 rows.

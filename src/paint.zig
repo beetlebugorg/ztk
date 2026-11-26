@@ -154,6 +154,27 @@ pub fn fontMetrics(app: *App, desc: font_mod.FontDesc) font_mod.Metrics {
     return font_mod.Fonts.metrics(font);
 }
 
+/// The x offset before each character of one line of text and after the
+/// last one, in logical pixels from one shape at the scale 1.
+pub fn charXs(app: *App, a: std.mem.Allocator, text: []const u8, desc: font_mod.FontDesc) ![]f32 {
+    var n: usize = 0;
+    for (text) |c| {
+        if (c & 0xC0 != 0x80) n += 1;
+    }
+    const out = try a.alloc(f32, n + 1);
+    const font = measureFont(app, desc) orelse {
+        @memset(out, 0);
+        return out;
+    };
+    var run = try shape.shape(app.gpa, font, text);
+    defer run.deinit(app.gpa);
+    // One glyph for each code point, in the order of the text.
+    const k = @min(run.glyphs.len, n);
+    for (run.glyphs[0..k], 0..) |g, i| out[i] = g.x / font.scale;
+    for (out[k..]) |*x| x.* = run.end_x / font.scale;
+    return out;
+}
+
 /// Draws one line of text with its baseline at `baseline`.
 pub fn textAt(app: *App, b: *scene.Builder, x: i32, baseline: i32, text: []const u8, desc: font_mod.FontDesc, color: geom.Color) !void {
     if (text.len == 0) return;
