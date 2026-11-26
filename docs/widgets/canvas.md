@@ -4,6 +4,9 @@ The canvas has every item type of Tk 8.6: `arc`, `bitmap`, `image`, `line`, `ova
 
 **Live:** the Canvas card of the [gallery](https://beetlebug.org/ztk/play/index.html?example=gallery), the [spreadsheet](https://beetlebug.org/ztk/play/index.html?example=spreadsheet), and the [vector tool](https://beetlebug.org/ztk/play/index.html?example=vector).
 
+![A canvas with a blue square, an orange circle, a green triangle, and the text Drag a shape](../site/shots/widget-canvas-light.png)
+
+<!-- widget: canvas; shot: update -->
 ```tcl
 canvas .c -width 300 -height 110 -highlightthickness 0
 pack .c -fill both -expand 1

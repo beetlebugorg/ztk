@@ -4,6 +4,9 @@
 
 ## entry
 
+![An entry with the text Ada Lovelace, an empty password entry, and a round search field with the placeholder Search files](../site/shots/widget-entry-light.png)
+
+<!-- widget: entry; shot: update -->
 ```tcl
 set name "Ada Lovelace"
 entry .name -textvariable name -width 22
@@ -23,6 +26,7 @@ pack .name .pw .search -padx 12 -pady 4
 
 Validation follows Tk: the modes, the `%` fields, and `-invalidcommand`.
 
+<!-- live -->
 ```tcl
 entry .qty -validate key -validatecommand {string is integer %P} -invalidcommand bell
 pack .qty -padx 12 -pady 4
@@ -30,6 +34,9 @@ pack .qty -padx 12 -pady 4
 
 ## spinbox
 
+![A spinbox with the number 1 and a readonly spinbox with the text Medium](../site/shots/widget-spinbox-light.png)
+
+<!-- widget: spinbox; shot: update -->
 ```tcl
 spinbox .copies -from 1 -to 99 -width 6
 spinbox .size -values {Small Medium Large} -state readonly -width 10

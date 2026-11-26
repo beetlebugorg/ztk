@@ -1,9 +1,10 @@
 # Terminal
 
-![A terminal widget with colored text, inverse and underlined text, and a box of line characters](../site/shots/widget-terminal-light.png)
-
 ## ztk::terminal
 
+![A terminal widget with colored text, inverse and underlined text, and a box of line characters](../site/shots/widget-terminal-light.png)
+
+<!-- widget: terminal; shot: update idletasks -->
 ```tcl
 ztk::terminal .t -width 40 -height 12 -inputcommand echo
 pack .t -fill both -expand 1

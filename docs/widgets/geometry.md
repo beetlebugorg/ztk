@@ -4,6 +4,9 @@ ztk has the three geometry managers of Tk, with all their subcommands and option
 
 **Live:** each example uses them. The [calculator](https://beetlebug.org/ztk/play/index.html?example=calculator) is one `grid`, and the [gallery](https://beetlebug.org/ztk/play/index.html?example=gallery) mixes `pack` and `grid`.
 
+![A toolbar with New and Open, a form with Name and Email entries and a New badge in its corner, and the status line Ready at the bottom](../site/shots/widget-geometry-light.png)
+
+<!-- widget: geometry; shot: update -->
 ```tcl
 # pack: a toolbar at the top, a status line at the bottom.
 frame .bar

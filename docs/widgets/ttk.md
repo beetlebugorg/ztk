@@ -12,6 +12,9 @@ ztk has these widgets of the Tk themed set: `ttk::button`, `ttk::checkbutton`, `
 
 ## The widgets
 
+![A ttk labelframe with an accent button Apply, a check button, a switch, two radio buttons, a separator, and an entry, with a status line and a size grip](../site/shots/widget-ttk-light.png)
+
+<!-- widget: ttk; shot: update -->
 ```tcl
 ttk::style configure Accent.TButton -foreground white -background #2563eb
 ttk::style map Accent.TButton -background {active #1d4ed8}
@@ -53,6 +56,9 @@ pack .f.grip -side right -anchor se
 
 ## The range widgets
 
+![A combobox with Medium, a spinbox with 1, a scale at 60, a progress bar at 60 percent, and an indeterminate progress bar](../site/shots/widget-ttk-range-light.png)
+
+<!-- widget: ttk-range; shot: update idletasks -->
 ```tcl
 set level 60
 ttk::combobox .size -values {Small Medium Large} -state readonly
@@ -63,7 +69,7 @@ ttk::spinbox .copies -from 1 -to 10 -width 4
 ttk::scale .volume -from 0 -to 100 -variable level
 ttk::progressbar .meter -maximum 100 -variable level
 ttk::progressbar .busy -mode indeterminate
-.busy start
+after 500 {.busy start}
 pack .size .copies .volume .meter .busy -fill x -padx 12 -pady 4
 ```
 
