@@ -45,6 +45,7 @@ const Cursor = plat.Cursor;
 const tsf = @import("tsf.zig");
 const winmenu = @import("winmenu.zig");
 const wintray = @import("wintray.zig");
+const windialog = @import("windialog.zig");
 
 pub const Renderer = enum { auto, d3d12, cpu };
 
@@ -189,6 +190,7 @@ pub const Win32 = struct {
         .trayCreate = vTrayCreate,
         .traySet = vTraySet,
         .trayDrop = vTrayDrop,
+        .fileDialog = vFileDialog,
     };
 
     fn self(ptr: *anyopaque) *Win32 {
@@ -547,6 +549,16 @@ pub const Win32 = struct {
     pub fn trayMenu(b: *Win32, id: plat.TrayId) ?plat.MenuId {
         const t = b.trays.find(id) orelse return null;
         return t.menu;
+    }
+
+    // ---- File dialogs ----
+
+    fn vFileDialog(ptr: *anyopaque, gpa: std.mem.Allocator, opts: *const plat.FileDialog) ?plat.FileDialogResult {
+        const b = self(ptr);
+        const owner: ?w32.HWND = if (opts.parent) |p| (if (b.recOf(p)) |r| r.hwnd else null) else null;
+        var d = windialog.configure(gpa, opts) catch return null;
+        defer d.deinit();
+        return windialog.show(&d, gpa, owner);
     }
 
     // ---- Appearance ----
