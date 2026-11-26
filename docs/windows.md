@@ -34,7 +34,7 @@ The variable `ZTK_RENDERER` picks the output of the window:
 - Input methods: the Text Services Framework. The text of an input method goes into an entry or a spinbox.
 - Clipboard: `clipboard` and the copy and paste of an entry use the clipboard of Windows, as Unicode text.
 - Dark mode: with no `--dark`, ztk follows the dark mode of Windows, also when it changes while the program runs.
-- File dialogs: `tk_getOpenFile`, `tk_getSaveFile`, and `tk_chooseDirectory` show the dialogs of Windows, with the options of Tk. They need the file capability of ztcl, which a program that embeds ztk grants. The `ztk` program has no flag for it yet (decision D19 of the plan), so there they give an error.
+- File dialogs: `tk_getOpenFile`, `tk_getSaveFile`, and `tk_chooseDirectory` show the dialogs of Windows, with the options of Tk. They need the file capability of ztcl, which the `ztk` program turns on by default and a program that embeds ztk grants.
 
 ## Limits
 
