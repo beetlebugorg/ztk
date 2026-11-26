@@ -4,7 +4,7 @@ ztk follows Tk 8.6.16. A script that runs in `wish` 8.6 runs in ztk when it uses
 
 ## Missing today
 
-- Widgets: `text`, `menu`, `menubutton`, `panedwindow`, the dialogs (`tk_getOpenFile`, `tk_messageBox`, and the others), and the `ttk` widgets `notebook`, `panedwindow`, `menubutton`, and `treeview`.
+- Widgets: `text`, `panedwindow`, the dialogs (`tk_getOpenFile`, `tk_messageBox`, and the others), and the `ttk` widgets `notebook`, `panedwindow`, and `treeview`.
 - Commands: `option`, `selection`, `event add`, `send`, and `package`. The Tk test files cannot run, because `tcltest` needs `package`.
 - The clipboard is local to the app. It is not connected to the clipboard of the system.
 - `canvas postscript`.
@@ -24,6 +24,15 @@ ztk follows Tk 8.6.16. A script that runs in `wish` 8.6 runs in ztk when it uses
 - The modern scrollbar has no arrows, so `identify` never gives `arrow1` or `arrow2`, and `fraction` and `delta` count from the ends of the trough.
 - Canvas items that keep the default black of Tk draw with the text color of the theme. `itemcget` still gives `#000000`.
 - A canvas text item does not rotate with `-angle`.
+
+## Menus
+
+- On Linux and the web, the menus are drawn inside the window for now. A menu cannot extend past the edges of the window. The popup surfaces of Wayland and the web are planned.
+- The drawn menu bar is a top inset of the toplevel, so `winfo height` of the toplevel includes the row of the bar.
+- The coordinates of `post` and `tk_popup` are those of the window of the toplevel of the menu, as `%X` and `%Y` give them.
+- A tearoff entry shows as a line. A click on it does not tear off the menu.
+- A posted menu closes at once. The entry `-image`, `-bitmap`, `-compound`, `-hidemargin`, and `-columnbreak` are stored and have no effect on a drawn menu.
+- The modern theme draws a chevron on each menu button, also with `-indicatoron 0`.
 
 ## Styles and themes
 

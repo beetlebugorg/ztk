@@ -35,3 +35,36 @@ for name in demo signin calculator settings dashboard gallery spreadsheet vector
         echo "wrote $file ($(wc -c <"$file") bytes)"
     done
 done
+
+# The shots of the widget pages (docs/dev/widget-pages.md). A line
+# `<!-- widget: NAME; shot: SCRIPT -->` in a page of docs/widgets marks
+# the next `tcl` block. The shot runs that block in a window of 360 by
+# 240 logical pixels, runs SCRIPT, and writes widget-NAME-light.png and
+# widget-NAME-dark.png.
+snippet="$(mktemp)"
+trap 'rm -f "$log" "$snippet"' EXIT
+for page in "$root"/docs/widgets/*.md; do
+    grep -o '<!-- widget: [a-z0-9-]*' "$page" | sed 's/<!-- widget: //' | while read -r name; do
+        {
+            echo 'wm geometry . 360x240'
+            awk -v name="$name" '
+                index($0, "<!-- widget: " name ";") == 1 { on = 1; shot = $0; sub(/.*shot: /, "", shot); sub(/ -->.*/, "", shot); next }
+                on == 1 && /^```tcl/ { on = 2; next }
+                on == 2 && /^```/ { print "update"; print shot; exit }
+                on == 2 { print }
+            ' "$page"
+        } >"$snippet"
+        for scheme in light dark; do
+            flag=""
+            [ "$scheme" = dark ] && flag="--dark"
+            file="$out/widget-$name-$scheme.png"
+            if ! ZTK_NO_ANIMATION=1 timeout 60 "$ztk" --headless $flag --scale 2 \
+                --exit-after-frames 2 --screenshot "$file" "$snippet" >/dev/null 2>"$log" || grep -qv '^frames: ' "$log"; then
+                echo "error: the widget $name of $page failed:" >&2
+                cat "$log" >&2
+                exit 1
+            fi
+            echo "wrote $file ($(wc -c <"$file") bytes)"
+        done
+    done
+done
