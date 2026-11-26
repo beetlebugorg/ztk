@@ -345,6 +345,9 @@ class Build:
                 if self.live is not None and not (self.live / path[len("play/"):]).exists():
                     raise SystemExit(f"docs/site/index.html: link to a missing file: {href}")
                 continue
+            if path in ("llms.txt", "llms-full.txt", "api.json"):
+                # The files for agents (agents()).
+                continue
             if path.startswith("assets/"):
                 if not (SITE_DIR / path[len("assets/"):]).exists():
                     raise SystemExit(f"docs/site/index.html: link to a missing file: {href}")
