@@ -45,6 +45,7 @@ const Cursor = plat.Cursor;
 const tsf = @import("tsf.zig");
 const winmenu = @import("winmenu.zig");
 const wintray = @import("wintray.zig");
+const dwrite = @import("dwrite.zig");
 const windialog = @import("windialog.zig");
 const wintaskbar = @import("wintaskbar.zig");
 const winrecent = @import("winrecent.zig");
@@ -122,6 +123,8 @@ pub const Win32 = struct {
     menu_handler: ?plat.MenuHandler = null,
     /// The icons in the notification area.
     trays: wintray.Trays,
+    /// The DirectWrite backend of the fonts, made at the first request.
+    dwrite: ?*dwrite.DWrite = null,
     taskbar: wintaskbar.Taskbar,
     /// The shortcuts of `hotkeyAdd`: the id and its window, and the next id.
     hotkeys: std.ArrayListUnmanaged(struct { id: u32, hwnd: w32.HWND }) = .empty,
@@ -155,6 +158,7 @@ pub const Win32 = struct {
     pub fn deinit(b: *Win32) void {
         // An icon goes away with the window that owns it, so the trays go first.
         b.trays.deinit();
+        if (b.dwrite) |d| d.deinit();
         b.taskbar.deinit();
         for (b.hotkeys.items) |k| winhotkey.unregister(k.hwnd, k.id);
         b.hotkeys.deinit(b.gpa);
@@ -202,6 +206,7 @@ pub const Win32 = struct {
         .trayCreate = vTrayCreate,
         .traySet = vTraySet,
         .trayDrop = vTrayDrop,
+        .textSystem = vTextSystem,
         .fileDialog = vFileDialog,
         .taskbarSet = vTaskbarSet,
         .attention = vAttention,
@@ -535,6 +540,13 @@ pub const Win32 = struct {
 
     fn vTrayDrop(ptr: *anyopaque, id: plat.TrayId) void {
         self(ptr).trays.drop(id);
+    }
+
+    fn vTextSystem(ptr: *anyopaque) ?@import("../text/system.zig").System {
+        const b = self(ptr);
+        if (b.dwrite == null) b.dwrite = dwrite.DWrite.init(b.gpa);
+        const d = b.dwrite orelse return null;
+        return d.backend();
     }
 
     fn vTaskbarSet(ptr: *anyopaque, w: *Window, state: plat.Taskbar) void {

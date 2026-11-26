@@ -127,6 +127,8 @@ test {
         _ = @import("platform/winkeys.zig");
         _ = @import("platform/winmenu.zig");
         _ = @import("platform/wintray.zig");
+        _ = @import("platform/dwrite.zig");
+        _ = @import("tests/dwrite_look.zig");
         _ = @import("platform/wintaskbar.zig");
         _ = @import("platform/winrecent.zig");
         _ = @import("platform/winhotkey.zig");
