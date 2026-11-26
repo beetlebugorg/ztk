@@ -100,10 +100,12 @@ test "fluid: a color of ztk::animate moves while the script is busy" {
     defer h.deinit();
     _ = try h.eval(
         \\frame .f -width 40 -height 40 -background #000000; pack .f; update
-        \\ztk::animate .f -background #ff0000 -duration 250 -easing linear; update
+        \\ztk::animate .f -background #ff0000 -duration 1000 -easing linear; update
     );
     const before = h.app.render.drawn.load(.monotonic);
-    // The frames of the render thread reach the end color with no frame of the UI thread.
+    // The frames of the render thread reach the end color with no frame of
+    // the UI thread. The animation is long enough for 5 frames on a slow
+    // machine: a runner of CI drew fewer than 5 in 250 ms.
     try t.expectEqual(@as(u24, 0xff0000), pixelBecomes(&h, ".f", 0xff0000));
     try t.expect(h.app.render.drawn.load(.monotonic) - before >= 5);
 }
