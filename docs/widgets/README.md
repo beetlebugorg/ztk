@@ -15,6 +15,7 @@ ztk has the widgets below today. Each one has the commands and the options of Tk
 | [Text](text.md) | `text`, tags, marks, undo |
 | [Tree](tree.md) | `ttk::treeview`, columns, the sidebar style |
 | [Panes and tabs](panes.md) | `panedwindow`, `ttk::panedwindow`, `ttk::notebook` |
+| [Dialogs](dialogs.md) | `tk_messageBox`, `tk_dialog`, `tk_chooseColor`, the file dialogs, `ztk::toast`, the banner style |
 | [Menus](menus.md) | `menu`, `menubutton`, `ttk::menubutton`, `tk_popup`, the menu bar |
 | [Terminal](terminal.md) | `ztk::terminal`, a terminal emulator with scrollback and a pseudo-terminal |
 | [Themed widgets (ttk)](ttk.md) | `ttk::button`, `ttk::checkbutton`, `ttk::radiobutton`, `ttk::label`, `ttk::frame`, `ttk::labelframe`, `ttk::entry`, `ttk::separator`, `ttk::sizegrip` |
@@ -22,6 +23,5 @@ ztk has the widgets below today. Each one has the commands and the options of Tk
 
 `bind`, `bindtags`, `event generate`, `focus`, `wm`, `winfo`, and `tk` work as in Tk. [Styling and themes](../styling.md) and [Animation](../animation.md) cover the look and the motion.
 
-Coming next: the dialogs.
 
 Open the [gallery in the playground](https://beetlebug.org/ztk/play/index.html?example=gallery) to try each widget.

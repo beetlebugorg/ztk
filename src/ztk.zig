@@ -84,6 +84,7 @@ test {
     _ = @import("tests/recent.zig");
     _ = @import("tests/hotkey.zig");
     _ = @import("hotkey.zig");
+    _ = @import("tests/dialogs.zig");
     _ = @import("textinput.zig");
     _ = @import("peres.zig");
     _ = @import("tests/peres.zig");

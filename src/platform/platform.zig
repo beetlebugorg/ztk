@@ -152,6 +152,24 @@ pub const FileDialog = struct {
     pub const Filter = struct { name: []const u8, patterns: []const []const u8 };
 };
 
+/// The options of a native message box. The strings are UTF-8 and are
+/// valid only during the call.
+pub const MessageBox = struct {
+    /// The window that owns the box, or null.
+    parent: ?*Window = null,
+    title: []const u8 = "",
+    message: []const u8 = "",
+    detail: []const u8 = "",
+    icon: Icon = .info,
+    buttons: Buttons = .ok,
+    /// The button of the Return key.
+    default: Button = .ok,
+
+    pub const Icon = enum { @"error", info, question, warning };
+    pub const Buttons = enum { abortretryignore, ok, okcancel, retrycancel, yesno, yesnocancel };
+    pub const Button = enum { abort, retry, ignore, ok, cancel, no, yes };
+};
+
 /// The answer of a file dialog, in memory of the allocator of the call.
 pub const FileDialogResult = struct {
     /// The paths in UTF-8 with `/` between the parts.
@@ -307,6 +325,10 @@ pub const Platform = struct {
         /// `tk_getSaveFile`, and `tk_chooseDirectory` need. Null: the dialog
         /// was canceled, or it could not show.
         fileDialog: ?*const fn (ptr: *anyopaque, gpa: std.mem.Allocator, opts: *const FileDialog) ?FileDialogResult = null,
+        /// Runs a native message box to its end, as `tk_messageBox` needs,
+        /// and gives the name of the button that closed it, or null when it
+        /// could not show.
+        messageBox: ?*const fn (ptr: *anyopaque, opts: *const MessageBox) ?MessageBox.Button = null,
 
         // The native menus. A backend with `native_menus` has each of these
         // functions. The core calls them on the UI thread. The backend
@@ -471,6 +493,13 @@ pub const Platform = struct {
     }
 
     /// Null: the backend has no appearance of the system.
+    pub fn hasMessageBox(p: Platform) bool {
+        return p.vtable.messageBox != null;
+    }
+    pub fn messageBox(p: Platform, opts: *const MessageBox) ?MessageBox.Button {
+        const f = p.vtable.messageBox orelse return null;
+        return f(p.ptr, opts);
+    }
     pub fn hasFileDialog(p: Platform) bool {
         return p.vtable.fileDialog != null;
     }
