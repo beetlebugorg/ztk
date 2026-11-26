@@ -79,6 +79,9 @@ pub const Headless = struct {
     ime_texts_old: std.ArrayListUnmanaged([]u8) = .empty,
     /// True: the platform of the backend has native menus. A test sets it before `platform`.
     native_menus: bool = false,
+    /// True: the platform of the backend has popup surfaces. The web build
+    /// clears it before `platform`, because its page draws one canvas.
+    popups: bool = true,
     /// One line for each menu call, for example "set 3 [command Open Ctrl+O]".
     menu_log: std.ArrayListUnmanaged(u8) = .empty,
     /// The handler of the core for `opening` and `select`, from `setMenuHandler`.
@@ -91,7 +94,7 @@ pub const Headless = struct {
     }
 
     pub fn platform(h: *Headless) Platform {
-        return .{ .ptr = h, .vtable = &vtable, .thread_safe_draw = true, .native_menus = h.native_menus, .popups = true };
+        return .{ .ptr = h, .vtable = &vtable, .thread_safe_draw = true, .native_menus = h.native_menus, .popups = h.popups };
     }
 
     pub fn deinit(h: *Headless) void {

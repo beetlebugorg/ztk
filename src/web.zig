@@ -47,6 +47,7 @@ export fn ztk_init(w: i32, h: i32, scale: f32, dark: bool, reduce_motion: bool) 
     it.output = .{ .ctx = null, .write = write };
     head = Headless.init(gpa) catch return false;
     head.skip_draw = true;
+    head.popups = false;
     app = ztk.App.init(gpa, &it, .{ .platform = head.platform(), .dark = dark, .err_output = .{ .ctx = null, .write = write } }) catch return false;
     app.reduce_motion = reduce_motion;
     app.virtual_file = virtualFile;
