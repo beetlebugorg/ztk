@@ -49,6 +49,8 @@ pub const State = struct {
 
 /// The widget at a point of a toplevel: the top mapped widget that has it.
 pub fn widgetAt(top: *Widget, x: i32, y: i32) *Widget {
+    // The row of a drawn menu bar is the menu widget of the bar.
+    if (@import("widgets/menudraw.zig").barAt(top, x, y)) |m| return m;
     var cur = top;
     var px = x;
     var py = y;

@@ -45,11 +45,16 @@ pub const specs = [_]Spec{
 };
 
 /// The class of a toplevel other than ".".
-pub const class: widget.Class = .{ .command = "toplevel", .tk_class = "Toplevel", .role = "window", .is_toplevel = true, .specs = &specs, .init = init, .teardown = teardown, .deinit = freeTop, .configured = configured, .measure = measure, .paint = paintBox };
+pub const class: widget.Class = .{ .command = "toplevel", .tk_class = "Toplevel", .role = "window", .is_toplevel = true, .specs = &specs, .init = init, .teardown = teardown, .deinit = freeTop, .configured = configured, .measure = measure, .paint = paintBox, .extra_insets = barInsets };
 
 /// The class of ".". Its `data` is the platform window.
 /// It has the options of `toplevel`, so `. configure -menu` works.
-pub const root_class: widget.Class = .{ .command = "toplevel", .tk_class = "Toplevel", .role = "window", .is_toplevel = true, .specs = &specs, .configured = configured, .deinit = deinitRoot, .paint = paintBox };
+pub const root_class: widget.Class = .{ .command = "toplevel", .tk_class = "Toplevel", .role = "window", .is_toplevel = true, .specs = &specs, .configured = configured, .deinit = deinitRoot, .paint = paintBox, .extra_insets = barInsets };
+
+/// The row of a drawn menu bar goes above the content.
+fn barInsets(w: *widget.Widget) geom.Insets {
+    return @import("menudraw.zig").barInsets(w);
+}
 
 fn paintBox(w: *widget.Widget, b: *scene.Builder) anyerror!void {
     try paint.box(w, b, anim.shown(w.app, w));
@@ -64,7 +69,10 @@ fn measure(w: *widget.Widget) geom.Size {
 fn configured(w: *widget.Widget, changed: []const usize) ztcl.Error!void {
     for (changed) |i| {
         if (std.mem.eql(u8, w.class.specs[i].name, "-class")) w.tk_class = w.opts[i].text;
-        if (std.mem.eql(u8, w.class.specs[i].name, "-menu")) try @import("menu.zig").setBar(w, w.opts[i].text);
+        if (std.mem.eql(u8, w.class.specs[i].name, "-menu")) {
+            try @import("menu.zig").setBar(w, w.opts[i].text);
+            w.invalidate(.{ .style = false, .measure = true, .layout = true, .paint = true });
+        }
     }
 }
 

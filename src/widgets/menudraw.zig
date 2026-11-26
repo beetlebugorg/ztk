@@ -38,6 +38,7 @@ const anim = @import("../anim.zig");
 const easing = @import("../easing.zig");
 const style_mod = @import("../style.zig");
 const menu = @import("menu.zig");
+const options = @import("../options.zig");
 const App = @import("../app.zig").App;
 const Widget = widget.Widget;
 const Value = ztcl.Value;
@@ -106,11 +107,19 @@ pub fn size(w: *Widget) geom.Size {
     return .{ .w = @max(wd, 80), .h = @max(h, box.vertical()) };
 }
 
-/// The box of a posted menu in the coordinates of the window of its toplevel.
+/// The toplevel that shows the chain.
+fn shownTop(w: *Widget) *Widget {
+    if (w.app.menu_top) |t| if (t.alive()) return t;
+    return w.toplevel();
+}
+
+/// The box of a posted menu in the coordinates of the window of its
+/// toplevel. The box of a menu bar is its row.
 pub fn rect(w: *Widget) geom.Rect {
     const d = menu.data(w);
+    const top = shownTop(w);
+    if (d.is_bar) return .{ .x = 0, .y = 0, .w = top.geom.w, .h = barHeight(w) };
     const sz = size(w);
-    const top = w.toplevel();
     var r: geom.Rect = .{ .x = d.post_at.x, .y = d.post_at.y, .w = sz.w, .h = sz.h };
     if (r.x + r.w > top.geom.w - edge) r.x = top.geom.w - edge - r.w;
     if (r.y + r.h > top.geom.h - edge) r.y = top.geom.h - edge - r.h;
@@ -155,6 +164,7 @@ pub fn post(w: *Widget) void {
     d.open_us = app.platform.nowUs();
     d.cascade = -1;
     app.menu_root = w;
+    app.menu_top = w.toplevel();
     app.grab = .{ .widget = w, .global = false };
     repaint(w);
 }
@@ -188,8 +198,10 @@ pub fn postCascade(w: *Widget, index: i64) ztcl.Error!void {
     const md = menu.data(m);
     const pad = paint.insets(&m.style).top;
     var x = r.x + r.w - 2;
-    if (x + sz.w > w.toplevel().geom.w - edge) x = r.x - sz.w + 2;
+    if (x + sz.w > shownTop(w).geom.w - edge) x = r.x - sz.w + 2;
     md.post_at = .{ .x = x, .y = r.y + menu.yOf(w, index) - pad };
+    // A cascade of a menu bar opens below its entry.
+    if (d.is_bar) md.post_at = .{ .x = barX(w, index), .y = r.h };
     md.posted = true;
     md.active = -1;
     md.cascade = -1;
@@ -234,6 +246,7 @@ pub fn unpost(w: *Widget) void {
 pub fn unpostAll(app: *App) void {
     const r = app.menu_root orelse return;
     app.menu_root = null;
+    app.menu_top = null;
     if (app.grab.widget == r) app.grab.widget = null;
     if (r.alive()) unpostChain(r);
 }
@@ -243,6 +256,7 @@ pub fn forget(w: *Widget) void {
     const app = w.app;
     if (app.menu_root == w) {
         app.menu_root = null;
+        app.menu_top = null;
         if (app.grab.widget == w) app.grab.widget = null;
         return;
     }
@@ -250,6 +264,138 @@ pub fn forget(w: *Widget) void {
     for (chain(app, &list)) |x| if (cascadeOf(x) == w) {
         menu.data(x).cascade = -1;
     };
+}
+
+// ---- The menu bar ----
+
+/// The drawn menu bar of a toplevel: the menu of its `-menu`, or null.
+pub fn barOf(top: *Widget) ?*Widget {
+    const app = top.app;
+    if (app.platform.hasNativeMenus() or !top.class.is_toplevel) return null;
+    const name = options.get(top, "-menu").text;
+    if (name.len == 0) return null;
+    const m = app.find(name) orelse return null;
+    if (m.class != &menu.class) return null;
+    menu.data(m).is_bar = true;
+    return m;
+}
+
+const BarParts = struct {
+    row: Style,
+    item: Style,
+    active: Style,
+
+    fn of(w: *Widget) BarParts {
+        const app = w.app;
+        app.ensureStyle(w);
+        return .{
+            .row = app.styles.compute(w, "bar", &w.style, app.env),
+            .item = app.styles.compute(w, "bar-item", &w.style, app.env),
+            .active = app.styles.compute(w, "bar-item-active", &w.style, app.env),
+        };
+    }
+};
+
+/// The height of the row of a menu bar.
+pub fn barHeight(w: *Widget) i32 {
+    const ps = BarParts.of(w);
+    return paint.lineHeight(w.app, ps.item.font) + paint.insets(&ps.item).vertical() + paint.insets(&ps.row).vertical();
+}
+
+fn barWidth(w: *Widget, ps: *const BarParts, en: *const menu.Entry) i32 {
+    if (en.kind == .separator or en.kind == .tearoff) return 0;
+    return paint.textSize(w.app, en.get(.label), ps.item.font).w + paint.insets(&ps.item).horizontal();
+}
+
+/// The left edge of an entry of a menu bar.
+pub fn barX(w: *Widget, index: i64) i32 {
+    const ps = BarParts.of(w);
+    var x = paint.insets(&ps.row).left;
+    for (menu.data(w).entries.items, 0..) |*en, i| {
+        if (i == index) break;
+        x += barWidth(w, &ps, en);
+    }
+    return x;
+}
+
+fn barEntryAt(w: *Widget, x: i32) i64 {
+    const ps = BarParts.of(w);
+    var left = paint.insets(&ps.row).left;
+    for (menu.data(w).entries.items, 0..) |*en, i| {
+        const wd = barWidth(w, &ps, en);
+        if (x >= left and x < left + wd) return @intCast(i);
+        left += wd;
+    }
+    return -1;
+}
+
+/// The extra top inset of a toplevel with a drawn menu bar: the height of the row.
+pub fn barInsets(top: *Widget) geom.Insets {
+    const m = barOf(top) orelse return .{};
+    return .{ .top = barHeight(m) };
+}
+
+/// The menu bar at a point of the window of a toplevel, or null.
+pub fn barAt(top: *Widget, x: i32, y: i32) ?*Widget {
+    const m = barOf(top) orelse return null;
+    if (x < 0 or y < 0 or x >= top.geom.w or y >= barHeight(m)) return null;
+    return m;
+}
+
+/// Paints the menu bar row of a toplevel.
+pub fn paintBar(app: *App, top: *Widget, b: *scene.Builder) !void {
+    const w = barOf(top) orelse return;
+    const ps = BarParts.of(w);
+    const h = barHeight(w);
+    try paint.styledBox(b, .{ .x = 0, .y = 0, .w = top.geom.w, .h = h }, &ps.row);
+    const ins = paint.insets(&ps.row);
+    const d = menu.data(w);
+    const open = app.menu_root == w;
+    var x = ins.left;
+    for (d.entries.items, 0..) |*en, i| {
+        const wd = barWidth(w, &ps, en);
+        if (wd == 0) continue;
+        defer x += wd;
+        const on = open and i == d.active;
+        var st = if (on) ps.active else ps.item;
+        if (std.mem.eql(u8, en.get(.state), "disabled")) st.color.a = @intFromFloat(@as(f32, @floatFromInt(st.color.a)) * 0.45);
+        const r: geom.Rect = .{ .x = x, .y = ins.top, .w = wd, .h = h - ins.vertical() };
+        if (on) try paint.styledBox(b, r, &st);
+        const inner = r.inset(paint.insets(&st));
+        try paint.label(w, b, inner, en.get(.label), &st, .w, .left);
+        try paintUnderline(w, b, inner, en, &st);
+    }
+}
+
+/// Starts the traversal of a menu bar: the bar holds the grab and the
+/// cascade of the entry opens.
+fn startBar(w: *Widget, top: *Widget, index: i64) ztcl.Error!void {
+    const app = w.app;
+    if (app.menu_root) |r| if (r != w) unpostAll(app);
+    const d = menu.data(w);
+    d.posted = true;
+    d.cascade = -1;
+    app.menu_root = w;
+    app.menu_top = top;
+    app.grab = .{ .widget = w, .global = false };
+    try barSelect(w, index);
+}
+
+/// Activates an entry of the bar of the chain and opens its cascade with its first entry active.
+fn barSelect(w: *Widget, index: i64) ztcl.Error!void {
+    select(w, index);
+    try postCascade(w, menu.data(w).active);
+    repaint(w);
+    if (w.app.menu_top) |t| t.invalidate(.{ .style = false, .measure = false, .layout = false, .paint = true });
+}
+
+/// The next usable entry of a bar from the active entry, in the direction `step`.
+fn barStep(w: *Widget, step: i64) ztcl.Error!void {
+    const d = menu.data(w);
+    const from = if (d.active < 0) 0 else d.active + step;
+    const i = firstUsable(w, from, step);
+    try barSelect(w, i);
+    if (cascadeOf(w)) |sub| select(sub, firstUsable(sub, 0, 1));
 }
 
 // ---- Painting ----
@@ -381,7 +527,7 @@ fn byteOfChar(text: []const u8, i: i64) ?usize {
 pub fn paintPosted(app: *App, top: *Widget, b: *scene.Builder) !void {
     var list: [max_depth]*Widget = undefined;
     for (chain(app, &list)) |w| {
-        if (w.toplevel() != top) continue;
+        if (shownTop(w) != top or menu.data(w).is_bar) continue;
         try paintOne(app, w, b);
     }
 }
@@ -432,6 +578,7 @@ fn hitTest(app: *App, x: i32, y: i32) ?Hit {
         const w = ws[i];
         const r = rect(w);
         if (x < r.x or x >= r.x + r.w or y < r.y or y >= r.y + r.h) continue;
+        if (menu.data(w).is_bar) return .{ .menu = w, .entry = barEntryAt(w, x) };
         return .{ .menu = w, .entry = menu.entryAtY(w, y - r.y) };
     }
     return null;
@@ -486,7 +633,43 @@ fn firstUsable(w: *Widget, from: i64, step: i64) i64 {
     return -1;
 }
 
-const Action = enum { motion, press, release, up, down, left, right, @"return", escape, char };
+const Action = enum { motion, press, release, up, down, left, right, @"return", escape, char, bar, alt };
+
+/// The first toplevel whose drawn menu bar is `w`, or null.
+fn topWithBar(app: *App, w: *Widget) ?*Widget {
+    if (app.root) |r| if (barOf(r) == w) return r;
+    for (app.tops.items) |t| if (t.alive() and barOf(t) == w) return t;
+    return null;
+}
+
+/// The bar of the chain when `w` is the bar or the cascade that the bar opened, or null.
+fn barBelow(app: *App, w: *Widget) ?*Widget {
+    const r = app.menu_root orelse return null;
+    if (!menu.data(r).is_bar) return null;
+    if (w == r or cascadeOf(r) == w) return r;
+    return null;
+}
+
+/// `F10` opens the first cascade of the menu bar of the toplevel of a
+/// widget, and `Alt` with a letter opens the cascade with that `-underline` letter.
+fn barKey(app: *App, it: *ztcl.Interp, act: Action, argv: []const Value) ztcl.Error!Value {
+    const w = app.find(try it.str(argv[2])) orelse return Value.empty;
+    const top = w.toplevel();
+    const bar = barOf(top) orelse return Value.empty;
+    if (app.menu_root == bar) {
+        unpostAll(app);
+        return .{ .int = 1 };
+    }
+    var index: i64 = firstUsable(bar, 0, 1);
+    if (act == .alt) {
+        if (argv.len < 4) return Value.empty;
+        index = underlineIndex(bar, try it.str(argv[3])) orelse return .{ .int = 0 };
+    }
+    if (index < 0) return .{ .int = 0 };
+    try startBar(bar, top, index);
+    if (cascadeOf(bar)) |sub| select(sub, firstUsable(sub, 0, 1));
+    return .{ .int = 1 };
+}
 
 /// `::ztk::priv::menu action window ?arg ...?`: the class bindings of `Menu` for a drawn menu.
 fn cmdMenu(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
@@ -495,7 +678,17 @@ fn cmdMenu(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Err
     defer app.leave();
     if (argv.len < 3) return it.wrongArgs("::ztk::priv::menu action window ?arg ...?");
     const act = std.meta.stringToEnum(Action, try it.str(argv[1])) orelse return it.fail("bad action", .{});
-    if (app.menu_root == null) return Value.empty;
+    if (act == .bar or act == .alt) return barKey(app, it, act, argv);
+    if (app.menu_root == null) {
+        // A press on a menu bar starts its traversal.
+        if (act != .press or argv.len < 5) return Value.empty;
+        const w = app.find(try it.str(argv[2])) orelse return Value.empty;
+        if (w.class != &menu.class) return Value.empty;
+        const top = topWithBar(app, w) orelse return Value.empty;
+        const x: i32 = @intCast(std.math.clamp(try it.int(argv[3]), -1 << 24, 1 << 24));
+        try startBar(w, top, barEntryAt(w, x));
+        return Value.empty;
+    }
     switch (act) {
         .motion, .press, .release => {
             if (argv.len < 5) return it.wrongArgs("::ztk::priv::menu action window x y");
@@ -505,15 +698,27 @@ fn cmdMenu(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Err
             switch (act) {
                 .motion => {
                     const h = hit orelse return Value.empty;
+                    if (menu.data(h.menu).is_bar) {
+                        if (h.entry >= 0 and h.entry != menu.data(h.menu).active) try barSelect(h.menu, h.entry);
+                        return Value.empty;
+                    }
                     // A pointer over a menu with an open cascade, off its entries, keeps the cascade.
                     if (h.entry < 0 and cascadeOf(h.menu) != null) return Value.empty;
                     select(h.menu, h.entry);
                     try postCascade(h.menu, menu.data(h.menu).active);
                 },
-                .press => if (hit == null) unpostAll(app),
+                .press => {
+                    const h = hit orelse {
+                        unpostAll(app);
+                        return Value.empty;
+                    };
+                    // A press on the open entry of the bar closes the chain.
+                    if (!menu.data(h.menu).is_bar) return Value.empty;
+                    if (h.entry < 0 or h.entry == menu.data(h.menu).active) unpostAll(app) else try barSelect(h.menu, h.entry);
+                },
                 .release => {
                     const h = hit orelse return Value.empty;
-                    if (h.entry < 0) return Value.empty;
+                    if (h.entry < 0 or menu.data(h.menu).is_bar) return Value.empty;
                     try choose(h.menu, h.entry);
                 },
                 else => unreachable,
@@ -529,11 +734,15 @@ fn cmdMenu(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Err
         .right => {
             const w = deepest(app) orelse return Value.empty;
             const d = menu.data(w);
-            if (d.active >= 0 and d.entries.items[@intCast(d.active)].kind == .cascade) try choose(w, d.active);
+            if (!d.is_bar and d.active >= 0 and d.entries.items[@intCast(d.active)].kind == .cascade) {
+                try choose(w, d.active);
+            } else if (barBelow(app, w)) |bar| try barStep(bar, 1);
         },
         .left => {
             const w = deepest(app) orelse return Value.empty;
-            if (w != app.menu_root) unpost(w);
+            if (barBelow(app, w)) |bar| {
+                try barStep(bar, -1);
+            } else if (w != app.menu_root) unpost(w);
         },
         .@"return" => {
             const w = deepest(app) orelse return Value.empty;
@@ -541,8 +750,9 @@ fn cmdMenu(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Err
         },
         .escape => {
             const w = deepest(app) orelse return Value.empty;
-            if (w == app.menu_root) unpostAll(app) else unpost(w);
+            if (w == app.menu_root or barBelow(app, w) != null) unpostAll(app) else unpost(w);
         },
+        .bar, .alt => unreachable,
         .char => {
             if (argv.len < 4) return Value.empty;
             const ch = try it.str(argv[3]);
@@ -584,5 +794,7 @@ pub fn register(app: *App) !void {
         \\bind Menu <Key-space> {::ztk::priv::menu return %W}
         \\bind Menu <Key-Escape> {::ztk::priv::menu escape %W}
         \\bind Menu <KeyPress> {::ztk::priv::menu char %W %A}
+        \\bind all <Key-F10> {::ztk::priv::menu bar %W}
+        \\bind all <Alt-KeyPress> {::ztk::priv::menu alt %W %A}
     );
 }

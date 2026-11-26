@@ -200,6 +200,8 @@ pub const App = struct {
     popdown: @import("ttk/combobox.zig").Popdown = .{},
     /// The first menu of the posted chain of drawn menus.
     menu_root: ?*Widget = null,
+    /// The toplevel that shows the posted chain.
+    menu_top: ?*Widget = null,
     /// The menu widget of each native menu id, and the next id.
     menu_ids: std.AutoHashMapUnmanaged(u32, *Widget) = .empty,
     menu_next: u32 = 1,
@@ -835,6 +837,7 @@ pub const App = struct {
         app.anim_frame = fr;
         defer app.anim_frame = null;
         try app.paintNode(top, &b);
+        try @import("widgets/menudraw.zig").paintBar(app, top, &b);
         try @import("ttk/combobox.zig").paintPopdown(app, top, &b);
         try @import("widgets/menudraw.zig").paintPosted(app, top, &b);
         try @import("grab.zig").paintTip(app, top, &b);
