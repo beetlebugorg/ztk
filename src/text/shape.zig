@@ -1,7 +1,7 @@
 //! Text layout for one line of left-to-right text. `shape` decodes the
 //! UTF-8, maps each code point to a glyph, and places each glyph at the
 //! sum of the advances and the kerning before it. Positions are device
-//! pixels and are not rounded per advance. Stage 1 has no ligatures, no
+//! pixels and are not rounded per advance. The layout has no ligatures, no
 //! combining marks, and no right-to-left text. An invalid UTF-8 byte
 //! gives the glyph 0 and uses one byte. `measure` caches the widths.
 //! SPDX-License-Identifier: BSD-2-Clause

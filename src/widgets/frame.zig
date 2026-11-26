@@ -15,7 +15,8 @@ const scene = @import("../scene.zig");
 const App = @import("../app.zig").App;
 const Spec = options.Spec;
 
-/// The same options as `wish` for the part of Stage 1, in the order of `wish`.
+/// The options of `wish` that ztk has, in the order of `wish`. `-colormap`,
+/// `-container`, `-visual`, and the highlight options are not in the list.
 pub const specs = [_]Spec{
     .{ .name = "-bd", .type = .synonym, .target = "-borderwidth" },
     .{ .name = "-borderwidth", .db_name = "borderWidth", .db_class = "BorderWidth", .type = .pixels, .default = "0", .from_style = true, .style_prop = .border_width },

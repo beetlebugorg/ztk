@@ -1,4 +1,4 @@
-//! Regression tests of the review of Stage 1. Each test runs the exact input
+//! Regression tests of the first review of the code. Each test runs the exact input
 //! of its finding. The testing allocator reports a double free or a leak.
 //! SPDX-License-Identifier: BSD-2-Clause
 

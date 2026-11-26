@@ -1,4 +1,4 @@
-//! Regression tests of the fourth review of Stage 1. Each test runs the
+//! Regression tests of the fourth review of the code. Each test runs the
 //! exact input of its finding where a script can give it.
 //! SPDX-License-Identifier: BSD-2-Clause
 

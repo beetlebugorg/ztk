@@ -1,6 +1,6 @@
 //! The `wm` command for `.`, the `tk` command, and the window manager
-//! state of the App. Stage 1 has one toplevel, so each `wm` subcommand
-//! takes `.`. A size that the script sets with `wm geometry` stops the
+//! state of the App. Each `wm` subcommand accepts `.` or a widget of
+//! `toplevel`, and gives an error for another widget. A size that the script sets with `wm geometry` stops the
 //! automatic window size from the layout. A `close` event runs the script
 //! of `wm protocol . WM_DELETE_WINDOW`, or deletes `.`.
 //! SPDX-License-Identifier: BSD-2-Clause

@@ -1,4 +1,4 @@
-//! The TrueType font parser. It reads the tables that Stage 1 needs:
+//! The TrueType font parser. It reads these tables:
 //! head, hhea, maxp, hmtx, name, cmap (formats 4 and 12), loca, glyf
 //! (simple and composite glyphs), and the pair adjustment lookups of the
 //! `kern` feature in GPOS (formats 1 and 2, also inside extension

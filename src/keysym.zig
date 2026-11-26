@@ -1,5 +1,5 @@
 //! The names and numbers of key symbols. The numbers are the X11 key
-//! symbol values. The table has the Stage 1 keys: printable ASCII, the
+//! symbol values. The table has printable ASCII, the
 //! editing and navigation keys, the modifiers, and F1 to F12. A Latin-1
 //! character has its code point as the number. The table was made from
 //! the output of `event generate -keysym` and `%N` in wish 8.6.16.

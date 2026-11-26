@@ -1,4 +1,4 @@
-//! Regression tests of the third review of Stage 1. Each test runs the
+//! Regression tests of the third review of the code. Each test runs the
 //! exact input of its finding. The expected error texts are the output
 //! of `wish` 8.6.16 for the same script.
 //! SPDX-License-Identifier: BSD-2-Clause
