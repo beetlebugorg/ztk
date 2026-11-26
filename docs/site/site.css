@@ -379,3 +379,19 @@ figure.chart { margin: 0; }
 .live-demo.stack .ld-bar { order: 3; }
 .live-demo.stack .ld-err { order: 4; }
 .live-demo.stack .ld-frame { position: relative; top: auto; }
+
+/* The replay player (assets/replay.js). */
+.replay { margin: 8px 0 12px; }
+.replay .rp-title { margin: 0 0 8px; font-size: 20px; }
+.replay .rp-bar { display: flex; align-items: center; gap: 12px; margin: 8px 0 12px; font-size: 14px; color: var(--text-3); }
+.replay .rp-bar input { flex: 1; accent-color: var(--accent); }
+.replay .rp-bar button { font: inherit; color: var(--accent-ink); background: var(--accent); border: 0; border-radius: 6px; padding: 4px 14px; cursor: pointer; }
+.replay .rp-chat { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.replay .rp-chat li { max-width: 85%; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); }
+.replay .rp-chat li.rp-person { justify-self: end; background: var(--accent-soft); }
+.replay .rp-chat li.rp-now { border-color: var(--accent); }
+.replay .rp-chat b { display: block; font-size: 12px; color: var(--text-3); }
+.replay .rp-chat p { margin: 2px 0 0; }
+.replay .rp-check { margin: 10px 0 0; font-size: 14px; }
+.replay .rp-check.ok { color: var(--tok-str); }
+.replay .rp-check.bad { color: var(--warn); }

@@ -1,0 +1,47 @@
+{
+ "version": 1,
+ "title": "A to-do list in four steps",
+ "note": "Written by hand as a sample of the format. Each check is Tcl that the player runs in the live window, and tests/replay.sh runs in ztk --headless.",
+ "steps": [
+  {
+   "who": "person",
+   "say": "Make a to-do list: a field for a new item, an Add button, and the list."
+  },
+  {
+   "who": "agent",
+   "say": "The window has an entry and a button in a row, and a listbox under them. The first column of the grid grows with the window.",
+   "script": "ttk::entry .new -width 28\nttk::button .add -text Add\nlistbox .items -height 6\ngrid .new .add -sticky ew -padx 8 -pady 8\ngrid .items - -sticky nsew -padx 8\ngrid columnconfigure . 0 -weight 1\n",
+   "check": "update\nexpr {[winfo class .items] eq \"Listbox\" && [winfo ismapped .new] && [winfo ismapped .add]}"
+  },
+  {
+   "who": "person",
+   "say": "Add works now? Return in the field should add too."
+  },
+  {
+   "who": "agent",
+   "say": "Add and Return call the proc add. It trims the text, skips an empty item, and clears the field. The list has two items to try.",
+   "script": "proc add {} {\n    set text [string trim [.new get]]\n    if {$text eq \"\"} return\n    .items insert end $text\n    .new delete 0 end\n}\nttk::entry .new -width 28 -placeholder \"What needs doing?\"\nttk::button .add -text Add -command add\nlistbox .items -height 6\nbind .new <Return> add\ngrid .new .add -sticky ew -padx 8 -pady 8\ngrid .items - -sticky nsew -padx 8\ngrid columnconfigure . 0 -weight 1\n.items insert end \"Buy milk\" \"Write the docs\"\n",
+   "check": "focus .new\nupdate\nztk::inject . text \"Call Ada\"\nztk::inject . key Return\nupdate\nexpr {[.items size] == 3}"
+  },
+  {
+   "who": "person",
+   "say": "I need to mark items done, and see how many are left."
+  },
+  {
+   "who": "agent",
+   "say": "Mark done removes the selected items. A label under the list shows the count after each change.",
+   "script": "proc add {} {\n    set text [string trim [.new get]]\n    if {$text eq \"\"} return\n    .items insert end $text\n    .new delete 0 end\n    count\n}\nproc done {} {\n    foreach i [lsort -integer -decreasing [.items curselection]] { .items delete $i }\n    count\n}\nproc count {} { set ::status \"[.items size] to do\" }\nttk::entry .new -width 28 -placeholder \"What needs doing?\"\nttk::button .add -text Add -command add\nlistbox .items -height 6 -selectmode extended\nttk::button .done -text \"Mark done\" -command done\nttk::label .status -textvariable status\nbind .new <Return> add\ngrid .new .add -sticky ew -padx 8 -pady 8\ngrid .items - -sticky nsew -padx 8\ngrid .status .done -sticky ew -padx 8 -pady 8\ngrid columnconfigure . 0 -weight 1\n.items insert end \"Buy milk\" \"Write the docs\"\ncount\n",
+   "check": "focus .new\nupdate\nztk::inject . text \"Call Ada\"\nztk::inject . key Return\n.items selection set 0\ndone\nexpr {$::status eq \"2 to do\"}"
+  },
+  {
+   "who": "person",
+   "say": "Make the Add button stand out."
+  },
+  {
+   "who": "agent",
+   "say": "The Add button uses the style Accent.TButton: white text on blue, and a darker blue when the pointer is over it.",
+   "script": "proc add {} {\n    set text [string trim [.new get]]\n    if {$text eq \"\"} return\n    .items insert end $text\n    .new delete 0 end\n    count\n}\nproc done {} {\n    foreach i [lsort -integer -decreasing [.items curselection]] { .items delete $i }\n    count\n}\nproc count {} { set ::status \"[.items size] to do\" }\nttk::entry .new -width 28 -placeholder \"What needs doing?\"\nttk::style configure Accent.TButton -foreground white -background #2563eb\nttk::style map Accent.TButton -background {active #1d4ed8}\nttk::button .add -text Add -command add -style Accent.TButton\nlistbox .items -height 6 -selectmode extended\nttk::button .done -text \"Mark done\" -command done\nttk::label .status -textvariable status\nbind .new <Return> add\ngrid .new .add -sticky ew -padx 8 -pady 8\ngrid .items - -sticky nsew -padx 8\ngrid .status .done -sticky ew -padx 8 -pady 8\ngrid columnconfigure . 0 -weight 1\n.items insert end \"Buy milk\" \"Write the docs\"\ncount\n",
+   "check": "expr {[.add cget -style] eq \"Accent.TButton\"}"
+  }
+ ]
+}

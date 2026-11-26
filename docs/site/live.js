@@ -176,6 +176,8 @@ const NAMES = { webgpu: "WebGPU", webgl2: "WebGL 2", cpu: "CPU" };
 class Demo {
   constructor(fig) {
     this.fig = fig;
+    // The replay player (assets/replay.js) drives the snippet through this.
+    fig.ztkDemo = this;
     this.name = fig.dataset.name || fig.id;
     this.original = fig.querySelector(".ld-code code").textContent;
     this.h = null;
