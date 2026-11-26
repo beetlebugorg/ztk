@@ -198,6 +198,8 @@ pub const App = struct {
     tip: @import("grab.zig").Tip = .{},
     /// The open list of a `ttk::combobox`.
     popdown: @import("ttk/combobox.zig").Popdown = .{},
+    /// The first menu of the posted chain of drawn menus.
+    menu_root: ?*Widget = null,
     /// The menu widget of each native menu id, and the next id.
     menu_ids: std.AutoHashMapUnmanaged(u32, *Widget) = .empty,
     menu_next: u32 = 1,
@@ -468,6 +470,8 @@ pub const App = struct {
 
     /// The widget that gets key events: the focus widget, or the toplevel.
     pub fn keyTarget(app: *App) ?*widget.Widget {
+        // A posted drawn menu gets the keys, as the focus of Tk goes to a posted menu.
+        if (app.menu_root) |m| if (m.alive()) return m;
         if (app.focus.current) |c| if (c.alive()) return c;
         return app.root;
     }
@@ -832,6 +836,7 @@ pub const App = struct {
         defer app.anim_frame = null;
         try app.paintNode(top, &b);
         try @import("ttk/combobox.zig").paintPopdown(app, top, &b);
+        try @import("widgets/menudraw.zig").paintPosted(app, top, &b);
         try @import("grab.zig").paintTip(app, top, &b);
         try app.atlas.takePatches(app.gpa, &fr.patches);
         app.stats.end(.paint, wall.*());

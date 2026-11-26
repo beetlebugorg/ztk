@@ -533,3 +533,37 @@ TCombobox::item-active {
   border-radius: 5px;
   padding: 4px 8px;
 }
+
+/* A drawn menu: a popover with a round corner and a shadow. */
+Menu {
+  color: var(--fg);
+  background-color: var(--field-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0px 4px 16px var(--shadow);
+}
+
+Menu::item {
+  color: var(--fg);
+  padding: 4px 10px;
+}
+
+Menu::item-active {
+  color: var(--accent-fg);
+  background-color: var(--accent);
+  border-radius: 5px;
+  padding: 4px 10px;
+}
+
+Menu::separator {
+  background-color: var(--border);
+}
+
+Menu::accelerator {
+  color: var(--muted);
+}
+
+Menu::indicator {
+  color: var(--fg);
+}

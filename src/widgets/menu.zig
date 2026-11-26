@@ -17,7 +17,7 @@
 //! With native menus (`Platform.hasNativeMenus`), the core gives each menu
 //! an id, sends the entries with `menuSet` before a post or a menu bar, and
 //! handles the `menu` events and the handler calls of the backend. Without
-//! them, `post` marks the menu as posted for the drawn menus of task 12.
+//! them, `post` posts a drawn menu (`menudraw.zig`).
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -29,6 +29,7 @@ const paint = @import("../paint.zig");
 const varlink = @import("../varlink.zig");
 const event = @import("../event.zig");
 const plat = @import("../platform/platform.zig");
+const drawn = @import("menudraw.zig");
 const App = @import("../app.zig").App;
 const Spec = options.Spec;
 const Widget = widget.Widget;
@@ -178,6 +179,8 @@ pub const Data = struct {
     cascade: i64 = -1,
     /// The menu is the menu bar of a toplevel.
     is_bar: bool = false,
+    /// The start of the open move of a drawn menu.
+    open_us: i64 = 0,
 };
 
 pub fn data(w: *const Widget) *Data {
@@ -216,6 +219,7 @@ fn deinit(w: *Widget) void {
 fn teardown(w: *Widget) void {
     const app = w.app;
     const d = data(w);
+    drawn.forget(w);
     if (d.native_id != 0) {
         if (d.posted) app.platform.unpostMenu(d.native_id);
         app.platform.menuDrop(d.native_id);
@@ -345,7 +349,7 @@ pub fn yOf(w: *Widget, index: i64) i32 {
     return y;
 }
 
-fn entryAtY(w: *Widget, y: i32) i64 {
+pub fn entryAtY(w: *Widget, y: i32) i64 {
     const m = metrics(w);
     var top = m.pad;
     if (y < top) return -1;
@@ -476,10 +480,11 @@ pub fn activate(w: *Widget, index: i64) void {
     const d = data(w);
     const en = entryAt(w, index);
     d.active = if (en != null and en.?.usable()) index else -1;
+    if (d.posted and w.alive()) w.toplevel().invalidate(.{ .style = false, .measure = false, .layout = false, .paint = true });
 }
 
 /// Runs `-postcommand`. An error goes to the background error handler.
-fn runPostCommand(w: *Widget) ztcl.Error!void {
+pub fn runPostCommand(w: *Widget) ztcl.Error!void {
     const cmd = options.get(w, "-postcommand").text;
     if (cmd.len == 0) return;
     _ = try evalGlobal(w.app, cmd);
@@ -505,12 +510,13 @@ pub fn post(w: *Widget, at: geom.Point, entry: i64) ztcl.Error!void {
         return;
     }
     if (entry >= 0) d.post_at.y -= yOf(w, entry);
-    w.toplevel().invalidate(.{ .style = false, .measure = false, .layout = false, .paint = true });
+    drawn.post(w);
 }
 
 pub fn unpost(w: *Widget) void {
     const app = w.app;
     const d = data(w);
+    if (!app.platform.hasNativeMenus()) return drawn.unpost(w);
     if (d.native_id != 0 and d.posted) app.platform.unpostMenu(d.native_id);
     d.posted = false;
     d.active = -1;
@@ -765,6 +771,10 @@ fn subcommand(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!?Val
     if (eq(u8, sub, "postcascade")) {
         if (argv.len != 3) return wrong(it, w, "postcascade index");
         const i = try parseIndex(w, it, try it.str(argv[2]));
+        if (!w.app.platform.hasNativeMenus()) {
+            try drawn.postCascade(w, i);
+            return Value.empty;
+        }
         const en = entryAt(w, i);
         d.cascade = if (d.posted and en != null and en.?.kind == .cascade and en.?.usable()) i else -1;
         return Value.empty;
@@ -826,6 +836,7 @@ pub fn register(app: *App) !void {
     try app.it.register("menu", widget.classCommand(&class));
     try app.classes.put(app.gpa, "menu", &class);
     app.platform.setMenuHandler(.{ .ctx = app, .call = handlerCall });
+    try drawn.register(app);
     _ = try app.it.eval(
         \\proc ::tk_popup {menu x y {entry {}}} {
         \\    if {$entry eq {}} {$menu post $x $y} else {$menu post $x $y $entry}

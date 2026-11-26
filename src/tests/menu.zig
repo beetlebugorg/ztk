@@ -174,3 +174,115 @@ test "menu: the native menus get the entries, the posts, and the events" {
     _ = try h.eval("destroy .m");
     try t.expect(std.mem.indexOf(u8, h.head.menu_log.items, "drop 1") != null);
 }
+
+test "menu: a drawn menu posts, follows the pointer, and invokes on a release" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval(setup);
+    _ = try h.eval("wm geometry . 400x300; .m.c add command -label Deep -command {lappend ::log deep}; set log {}; bind .m <<MenuSelect>> {lappend ::log sel[%W index active]}");
+    try h.update();
+    _ = try h.eval(".m post 20 30");
+    try h.update();
+    // Entry 1 (Open) is below the tearoff entry.
+    const y1 = try h.eval(".m yposition 1");
+    const y = 30 + try std.fmt.parseInt(i32, y1, 10) + 4;
+    h.head.pointerMove(h.win, 40, @floatFromInt(y));
+    try h.update();
+    try expectEval(&h, "list [.m index active] $log", "1 sel1");
+    h.head.pointerButton(h.win, 1, true);
+    h.head.pointerButton(h.win, 1, false);
+    try h.update();
+    try expectEval(&h, "set log", "sel1 open");
+    try t.expect(h.app.menu_root == null);
+    try t.expect(h.app.grab.widget == null);
+    // A press outside the menu unposts it.
+    _ = try h.eval(".m post 20 30");
+    h.head.click(h.win, 390, 290);
+    try h.update();
+    try t.expect(h.app.menu_root == null);
+}
+
+test "menu: the keys of a drawn menu move, open a cascade, and invoke" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval(setup);
+    _ = try h.eval("wm geometry . 400x300; .m.c add command -label Deep -command {lappend ::log deep}; .m entryconfigure Bold -underline 0; set log {}");
+    try h.update();
+    _ = try h.eval(".m post 20 30");
+    try h.update();
+    try h.head.press(h.win, "Down");
+    try h.update();
+    try expectEval(&h, ".m index active", "1");
+    try h.head.press(h.win, "Down");
+    try h.update();
+    // The separator is skipped.
+    try expectEval(&h, ".m index active", "3");
+    try h.head.press(h.win, "Up");
+    try h.head.press(h.win, "Up");
+    try h.update();
+    // The wrap goes to the last entry, the cascade.
+    try expectEval(&h, ".m index active", "6");
+    try h.head.press(h.win, "Right");
+    try h.update();
+    try expectEval(&h, "list [.m.c index active] [winfo exists .m.c]", "0 1");
+    try t.expect(h.app.menu_root != null);
+    try h.head.press(h.win, "Left");
+    try h.update();
+    try expectEval(&h, ".m.c index active", "none");
+    try h.head.press(h.win, "Right");
+    try h.head.press(h.win, "Return");
+    try h.update();
+    try expectEval(&h, "set log", "deep");
+    try t.expect(h.app.menu_root == null);
+    _ = try h.eval(".m post 20 30");
+    try h.head.press(h.win, "b");
+    try h.update();
+    try expectEval(&h, "set Bold", "1");
+    _ = try h.eval(".m post 20 30");
+    try h.head.press(h.win, "Escape");
+    try h.update();
+    try t.expect(h.app.menu_root == null);
+}
+
+test "menu: a drawn menu stays in the window and a cascade opens on its right" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval(setup);
+    _ = try h.eval("wm geometry . 400x300; .m.c add command -label Deep");
+    try h.update();
+    _ = try h.eval(".m post 390 290");
+    try h.update();
+    const md = @import("../widgets/menudraw.zig");
+    const m = h.app.find(".m").?;
+    const r = md.rect(m);
+    try t.expect(r.x + r.w <= 400 and r.y + r.h <= 300 and r.x >= 0 and r.y >= 0);
+    _ = try h.eval(".m post 10 10; .m postcascade 6");
+    const c = h.app.find(".m.c").?;
+    const rc = md.rect(c);
+    try t.expect(rc.x >= md.rect(m).x + md.rect(m).w - 4);
+    _ = try h.eval(".m postcascade none");
+    try t.expect(md.cascadeOf(m) == null);
+    _ = try h.eval("destroy .m");
+    try t.expect(h.app.menu_root == null);
+}
+
+test "menu: a drawn menu fades in" {
+    var h: Harness = undefined;
+    try h.initAnimated();
+    defer h.deinit();
+    _ = try h.eval(setup);
+    _ = try h.eval("wm geometry . 400x300; update; .m post 20 30");
+    try h.update();
+    const md = @import("../widgets/menudraw.zig");
+    const m = h.app.find(".m").?;
+    h.head.advance(75);
+    try h.update();
+    const mid = md.openness(@import("../widgets/menu.zig").data(m), h.app.platform.nowUs());
+    try t.expect(mid > 0.3 and mid < 0.99);
+    h.head.advance(400);
+    try h.update();
+    try t.expectEqual(@as(f32, 1), md.openness(@import("../widgets/menu.zig").data(m), h.app.platform.nowUs()));
+}
