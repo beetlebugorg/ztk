@@ -1,35 +1,41 @@
 # Interactive docs
 
-The user asked on 2026-11-25 that the docs site be very interactive. The site has a Tcl interpreter and a GUI toolkit in the page, so each page can run, inspect, and change real ztk windows. This file is the design and the order of the work. Each item is one PR, and each PR is live on beetlebug.org/ztk after the merge.
+The user asked on 2026-11-25 that the docs site be very interactive. The user then changed the aim on the same day: the reader is often an agent, and the person describes an app, watches it get built, judges it, and ships it. The headline of the site is "the GUI toolkit AI can see": `ztk::snapshot`, `ztk::tree`, and `ztk::inject` let an agent see and drive the window that it builds. This file is the design and the order of the work. Each item is one PR, and each PR is live on beetlebug.org/ztk after the merge.
 
-## The base: the live snippet
+## The site, outcome first
 
-A `tcl` block after a line `<!-- live -->` or `<!-- widget: NAME; shot: SCRIPT -->` becomes a live snippet. `tools/build-docs.py` writes a `<figure class="live-demo">` with the code, the screenshot of the widget, and a script tag for `assets/live.js`. The page loads no WebAssembly until a snippet comes near the viewport. Then `assets/live.js` imports `play/ztk.js`, compiles `play/ztk.wasm` one time for the page, and gives each snippet its own instance.
+| Part | What the reader gets |
+|---|---|
+| See it | Live apps, the widget grid, the stress button, and the frame time, in the reader's browser. |
+| Ask for it | A description of an app, and a replay of an agent that builds it, step by step. |
+| Trust it | What an app can do, first: the capabilities of ztcl, the sandbox, and the short Tcl code that a person can audit. |
+| Ship it | A native binary for the reader's platform (see "Download your app"). |
+| Look inside | The code, the inspector, X-ray, the theme, and later the event view and the theme studio. These are the tools a person uses to check what an agent built. They are not the headline. |
 
-- The code is a text area over a highlighted `pre`, with no library. The highlighter has the token classes of `site.css`.
-- The screenshot stays in place until the first frame. It also stays when the browser has no WebAssembly, or when the script fails on the first run.
-- The window follows the color scheme of the page.
-- Each widget page gets snippets and shots in the shape of `docs/dev/widget-pages.md`, so each widget has a live snippet.
-- The interpreter has no capability of ztcl. The snippet runs in the sandbox of the browser, with no file, no network, and no process.
+## The list, ranked
 
-## The list, ranked by effect over cost
-
-| Rank | Item | Cost | What the reader sees |
+| Rank | Item | Cost | State |
 |---|---|---|---|
-| 1 | Live as you type | Low | The window runs the code again 300 ms after the last key. An error shows under the code, and the last good window stays. The global variables of the last run go into the new run, so a toggle keeps its state. |
-| 2 | Share and the playground | Low | A button copies a link with the code in the URL. A snippet opens in `play/` with its code. |
-| 3 | Renderer switch and frame HUD | Low | A menu selects WebGPU, WebGL 2, or the CPU renderer. A line shows the mean and the p99 frame time of the last 120 frames. |
-| 4 | Geometry X-ray | Medium | A toggle draws the boxes of each widget over the window, with the manager (`pack`, `grid`, `place`) and the grid cells. The page reads them with `winfo` and `grid info`. |
-| 5 | Inspector | Medium | A click on a widget with the inspector on shows its path, its class, its manager, and its options. A change of an option in the table configures the widget and writes the option into the code. |
-| 6 | Download your app | Low now, then the build of ztcl | The playground and the guided builds have a panel with Linux, macOS, and Windows, each on x86-64 and arm64. The platform of the reader is the first choice. A click gives a native binary of the code. See "Download your app". |
-| 7 | Widget overview grid | Low | The page "Widgets" has one card for each widget, with its screenshot at one size, its name, and a link to its live snippet. |
-| 8 | Classic and modern | Low | A toggle runs the snippet with the classic Tk look and with the ztk look. |
-| 9 | Option tables as controls | Medium | The rows of an option table get a control: a number gets a slider, a color gets a color picker, and a choice gets a menu. |
-| 10 | Stress button | Medium | A button adds 1,000 widgets or 10,000 rows to the demo and shows the frame time in the HUD. |
-| 11 | Theme studio | Medium | A `ttk::style` editor restyles each snippet of the page and exports the style as Tcl. |
-| 12 | Event strip | High | A strip lists each event of the window as it occurs, with its bind tags and its substitutions. ztk needs a hook in `src/web.zig` for it. |
-| 13 | Guided builds | High | A tutorial in steps. Each step runs a test on the code of the reader and opens the next step. |
-| 14 | Animation lab | High | An easing curve, a time scrubber, and slow motion for `ztk::animate`. ztk needs a clock hook in `src/web.zig` for it. |
+| 1 | `llms.txt` and `llms-full.txt` for ztk and ztcl: the page list and the full text of the docs, for an agent. | Low | Next |
+| 2 | An API index in JSON: each command, each widget class, and its options with the defaults, made by ztk itself in CI, so the index matches the code. | Low | Next |
+| 3 | A skill for agents that build ztk apps: the API, the idioms, and the loop of `ztk::snapshot`, `ztk::tree`, and `ztk::inject`. | Medium | Next |
+| 4 | Examples that CI runs, so an agent learns only patterns that work. The snippets of the widget pages run in `tests/docs-live.sh` today. | Low | Part done |
+| 5 | The live snippet: the window runs the code as the reader types, with Reset, a playground link, a renderer menu, and the frame time. | Low | Done (#108) |
+| 6 | A live snippet and a shot for each widget, and the widget grid. | Low | #111 |
+| 7 | Look inside: X-ray, Inspect (an option change goes into the code), the theme menu, and the stress button. The hero of the landing page is a live snippet. | Medium | #112 |
+| 8 | Download your app: the panel in the playground. | Low now, then the build of ztcl | #112, waits for ztcl issue 40 |
+| 9 | Watch it get built: a replay player for a recorded session of dockyard. See "Replay". | Medium | Design |
+| 10 | Trust it: a page that shows the capabilities of an app before its code, from the flags of `ztk` and the limits of ztcl. | Medium | Later |
+| 11 | Option tables as controls, the theme studio, the event strip, and the animation lab. | Medium to high | Later |
+| 12 | dockyard in the browser with the reader's own agent. See "Later". | High | Design only |
+
+## Replay
+
+A recording is a JSON file: `{"version": 1, "title": "...", "steps": [...]}`. Each step has `say` (the text of the person or of the agent, with `who`), and can have `script` (the full Tcl text of the app after the step) and `checks` (the result of `ztk::tree` or a shot that the agent used). The player shows the chat on one side and the app of the selected step on the other. A scrub to a step runs its script in a live snippet, so the app is live and can get clicks. The player makes no API call. The format goes to the dockyard repository for review, and dockyard writes it when it records a session. Until then, the site has one or two recordings that a person writes by hand.
+
+## Later: dockyard in the browser
+
+The page connects the reader's own agent: Claude Code on the reader's computer through an MCP bridge, or the reader's API key in the page. The agent gets the tools of a live snippet: run a script, `ztk::snapshot`, `ztk::tree`, and `ztk::inject`. This is a design only. It needs a review of the keys and the permissions first.
 
 ## Download your app
 
