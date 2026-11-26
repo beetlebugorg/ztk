@@ -1,0 +1,67 @@
+{
+ "version": 1,
+ "title": "Backspin, part by part",
+ "note": "Written by hand from the code of the toy on the range page. Each step adds one part: a widget, items, or the loop.",
+ "steps": [
+  {
+   "who": "person",
+   "say": "Make a paddle game. A canvas is the court: dark, 300 by 176 pixels, with a dashed net."
+  },
+  {
+   "who": "agent",
+   "say": "The court is a canvas. The proc px makes one rectangle of the palette, and a loop of px makes the net.",
+   "script": "set ink {#1d1a33 #f2e6c4 #ef5b5b #ffcf5c #3a3560}\nset W 300; set H 176; set P 28\ncanvas .c -width $W -height $H -bg [lindex $ink 0] -highlightthickness 0\npack .c -side left\nproc px {x y w h i} { .c create rectangle $x $y [expr {$x+$w}] [expr {$y+$h}] -fill [lindex $::ink $i] -width 0 }\nfor {set y 0} {$y < $H} {incr y 12} { px [expr {$W/2 - 2}] $y 4 8 4 }\n",
+   "check": "update\nexpr {[winfo class .c] eq \"Canvas\" && [llength [.c find all]] > 10}",
+   "widget": ".c",
+   "name": "canvas: the court"
+  },
+  {
+   "who": "person",
+   "say": "Use a scale as my paddle, on the left side of the court."
+  },
+  {
+   "who": "agent",
+   "say": "A vertical scale is the paddle. Its -variable pos is the top of the paddle, from 0 to the height of the court less the paddle.",
+   "script": "set ink {#1d1a33 #f2e6c4 #ef5b5b #ffcf5c #3a3560}\nset W 300; set H 176; set P 28\nscale .s -orient vertical -from 0 -to [expr {$H - $P}] -resolution 4 -variable pos -showvalue 0 -length $H -width 14\ncanvas .c -width $W -height $H -bg [lindex $ink 0] -highlightthickness 0\npack .s -side left -padx {6 4}\npack .c -side left\nset pos 72\nproc px {x y w h i} { .c create rectangle $x $y [expr {$x+$w}] [expr {$y+$h}] -fill [lindex $::ink $i] -width 0 }\nfor {set y 0} {$y < $H} {incr y 12} { px [expr {$W/2 - 2}] $y 4 8 4 }\n",
+   "check": "update\nexpr {[winfo class .s] eq \"Scale\" && [.s cget -orient] eq \"vertical\" && $pos == 72}",
+   "widget": ".s",
+   "name": "scale: the paddle"
+  },
+  {
+   "who": "person",
+   "say": "Draw the two paddles, the ball, and the score."
+  },
+  {
+   "who": "agent",
+   "say": "Each paddle and the ball is a canvas item with a tag: me, cpu, and ball. The proc box moves an item to a grid of 4 pixels, for the pixel look.",
+   "script": "set ink {#1d1a33 #f2e6c4 #ef5b5b #ffcf5c #3a3560}\nset W 300; set H 176; set P 28\nscale .s -orient vertical -from 0 -to [expr {$H - $P}] -resolution 4 -variable pos -showvalue 0 -length $H -width 14\ncanvas .c -width $W -height $H -bg [lindex $ink 0] -highlightthickness 0\npack .s -side left -padx {6 4}\npack .c -side left\nset pos 72\nproc px {x y w h i} { .c create rectangle $x $y [expr {$x+$w}] [expr {$y+$h}] -fill [lindex $::ink $i] -width 0 }\nfor {set y 0} {$y < $H} {incr y 12} { px [expr {$W/2 - 2}] $y 4 8 4 }\nforeach {tag i} {me 1 cpu 2 ball 3} { .c addtag $tag withtag [px 0 0 0 0 $i] }\n.c create text [expr {$W/2}] 120 -tags msg -text \"CLICK TO SERVE\" -fill [lindex $ink 3] -font {TkFixedFont 13 bold}\n.c create text [expr {$W/2}] 14 -tags score -fill [lindex $ink 1] -font {TkFixedFont 14 bold}\nproc box {tag x y w h} { set x [expr {int($x)/4*4}]; set y [expr {int($y)/4*4}]; .c coords $tag $x $y [expr {$x+$w}] [expr {$y+$h}] }\nbox me 6 $pos 8 $P\nbox cpu [expr {$W - 14}] 72 8 32\nbox ball 146 80 8 8\n.c itemconfigure score -text \"0   0\"\n",
+   "check": "update\nexpr {[llength [.c find withtag ball]] == 1 && [lindex [.c coords me] 1] == 72}",
+   "widget": ".c",
+   "name": "canvas items: me, cpu, ball, score"
+  },
+  {
+   "who": "person",
+   "say": "Make it move. The rival follows the ball, and a fast move of my scale gives the ball spin."
+  },
+  {
+   "who": "agent",
+   "say": "The proc tick is the game loop: after 16 ms it runs again. It reads pos, so the speed of the scale is the spin of the ball.",
+   "script": "set ink {#1d1a33 #f2e6c4 #ef5b5b #ffcf5c #3a3560}\nset W 300; set H 176; set P 28\nscale .s -orient vertical -from 0 -to [expr {$H - $P}] -resolution 4 -variable pos -showvalue 0 -length $H -width 14\ncanvas .c -width $W -height $H -bg [lindex $ink 0] -highlightthickness 0\npack .s -side left -padx {6 4}\npack .c -side left\nset pos 72\nproc px {x y w h i} { .c create rectangle $x $y [expr {$x+$w}] [expr {$y+$h}] -fill [lindex $::ink $i] -width 0 }\nfor {set y 0} {$y < $H} {incr y 12} { px [expr {$W/2 - 2}] $y 4 8 4 }\nforeach {tag i} {me 1 cpu 2 ball 3} { .c addtag $tag withtag [px 0 0 0 0 $i] }\n.c create text [expr {$W/2}] 120 -tags msg -text \"CLICK TO SERVE\" -fill [lindex $ink 3] -font {TkFixedFont 13 bold}\n.c create text [expr {$W/2}] 14 -tags score -fill [lindex $ink 1] -font {TkFixedFont 14 bold}\narray set g {last 72 dy 0 cy 88 bx 150 by 80 vx -3 vy 1 me 0 cpu 0 run 1 out 0 hits 0}\narray set toy {spill 0 out {} back {} sfx {}}\nproc box {tag x y w h} { set x [expr {int($x)/4*4}]; set y [expr {int($y)/4*4}]; .c coords $tag $x $y [expr {$x+$w}] [expr {$y+$h}] }\nproc tick {} {\n    global g pos toy W H P\n    # The speed of the scale is the speed of the paddle: it gives the ball spin.\n    set g(dy) [expr {$g(dy) * 0.6 + ($pos - $g(last))}]\n    set g(last) $pos\n    # The rival speeds up as a rally goes on.\n    set rival [expr {1.4 + 0.2 * $g(hits)}]\n    set g(cy) [expr {$g(cy) + max(-$rival, min($rival, $g(by) - $g(cy)))}]\n    if {$g(run) && !$g(out)} {\n        set g(bx) [expr {$g(bx) + $g(vx)}]\n        set g(by) [expr {$g(by) + $g(vy)}]\n        if {$g(by) < 0 || $g(by) > $H - 8} { set g(vy) [expr {-$g(vy)}]; set g(by) [expr {max(0, min($H - 8, $g(by)))}]; lappend toy(sfx) wall }\n        if {$g(vx) < 0 && $g(bx) < 16 && $g(bx) > 2 && $g(by) + 8 > $pos && $g(by) < $pos + $P} {\n            incr g(hits)\n            set g(vx) [expr {min(8, 0.3 - $g(vx))}]\n            set g(vy) [expr {max(-6, min(6, $g(vy) + $g(dy) / 5.0))}]\n            lappend toy(sfx) hit\n            # A smash: a hit while the scale moves fast.\n            if {abs($g(dy)) > 10 && $toy(spill)} {\n                set toy(out) [list [expr {[winfo x .c] + $g(bx)}] [expr {[winfo y .c] + $g(by)}] [expr {$g(vx)*2}] [expr {$g(vy) - 6}]]\n                set g(out) 1\n            } elseif {abs($g(dy)) > 10} { set g(vx) 8 }\n        }\n        if {$g(vx) > 0 && $g(bx) > $W - 24 && $g(bx) < $W - 10 && abs($g(by) + 4 - $g(cy)) < 18} { set g(vx) [expr {-$g(vx)}]; lappend toy(sfx) hit }\n        if {$g(bx) < -8 || $g(bx) > $W + 8} {\n            incr g([expr {$g(bx) < 0 ? \"cpu\" : \"me\"}])\n            set g(run) 0\n            lappend toy(sfx) point\n            .c itemconfigure msg -text [expr {$g(me) == 7 ? \"YOU WIN THE MATCH\" : $g(cpu) == 7 ? \"THE RIVAL WINS\" : \"CLICK TO SERVE\"}]\n        }\n    }\n    # The page gives the ball back as {x vx vy hits}: it comes in at the rival side.\n    if {$g(out) && $toy(back) ne \"\"} {\n        lassign $toy(back) x g(vx) g(vy)\n        set g(bx) [expr {$W/2}]; set g(by) 0; set g(out) 0; set toy(back) {}\n    }\n    box me 6 $pos 8 $P\n    box cpu [expr {$W - 14}] [expr {$g(cy) - 16}] 8 32\n    box ball [expr {$g(out) ? -20 : $g(bx)}] $g(by) 8 8\n    .c itemconfigure score -text \"$g(me)   $g(cpu)\"\n    after 16 tick\n}\ntick\n",
+   "check": "after 200 {set ::done 1}; vwait ::done\nexpr {$g(bx) != 150}",
+   "widget": ".c",
+   "name": "after 16 tick: the game loop"
+  },
+  {
+   "who": "person",
+   "say": "A click serves, and the arrow keys move the scale. First to 7 wins."
+  },
+  {
+   "who": "agent",
+   "say": "A click on the court and Space call serve. The scale has the focus, so Up and Down move it as its own keys do. The pad of the handheld calls toy_press.",
+   "script": "# Backspin: a paddle match to 7. The scale on the left is your paddle: drag it, or press Up and Down.\nset ink {#1d1a33 #f2e6c4 #ef5b5b #ffcf5c #3a3560}\nset W 300; set H 176; set P 28\nscale .s -orient vertical -from 0 -to [expr {$H - $P}] -resolution 4 -variable pos -showvalue 0 -length $H -width 14\ncanvas .c -width $W -height $H -bg [lindex $ink 0] -highlightthickness 0\npack .s -side left -padx {6 4}\npack .c -side left\nset pos 72\nproc px {x y w h i} { .c create rectangle $x $y [expr {$x+$w}] [expr {$y+$h}] -fill [lindex $::ink $i] -width 0 }\nfor {set y 0} {$y < $H} {incr y 12} { px [expr {$W/2 - 2}] $y 4 8 4 }\nforeach {tag i} {me 1 cpu 2 ball 3} { .c addtag $tag withtag [px 0 0 0 0 $i] }\n.c create text [expr {$W/2}] 120 -tags msg -text \"CLICK TO SERVE\" -fill [lindex $ink 3] -font {TkFixedFont 13 bold}\n.c create text [expr {$W/2}] 14 -tags score -fill [lindex $ink 1] -font {TkFixedFont 14 bold}\narray set g {last 72 dy 0 cy 88 bx 150 by 80 vx 0 vy 0 me 0 cpu 0 run 0 out 0 hits 0}\narray set toy {spill 0 out {} back {} sfx {}}\nproc box {tag x y w h} { set x [expr {int($x)/4*4}]; set y [expr {int($y)/4*4}]; .c coords $tag $x $y [expr {$x+$w}] [expr {$y+$h}] }\n# A click serves. After a match, it starts a new one.\nproc serve {} {\n    global g\n    if {$g(run)} return\n    if {$g(me) == 7 || $g(cpu) == 7} { array set g {me 0 cpu 0} }\n    array set g [list bx [expr {$::W/2}] by 80 vx -3 vy [expr {rand()*2-1}] run 1 hits 0]\n    .c itemconfigure msg -text \"\"\n}\n# The pad moves the scale as its arrow keys do.\nproc toy_press {key} {\n    switch $key { up { .s set [expr {[.s get] - 8}] } down { .s set [expr {[.s get] + 8}] } default serve }\n}\nbind .c <ButtonPress-1> serve\nbind .s <space> serve\nfocus .s\nproc tick {} {\n    global g pos toy W H P\n    # The speed of the scale is the speed of the paddle: it gives the ball spin.\n    set g(dy) [expr {$g(dy) * 0.6 + ($pos - $g(last))}]\n    set g(last) $pos\n    # The rival speeds up as a rally goes on.\n    set rival [expr {1.4 + 0.2 * $g(hits)}]\n    set g(cy) [expr {$g(cy) + max(-$rival, min($rival, $g(by) - $g(cy)))}]\n    if {$g(run) && !$g(out)} {\n        set g(bx) [expr {$g(bx) + $g(vx)}]\n        set g(by) [expr {$g(by) + $g(vy)}]\n        if {$g(by) < 0 || $g(by) > $H - 8} { set g(vy) [expr {-$g(vy)}]; set g(by) [expr {max(0, min($H - 8, $g(by)))}]; lappend toy(sfx) wall }\n        if {$g(vx) < 0 && $g(bx) < 16 && $g(bx) > 2 && $g(by) + 8 > $pos && $g(by) < $pos + $P} {\n            incr g(hits)\n            set g(vx) [expr {min(8, 0.3 - $g(vx))}]\n            set g(vy) [expr {max(-6, min(6, $g(vy) + $g(dy) / 5.0))}]\n            lappend toy(sfx) hit\n            # A smash: a hit while the scale moves fast.\n            if {abs($g(dy)) > 10 && $toy(spill)} {\n                set toy(out) [list [expr {[winfo x .c] + $g(bx)}] [expr {[winfo y .c] + $g(by)}] [expr {$g(vx)*2}] [expr {$g(vy) - 6}]]\n                set g(out) 1\n            } elseif {abs($g(dy)) > 10} { set g(vx) 8 }\n        }\n        if {$g(vx) > 0 && $g(bx) > $W - 24 && $g(bx) < $W - 10 && abs($g(by) + 4 - $g(cy)) < 18} { set g(vx) [expr {-$g(vx)}]; lappend toy(sfx) hit }\n        if {$g(bx) < -8 || $g(bx) > $W + 8} {\n            incr g([expr {$g(bx) < 0 ? \"cpu\" : \"me\"}])\n            set g(run) 0\n            lappend toy(sfx) point\n            .c itemconfigure msg -text [expr {$g(me) == 7 ? \"YOU WIN THE MATCH\" : $g(cpu) == 7 ? \"THE RIVAL WINS\" : \"CLICK TO SERVE\"}]\n        }\n    }\n    # The page gives the ball back as {x vx vy hits}: it comes in at the rival side.\n    if {$g(out) && $toy(back) ne \"\"} {\n        lassign $toy(back) x g(vx) g(vy)\n        set g(bx) [expr {$W/2}]; set g(by) 0; set g(out) 0; set toy(back) {}\n    }\n    box me 6 $pos 8 $P\n    box cpu [expr {$W - 14}] [expr {$g(cy) - 16}] 8 32\n    box ball [expr {$g(out) ? -20 : $g(bx)}] $g(by) 8 8\n    .c itemconfigure score -text \"$g(me)   $g(cpu)\"\n    after 16 tick\n}\ntick\n",
+   "check": "update\nexpr {[focus] eq \".s\" && [bind .c <ButtonPress-1>] eq \"serve\"}",
+   "widget": ".s",
+   "name": "bind and focus: the keys of the scale"
+  }
+ ]
+}
