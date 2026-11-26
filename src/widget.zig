@@ -531,7 +531,7 @@ pub fn dropGoneKeys(app: *App) void {
     while (iter.next()) |e| {
         if (!isWidgetCommand(e.value_ptr.*)) continue;
         const h: *Handle = @ptrCast(@alignCast(e.value_ptr.*.ctx orelse continue));
-        if (h.widget == null) it.commands.removeByPtr(e.key_ptr);
+        if (h.widget == null) _ = it.commands.remove(e.key_ptr.*);
     }
     it.epoch += 1;
 }
