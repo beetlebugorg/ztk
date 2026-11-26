@@ -1,0 +1,23 @@
+pkgbase = ztk-git
+	pkgdesc = GUI toolkit AI can see: Tk rebuilt in Zig
+	pkgver = r161.aebc04f8
+	pkgrel = 1
+	url = https://beetlebug.org/ztk/
+	arch = x86_64
+	arch = aarch64
+	license = BSD-2-Clause
+	makedepends = git
+	makedepends = zig>=0.17.0
+	makedepends = zig<0.18.0
+	depends = wayland
+	depends = libxkbcommon
+	optdepends = vulkan-icd-loader: render with Vulkan
+	provides = ztk
+	conflicts = ztk
+	conflicts = ztk-bin
+	options = !debug
+	options = !strip
+	source = ztk::git+https://github.com/beetlebugorg/ztk.git
+	sha256sums = SKIP
+
+pkgname = ztk-git
