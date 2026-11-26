@@ -98,6 +98,15 @@ jobs:
       - name: Run the demo in a window
         # The first frame ends the run. The alarm stops a run that hangs.
         run: perl -e 'alarm 120; exec @ARGV' zig-out/bin/ztk --exit-after-frames 1 examples/demo.tcl
+      - name: Run a bundled app
+        # The app runs its main script, and a flag is an argument of the
+        # script, so it adds no capability.
+        run: |
+          printf 'puts "args: $argv"\nexit 0\n' > "$RUNNER_TEMP/hello.tcl"
+          zig-out/bin/ztk bundle -o "$RUNNER_TEMP/Hello.app" --icon tests/golden/box-plain.png "$RUNNER_TEMP/hello.tcl"
+          codesign --verify --strict "$RUNNER_TEMP/Hello.app"
+          out=$(perl -e 'alarm 60; exec @ARGV' "$RUNNER_TEMP/Hello.app/Contents/MacOS/Hello" --allow exec)
+          test "$out" = "args: --allow exec"
 
   test-windows:
     # The core and the headless backend on Windows, as on macOS.

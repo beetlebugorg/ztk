@@ -14,6 +14,7 @@ const ztk = @import("ztk");
 
 const usage =
     \\usage: ztk [flags] script.tcl [arguments]
+    \\       ztk bundle -o Name.app [options] main.tcl [files]   (ztk bundle for its options)
     \\  --headless               use the headless backend and the CPU renderer
     \\  --cpu                    use the CPU renderer on Wayland
     \\  --exit-after-frames N    exit with status 0 after N frames
@@ -122,8 +123,22 @@ pub fn main(init: std.process.Init) !void {
     var scale: f32 = 1;
     var script: ?[]const u8 = null;
     var rest: []const [:0]const u8 = &.{};
+    if (args.len > 1 and std.mem.eql(u8, args[1], "bundle")) {
+        const code = ztk.bundle.run(io, arena, args[2..], err) catch |e| fail(err, "ztk bundle: {s}\n", .{@errorName(e)});
+        err.flush() catch {};
+        std.process.exit(code);
+    }
+    // A program in a macOS app runs the main script of the app, and each
+    // word of the command line is an argument of the script.
+    const in_bundle = ztk.bundle.start(io, arena);
+    if (in_bundle) |b| {
+        script = b.main;
+        root_dir = b.root;
+        allow_bits = b.allow;
+        rest = args[1..];
+    }
     var i: usize = 1;
-    while (i < args.len) : (i += 1) {
+    while (in_bundle == null and i < args.len) : (i += 1) {
         const a: []const u8 = args[i];
         if (std.mem.eql(u8, a, "--headless")) {
             headless = true;
