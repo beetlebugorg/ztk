@@ -484,3 +484,80 @@ test "windows: a posted menu runs its loop and returns when the menu ends" {
     p.postMenu(o.w, 1, .{ .x = 10, .y = 10 }, -1);
     try t.expect(host.nowUs() - t0 < 2_000_000);
 }
+
+fn menuApp(b: *be.Win32, it: *ztcl.Interp) !*App {
+    try it.init(t.allocator);
+    errdefer it.deinit();
+    return App.init(t.allocator, it, .{ .platform = b.platform(), .io = t.io, .render_mode = .inline_draw, .animations = false });
+}
+
+test "windows: a Tk menu bar, its cascade, -postcommand, and a command" {
+    if (!enabled()) return;
+    const b = try be.Win32.init(t.allocator, .{ .visible = false, .renderer = .cpu });
+    defer b.deinit();
+    var it: ztcl.Interp = undefined;
+    const app = try menuApp(b, &it);
+    defer it.deinit();
+    defer app.deinit();
+    _ = try it.eval(
+        \\set ::hit 0
+        \\set ::posts 0
+        \\menu .mb -tearoff 0
+        \\menu .mb.file -tearoff 0 -postcommand {incr ::posts; .mb.file add command -label Late}
+        \\.mb.file add command -label Open -accelerator Ctrl+O -underline 0 -command {set ::hit 1}
+        \\.mb.file add checkbutton -label Wrap -variable ::wrap
+        \\.mb add cascade -label File -underline 0 -menu .mb.file
+        \\menu .mb.help -tearoff 0
+        \\.mb.help add command -label About
+        \\.mb add cascade -label Help -menu .mb.help
+        \\. configure -menu .mb
+        \\update
+    );
+    const hwnd = b.hwndOf(app.window.?).?;
+    const bar = w32.GetMenu(hwnd) orelse return error.NoBar;
+    try t.expectEqual(@as(c_int, 2), w32.GetMenuItemCount(bar));
+    var buf: [64]u16 = undefined;
+    try t.expectEqualSlices(u16, std.unicode.utf8ToUtf16LeStringLiteral("&File"), itemText(bar, 0, &buf));
+    try t.expect(itemInfo(bar, 1).fType & w32.MFT_RIGHTJUSTIFY != 0);
+    const file = itemInfo(bar, 0).hSubMenu orelse return error.NoCascade;
+    try t.expectEqual(@as(c_int, 2), w32.GetMenuItemCount(file));
+    try t.expectEqualSlices(u16, std.unicode.utf8ToUtf16LeStringLiteral("&Open\tCtrl+O"), itemText(file, 0, &buf));
+
+    // The menu loop of Windows: -postcommand runs before the menu shows, and its entry is there.
+    _ = w32.SendMessageW(hwnd, w32.WM_INITMENUPOPUP, @intFromPtr(file), 0);
+    try t.expectEqualStrings("1", try it.str(try it.eval("set ::posts")));
+    try t.expectEqual(@as(c_int, 3), w32.GetMenuItemCount(file));
+
+    // A choice of Open runs its -command.
+    _ = w32.SendMessageW(hwnd, w32.WM_MENUCOMMAND, 0, @bitCast(@intFromPtr(file)));
+    _ = w32.SendMessageW(hwnd, w32.WM_UNINITMENUPOPUP, @intFromPtr(file), 0);
+    _ = try it.eval("update");
+    try t.expectEqualStrings("1", try it.str(try it.eval("set ::hit")));
+
+    // A choice of the check entry sets its variable. The core sends the
+    // entries again when the menu opens, so the mark shows at the next open.
+    _ = w32.SendMessageW(hwnd, w32.WM_MENUCOMMAND, 1, @bitCast(@intFromPtr(file)));
+    _ = try it.eval("update");
+    try t.expectEqualStrings("1", try it.str(try it.eval("set ::wrap")));
+    _ = w32.SendMessageW(hwnd, w32.WM_INITMENUPOPUP, @intFromPtr(file), 0);
+    try t.expect(itemInfo(file, 1).fState & w32.MFS_CHECKED != 0);
+
+    _ = try it.eval(". configure -menu {}; update");
+    try t.expect(w32.GetMenu(hwnd) == null);
+}
+
+test "windows: tk_popup runs the menu loop of Windows and returns" {
+    if (!enabled()) return;
+    const b = try be.Win32.init(t.allocator, .{ .visible = false, .renderer = .cpu });
+    defer b.deinit();
+    var it: ztcl.Interp = undefined;
+    const app = try menuApp(b, &it);
+    defer it.deinit();
+    defer app.deinit();
+    _ = try it.eval("menu .pop -tearoff 0; .pop add command -label Cut; .pop add command -label Copy; update");
+    const timer = SetTimer(null, 0, 100, endMenu);
+    defer _ = KillTimer(null, timer);
+    const t0 = host.nowUs();
+    _ = try it.eval("tk_popup .pop 20 20; update");
+    try t.expect(host.nowUs() - t0 < 2_000_000);
+}
