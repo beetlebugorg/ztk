@@ -203,6 +203,17 @@ fn pollAll(p: plat.Platform, list: *std.ArrayListUnmanaged(event.Event)) !void {
     try p.poll(t.allocator, list);
 }
 
+/// Polls until a `menu` event with `action` comes, for at most two
+/// seconds. A menu also gives `opening` and `select` events.
+fn waitMenu(p: plat.Platform, action: event.MenuAction) !event.Event {
+    const end = p.nowUs() + 2_000_000;
+    while (p.nowUs() < end) {
+        const e = try waitFor(p, .menu);
+        if (e.menu.action == action) return e;
+    }
+    return error.NoEvent;
+}
+
 const HandlerLog = struct {
     calls: u32 = 0,
     last: event.MenuAction = .closed,
@@ -251,7 +262,7 @@ test "appkit: native menus in the menu bar and as a popup" {
     // A click on an item gives an `invoke` of the window.
     makeCurrent(app, otherEvent());
     objc.call(fn (objc.Id, objc.Sel, isize) callconv(.c) void, file, "performActionForItemAtIndex:", .{1});
-    const inv = try waitFor(p, .menu);
+    const inv = try waitMenu(p, .invoke);
     try t.expect(inv.menu.window == win);
     try t.expectEqual(@as(u32, 2), inv.menu.menu);
     try t.expectEqual(@as(i32, 1), inv.menu.entry);
@@ -271,7 +282,7 @@ test "appkit: native menus in the menu bar and as a popup" {
         .key => |k| if (k.pressed and k.keysym == 'o') {
             got_key = true;
         },
-        .menu => return error.MenuFromKey,
+        .menu => |m| if (m.action == .invoke) return error.MenuFromKey,
         else => {},
     };
     try t.expect(got_key);
@@ -288,7 +299,7 @@ test "appkit: native menus in the menu bar and as a popup" {
     const modes = objc.call(fn (objc.Class, objc.Sel, objc.Id) callconv(.c) objc.Id, objc.class("NSArray").?, "arrayWithObject:", .{NSRunLoopCommonModes});
     objc.call(fn (objc.Id, objc.Sel, objc.Sel, ?objc.Id, f64, objc.Id) callconv(.c) void, file, "performSelector:withObject:afterDelay:inModes:", .{ objc.sel("cancelTracking"), null, 0.3, modes });
     p.postMenu(win, 2, .{ .x = 20, .y = 20 }, 0);
-    const closed = try waitFor(p, .menu);
+    const closed = try waitMenu(p, .closed);
     try t.expect(closed.menu.window == win);
     try t.expectEqual(event.MenuAction.closed, closed.menu.action);
 
