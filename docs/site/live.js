@@ -617,7 +617,9 @@ if (params.has("snippettest")) {
     pre.textContent = JSON.stringify(out);
     document.body.appendChild(pre);
   })();
-} else if (typeof WebAssembly === "object" && "IntersectionObserver" in window) {
+} else if (!params.has("livetest") && typeof WebAssembly === "object" && "IntersectionObserver" in window) {
+  // ?livetest is the test of the cards of the landing page (tests/site.sh),
+  // so the snippets stay still there.
   const io = new IntersectionObserver((es) => {
     for (const e of es) {
       const d = demos.find((x) => x.fig === e.target);
