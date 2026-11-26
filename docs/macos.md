@@ -38,7 +38,7 @@ The app has a copy of the ztk program, the scripts and the files in `Contents/Re
 | `--runner FILE` | The macOS ztk program to copy. The default is the program that runs the command. |
 | `--no-sign` | Leave the app unsigned. |
 
-A bundle can come from Linux or Windows too: give a macOS ztk with `--runner`. On macOS, `ztk bundle` signs the app with an ad hoc signature. Run the app on the Mac that made it, or sign it as below before you give it to others.
+A bundle can come from Linux or Windows too: give a macOS ztk with `--runner`. Windows has no mode bits for files, so an app from Windows needs `chmod +x Name.app/Contents/MacOS/Name` on the Mac. On macOS, `ztk bundle` signs the app with an ad hoc signature. Run the app on the Mac that made it, or sign it as below before you give it to others.
 
 ## Sign and notarize an app
 

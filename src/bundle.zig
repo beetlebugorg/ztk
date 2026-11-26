@@ -338,7 +338,7 @@ pub fn run(io: Io, a: std.mem.Allocator, args: []const [:0]const u8, err: *Io.Wr
     try app.createDirPath(io, "Contents/MacOS");
     try app.createDirPath(io, "Contents/Resources/app");
     const exe_path = try std.fs.path.join(a, &.{ "Contents/MacOS", app_name });
-    try app.writeFile(io, .{ .sub_path = exe_path, .data = exe, .flags = .{ .permissions = .fromMode(0o755) } });
+    try app.writeFile(io, .{ .sub_path = exe_path, .data = exe, .flags = .{ .permissions = exe_permissions } });
 
     const main_name = std.fs.path.basename(files.items[0]);
     try cwd.copyFile(files.items[0], app, try std.fs.path.join(a, &.{ "Contents/Resources/app", main_name }), io, .{});
@@ -367,6 +367,11 @@ pub fn run(io: Io, a: std.mem.Allocator, args: []const [:0]const u8, err: *Io.Wr
     }
     return 0;
 }
+
+/// The mode of the program in the app. Windows has no mode bits, so a
+/// bundle from Windows gets its mode on the Mac, from the archive or from
+/// `chmod +x`.
+const exe_permissions: Io.File.Permissions = if (@import("builtin").os.tag == .windows) .default_file else .fromMode(0o755);
 
 fn usageError(err: *Io.Writer, comptime fmt: []const u8, args: anytype) !u8 {
     try err.print(fmt, args);
