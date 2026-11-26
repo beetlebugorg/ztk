@@ -78,6 +78,8 @@ test {
     _ = @import("tests/appearance.zig");
     _ = @import("tests/tray.zig");
     _ = @import("tests/filedialog.zig");
+    _ = @import("peres.zig");
+    _ = @import("tests/peres.zig");
     _ = @import("textinput.zig");
     _ = @import("tests/tree.zig");
     _ = @import("tests/options.zig");
