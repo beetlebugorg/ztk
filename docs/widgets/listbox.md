@@ -180,9 +180,13 @@ focus .c
 newgame
 ```
 
+<!-- more: The details of listbox -->
+
 - The listbox has the options, the subcommands, and the four selection modes of Tk 8.6: `single`, `browse`, `multiple`, and `extended`. The pointer and the keys select rows as in `wish`, and a change by the user sends `<<ListboxSelect>>`.
 - `-listvariable` links the rows to a list variable in both directions.
 - When the selection moves from one row to another row, its background eases between the rows in 180 ms.
 - A scroll eases, and a touchpad scrolls by pixels with momentum. A whole step of `yview scroll` or `yview moveto` puts a row at the top, as in Tk.
 - The additions: `-emptytext` shows a text in an empty listbox, and the style class `sidebar` gives a list with no field and round accent rows.
 - The parts `::item`, `::selection`, `::active`, and `::empty` accept CSS rules.
+
+<!-- end more -->

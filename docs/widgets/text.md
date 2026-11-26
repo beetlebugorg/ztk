@@ -26,6 +26,8 @@ pack .t -side left -fill both -expand 1 -padx 8 -pady 8
 focus .t
 ```
 
+<!-- more: The details of text -->
+
 - The text widget has the options, the indexes, and the subcommands of Tk 8.6: `bbox`, `compare`, `count`, `delete`, `dlineinfo`, `dump`, `edit`, `get`, `image`, `index`, `insert`, `mark`, `replace`, `search`, `see`, `tag`, `window`, `xview`, and `yview`. `peer` has no peers in ztk. An index has the forms and the modifiers of `text.n`, such as `insert wordend`, `end - 1 chars`, and `insert + 1 display lines`.
 - Tags give text colors, fonts, underlines, margins, spacing, justification, and elided text. `tag bind` runs a script for the events of the tagged text, with `<Enter>` and `<Leave>` as the pointer moves between tags.
 - `window create` puts a widget in the text, and `image create` puts a photo image in it. Each one has one place in the index space and moves with the text. `-align`, `-padx`, `-pady`, and `-stretch` place it in its line, and `-create` makes a window when the embed has none. `dump -window` and `dump -image` list them. A delete of the range of a window deletes the window.
@@ -35,6 +37,8 @@ focus .t
 - `-undo 1` turns on undo and redo, with `edit undo`, `edit redo`, `edit separator`, and Control-z. `<<Modified>>` comes when the text changes.
 - The keys and the pointer edit the text as in `wish`. A scroll eases, and a touchpad scrolls by pixels with momentum. The caret blinks while the widget has the focus. Text from an input method shows at the caret until it is committed.
 - The part `::selection` gives the colors of the tag `sel` in the modern theme.
+
+<!-- end more -->
 
 ### Play: Pixel Pad
 
