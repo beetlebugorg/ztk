@@ -98,10 +98,18 @@ pub const Harness = struct {
 
     /// Like `init`, with a folder for `ztk::style load`.
     pub fn initWith(h: *Harness, style_root: ?[]const u8) !void {
+        return h.initFull(style_root, null, null);
+    }
+
+    /// `initWith` with the native look and the text engine of the headless
+    /// backend, for a test of a native look.
+    pub fn initFull(h: *Harness, style_root: ?[]const u8, look: ?[]const u8, text: ?@import("text/system.zig").System) !void {
         try h.it.init(std.testing.allocator);
         errdefer h.it.deinit();
         h.err = .empty;
         h.head = try Headless.init(std.testing.allocator);
+        h.head.native_look = look;
+        h.head.text_system = text;
         errdefer h.head.deinit();
         h.app = try App.init(std.testing.allocator, &h.it, .{
             .render_mode = h.render_mode,

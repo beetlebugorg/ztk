@@ -1,0 +1,247 @@
+/* The platform sheet of Windows: the Fluent look of Windows 11 over the
+   modern theme (step 3 of docs/dev/native-look.md). The values come from
+   the theme resources of WinUI 3 (microsoft-ui-xaml, MIT license); each
+   comment names the resource. --system-accent is the accent of the
+   system for the scheme (SystemAccentColorDark1 in light, Light2 in
+   dark), which the app sets from the backend. The fills of the
+   controls are the WinUI fills composited over SolidBackgroundFillColorBase,
+   because the box shadow of the bottom stroke draws under the fill. */
+
+:root {
+  font-size: 14px;                                  /* BodyTextBlockFontSize */
+  --bg: #f3f3f3;                                    /* SolidBackgroundFillColorBase */
+  --fg: rgba(0, 0, 0, 0.894);                       /* TextFillColorPrimary #E4000000 */
+  --muted: rgba(0, 0, 0, 0.62);                     /* TextFillColorSecondary #9E000000 */
+  --disabled-fg: rgba(0, 0, 0, 0.361);              /* TextFillColorDisabled #5C000000 */
+  --accent: var(--system-accent, #005fb8);          /* AccentFillColorDefault */
+  --accent-hover: var(--system-accent, #005fb8);    /* AccentFillColorSecondary, with opacity 0.9 */
+  --accent-fg: #ffffff;                             /* TextOnAccentFillColorPrimary */
+  --field-bg: #fbfbfb;                              /* ControlFillColorDefault #B3FFFFFF over the base */
+  --field-hover: #f6f6f6;                           /* ControlFillColorSecondary #80F9F9F9 over the base */
+  --field-pressed: #f5f5f5;                         /* ControlFillColorTertiary #4DF9F9F9 over the base */
+  --field-active: #ffffff;                          /* ControlFillColorInputActive */
+  --border: rgba(0, 0, 0, 0.059);                   /* ControlStrokeColorDefault #0F000000 */
+  --border-bottom: rgba(0, 0, 0, 0.161);            /* ControlStrokeColorSecondary #29000000 */
+  --strong-stroke: rgba(0, 0, 0, 0.612);            /* ControlStrongStrokeColorDefault #9C000000 */
+  --check-bg: rgba(0, 0, 0, 0.024);                 /* ControlAltFillColorSecondary #06000000 */
+  --radius: 4px;                                    /* ControlCornerRadius */
+  --focus-ring: rgba(0, 0, 0, 0.894);               /* FocusStrokeColorOuter #E4000000 */
+  --knob: #ffffff;                                  /* ControlSolidFillColorDefault */
+  --tip-bg: #f9f9f9;                                /* AcrylicInAppFillColorDefault, solid */
+  --tip-fg: rgba(0, 0, 0, 0.894);
+  --shadow: rgba(0, 0, 0, 0.14);
+  --ring-soft: rgba(0, 0, 0, 0);
+  --thumb: rgba(0, 0, 0, 0.447);                    /* ControlStrongFillColorDefault #72000000 */
+  --thumb-hover: rgba(0, 0, 0, 0.6);
+  --track: rgba(0, 0, 0, 0);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #202020;                                  /* SolidBackgroundFillColorBase */
+    --fg: #ffffff;                                  /* TextFillColorPrimary */
+    --muted: rgba(255, 255, 255, 0.773);            /* TextFillColorSecondary #C5FFFFFF */
+    --disabled-fg: rgba(255, 255, 255, 0.365);      /* TextFillColorDisabled #5DFFFFFF */
+    --accent: var(--system-accent, #60cdff);        /* AccentFillColorDefault (Light2) */
+    --accent-hover: var(--system-accent, #60cdff);
+    --accent-fg: #000000;                           /* TextOnAccentFillColorPrimary */
+    --field-bg: #2d2d2d;                            /* ControlFillColorDefault #0FFFFFFF over the base */
+    --field-hover: #323232;                         /* ControlFillColorSecondary #15FFFFFF over the base */
+    --field-pressed: #272727;                       /* ControlFillColorTertiary #08FFFFFF over the base */
+    --field-active: #1f1f1f;                        /* ControlFillColorInputActive #B31E1E1E over the base */
+    --border: rgba(255, 255, 255, 0.071);           /* ControlStrokeColorDefault #12FFFFFF */
+    --border-bottom: rgba(255, 255, 255, 0.094);    /* ControlStrokeColorSecondary #18FFFFFF */
+    --strong-stroke: rgba(255, 255, 255, 0.545);    /* ControlStrongStrokeColorDefault #8BFFFFFF */
+    --check-bg: rgba(0, 0, 0, 0.1);                 /* ControlAltFillColorSecondary #19000000 */
+    --focus-ring: #ffffff;                          /* FocusStrokeColorOuter */
+    --knob: #454545;                                /* ControlSolidFillColorDefault */
+    --tip-bg: #2c2c2c;
+    --tip-fg: #ffffff;
+    --thumb: rgba(255, 255, 255, 0.545);            /* ControlStrongFillColorDefault #8BFFFFFF */
+    --thumb-hover: rgba(255, 255, 255, 0.7);
+  }
+}
+
+/* Button: ButtonPadding 11,5,11,6, MinHeight 32, the elevation border
+   (ControlElevationBorderBrush) as a bottom stroke, and the brush
+   transitions of ControlFasterAnimationDuration (83 ms). */
+Button {
+  background-color: var(--field-bg);
+  border: 1px solid var(--border);
+  border-width: 1px 1px 0 1px;
+  box-shadow: 0 1px 0 0 var(--border-bottom);
+  border-radius: var(--radius);
+  padding: 5px 11px 6px 11px;
+  min-height: 32px;
+  transition: all 83ms linear;
+}
+
+Button:hover {
+  background-color: var(--field-hover);
+  border-color: var(--border);
+}
+
+Button:active {
+  background-color: var(--field-pressed);
+  color: var(--muted);
+  border-color: var(--border);
+  box-shadow: 0 1px 0 0 var(--border);
+}
+
+Button:focus {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+Button:disabled {
+  color: var(--disabled-fg);
+  background-color: var(--field-pressed);
+  opacity: 1;
+}
+
+/* The accent button: AccentFillColorDefault, Secondary (0.9), Tertiary
+   (0.8), and AccentControlElevationBorderBrush. */
+Button.primary {
+  color: var(--accent-fg);
+  background-color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 1px 0 0 rgba(0, 0, 0, 0.4);
+}
+
+Button.primary:hover {
+  background-color: var(--accent-hover);
+  border-color: var(--accent-hover);
+  opacity: 0.9;
+}
+
+Button.primary:active {
+  color: var(--accent-fg);
+  background-color: var(--accent-hover);
+  border-color: var(--accent-hover);
+  box-shadow: 0 1px 0 0 var(--accent-hover);
+  opacity: 0.8;
+}
+
+/* TextBox: TextControlThemePadding 10,5,6,6, MinHeight 32, the bottom
+   stroke of TextControlElevationBorderBrush, and the accent stroke of
+   2 px when focused (TextControlBorderThemeThicknessFocused). */
+Entry, Spinbox {
+  background-color: var(--field-bg);
+  border: 1px solid var(--border);
+  border-width: 1px 1px 0 1px;
+  box-shadow: 0 1px 0 0 var(--strong-stroke);
+  border-radius: var(--radius);
+  padding: 5px 6px 6px 10px;
+  min-height: 32px;
+  transition: background-color 83ms linear;
+}
+
+Entry:hover, Spinbox:hover {
+  background-color: var(--field-hover);
+}
+
+Entry:focus, Spinbox:focus {
+  background-color: var(--field-active);
+  border-color: var(--border);
+  box-shadow: 0 2px 0 0 var(--accent);
+  outline: 0;
+}
+
+Entry:disabled, Spinbox:disabled {
+  color: var(--disabled-fg);
+  background-color: var(--field-pressed);
+}
+
+Entry::placeholder, Spinbox::placeholder {
+  color: var(--muted);
+}
+
+/* CheckBox and RadioButton: a box of 20 px with the corner of
+   ControlCornerRadius, the stroke of ControlStrongStrokeColorDefault,
+   and the accent fill when checked. */
+Checkbutton, Radiobutton {
+  padding: 6px 2px;
+}
+
+Checkbutton:focus, Radiobutton:focus {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 0px;
+}
+
+Checkbutton:disabled, Radiobutton:disabled {
+  color: var(--disabled-fg);
+}
+
+Checkbutton::indicator, Radiobutton::indicator {
+  background-color: var(--check-bg);
+  border: 1px solid var(--strong-stroke);
+  border-radius: var(--radius);
+  transition: background-color 83ms linear, border-color 83ms linear, color 83ms linear;
+}
+
+Radiobutton::indicator {
+  border-radius: 50%;
+}
+
+Checkbutton:hover::indicator, Radiobutton:hover::indicator {
+  border-color: var(--strong-stroke);
+  background-color: var(--field-hover);
+}
+
+Checkbutton:checked::indicator, Checkbutton:indeterminate::indicator, Radiobutton:checked::indicator {
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ToggleSwitch: a track of 40 by 20 with a full radius, the knob in the
+   color of the stroke when off and of the text on accent when on. */
+Checkbutton.switch::indicator {
+  color: var(--strong-stroke);
+  background-color: var(--check-bg);
+  border: 1px solid var(--strong-stroke);
+  border-radius: 50%;
+  transition: all 167ms cubic-bezier(0, 0, 0, 1);
+}
+
+Checkbutton.switch:checked::indicator {
+  color: var(--accent-fg);
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Slider: a track of 4 px (SliderTrackThemeHeight), the fill of the
+   accent, and a thumb of 20 px with the elevation border. */
+Scale::trough {
+  background-color: var(--strong-stroke);
+  border-radius: 50%;
+}
+
+Scale::fill {
+  background-color: var(--accent);
+}
+
+Scale::slider {
+  background-color: var(--knob);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 0 0 var(--border-bottom);
+  transition: all 167ms cubic-bezier(0, 0, 0, 1);
+}
+
+Scale:hover::slider {
+  border-color: var(--border);
+}
+
+Scale:active::slider {
+  box-shadow: 0 1px 0 0 var(--border-bottom);
+}
+
+/* ToolTip: OverlayCornerRadius 8, padding 9,6,9,8, and the font of
+   CaptionTextBlock (12 px). */
+:root::tooltip, Toplevel::tooltip {
+  color: var(--tip-fg);
+  background-color: var(--tip-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 9px 8px 9px;
+  font-size: 12px;
+}

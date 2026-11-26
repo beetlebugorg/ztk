@@ -87,6 +87,10 @@ pub const Headless = struct {
     tray_next: u32 = 1,
     /// The kinds of drops of the last `dropTypes`.
     drop_types: plat.DropTypes = .{},
+    /// The native look and the text engine that the platform gives, for
+    /// a test of a native look. Null: the modern look and the fonts of ztk.
+    native_look: ?[]const u8 = null,
+    text_system: ?@import("../text/system.zig").System = null,
     /// The file dialog: the paths that the next dialog gives (null: a cancel),
     /// the filter that it gives, and the options of the last call.
     dialog_answer: ?[]const []const u8 = null,
@@ -183,6 +187,8 @@ pub const Headless = struct {
         .trayCreate = vTrayCreate,
         .traySet = vTraySet,
         .trayDrop = vTrayDrop,
+        .nativeLook = vNativeLook,
+        .textSystem = vTextSystem,
         .taskbarSet = vTaskbarSet,
         .attention = vAttention,
         .recentAdd = vRecentAdd,
@@ -486,6 +492,14 @@ pub const Headless = struct {
     /// Queues a `menu` event, as a user action in a native menu gives it.
     pub fn menuEvent(h: *Headless, w: *Window, id: plat.MenuId, entry: i32, action: event.MenuAction) void {
         h.queue.append(h.gpa, .{ .menu = .{ .window = w, .menu = id, .entry = entry, .action = action } }) catch {};
+    }
+
+    fn vNativeLook(ptr: *anyopaque) ?[]const u8 {
+        return self(ptr).native_look;
+    }
+
+    fn vTextSystem(ptr: *anyopaque) ?@import("../text/system.zig").System {
+        return self(ptr).text_system;
     }
 
     fn vAppearance(ptr: *anyopaque) plat.Appearance {
