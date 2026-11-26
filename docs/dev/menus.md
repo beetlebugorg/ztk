@@ -66,7 +66,11 @@ A drawn menu opens with a fade and a short slide from its anchor, as the list of
 
 1. This page, the interface in `src/platform/platform.zig`, the `menu` and `app_command` events, the map of the application commands, and the record of the calls in the headless backend. The core ignores the `menu` event until PR 2.
 2. The menu model: the `menu` widget with its entries, options, subcommands, and messages, `tk_popup`, the native path against the record of the headless backend, and the native menu bar from `toplevel -menu`.
-3. The drawn menus: the menu bar row, the popups and cascades in popup windows of the headless backend, the keys, the open move, `menubutton`, `ttk::menubutton`, the gallery, and the widget page.
-4. The popup surfaces of the Wayland backend and the popup layer of the web backend.
+3. The drawn menus, in four parts:
+   - 3a: the posted menus and cascades drawn over the toplevel, the keys, and the open move (`src/widgets/menudraw.zig`);
+   - 3b: the menu bar row of `toplevel -menu`;
+   - 3c: `menubutton` and `ttk::menubutton`;
+   - 3d: the gallery card and the widget page.
+4. The popup surfaces of the Wayland backend and the popup layer of the web backend. Until this PR, each backend gets the drawn menus inside the parent window, also a backend with `Platform.popups`.
 
 The macOS and Windows backends fill the native functions in their own PRs.
