@@ -49,6 +49,10 @@ const face1_kerning = 25;
 const face1_has_kerning = 26;
 const analysis_bounds = 3;
 const analysis_texture = 4;
+const factory_text_analyzer = 21;
+const analyzer_script = 3;
+const analyzer_glyphs = 7;
+const analyzer_placements = 8;
 
 const rendering_natural_symmetric = 5;
 const measuring_natural = 0;
@@ -112,6 +116,8 @@ pub const DWrite = struct {
     gpa: std.mem.Allocator,
     factory: *anyopaque,
     collection: *anyopaque,
+    /// The shaper, or null when the system gives none.
+    analyzer: ?*anyopaque = null,
     faces: std.ArrayListUnmanaged(Face) = .empty,
 
     /// A backend on the shared factory of the process, or null when the
@@ -131,6 +137,8 @@ pub const DWrite = struct {
             return null;
         };
         d.* = .{ .gpa = gpa, .factory = factory, .collection = c.? };
+        var an: ?*anyopaque = null;
+        if (com.call(HRESULT, factory, factory_text_analyzer, .{&an}) >= 0) d.analyzer = an;
         return d;
     }
 
@@ -141,6 +149,7 @@ pub const DWrite = struct {
             d.gpa.free(f.name);
         }
         d.faces.deinit(d.gpa);
+        if (d.analyzer) |x| com.release(x);
         com.release(d.collection);
         com.release(d.factory);
         d.gpa.destroy(d);
@@ -274,6 +283,247 @@ fn vRaster(ctx: *anyopaque, gpa: std.mem.Allocator, f: u32, g: u16, em_px: f32, 
     return .{ .width = w, .height = h, .left = r.left, .top = r.top, .pixels = pixels };
 }
 
+// ---- Shaping ----
+
+const SCRIPT_ANALYSIS = extern struct { script: u16, shapes: u32 };
+const GLYPH_OFFSET = extern struct { advanceOffset: f32, ascenderOffset: f32 };
+const IID_IUnknown = GUID.parse("00000000-0000-0000-c000-000000000046");
+const IID_Source = GUID.parse("688e1a58-5094-47c8-adc8-fbcea60ae92b");
+const IID_Sink = GUID.parse("5810cd44-0ca0-4701-b3fa-bec5182ae4f6");
+const E_NOINTERFACE: HRESULT = @bitCast(@as(u32, 0x80004002));
+const E_NOT_SUFFICIENT_BUFFER: HRESULT = @bitCast(@as(u32, 0x8007007A));
+
+/// The text of `AnalyzeScript`: one paragraph, left to right, in the
+/// locale en-us. A COM object of this file on the stack: the analyzer
+/// holds it only during the call.
+const Source = extern struct {
+    vtbl: *const SourceVtbl = &source_vtbl,
+    text: [*]const u16,
+    len: u32,
+};
+const SourceVtbl = extern struct {
+    QueryInterface: *const fn (*Source, *const GUID, *?*anyopaque) callconv(.winapi) HRESULT,
+    AddRef: *const fn (*Source) callconv(.winapi) u32,
+    Release: *const fn (*Source) callconv(.winapi) u32,
+    GetTextAtPosition: *const fn (*Source, u32, *?[*]const u16, *u32) callconv(.winapi) HRESULT,
+    GetTextBeforePosition: *const fn (*Source, u32, *?[*]const u16, *u32) callconv(.winapi) HRESULT,
+    GetParagraphReadingDirection: *const fn (*Source) callconv(.winapi) u32,
+    GetLocaleName: *const fn (*Source, u32, *u32, *?[*:0]const u16) callconv(.winapi) HRESULT,
+    GetNumberSubstitution: *const fn (*Source, u32, *u32, *?*anyopaque) callconv(.winapi) HRESULT,
+};
+const locale = std.unicode.utf8ToUtf16LeStringLiteral("en-us");
+const source_vtbl: SourceVtbl = .{
+    .QueryInterface = struct {
+        fn f(s: *Source, iid: *const GUID, out: *?*anyopaque) callconv(.winapi) HRESULT {
+            if (std.meta.eql(iid.*, IID_IUnknown) or std.meta.eql(iid.*, IID_Source)) {
+                out.* = s;
+                return 0;
+            }
+            out.* = null;
+            return E_NOINTERFACE;
+        }
+    }.f,
+    .AddRef = struct {
+        fn f(_: *Source) callconv(.winapi) u32 {
+            return 1;
+        }
+    }.f,
+    .Release = struct {
+        fn f(_: *Source) callconv(.winapi) u32 {
+            return 1;
+        }
+    }.f,
+    .GetTextAtPosition = struct {
+        fn f(s: *Source, pos: u32, text: *?[*]const u16, len: *u32) callconv(.winapi) HRESULT {
+            if (pos >= s.len) {
+                text.* = null;
+                len.* = 0;
+            } else {
+                text.* = s.text + pos;
+                len.* = s.len - pos;
+            }
+            return 0;
+        }
+    }.f,
+    .GetTextBeforePosition = struct {
+        fn f(s: *Source, pos: u32, text: *?[*]const u16, len: *u32) callconv(.winapi) HRESULT {
+            if (pos == 0 or pos > s.len) {
+                text.* = null;
+                len.* = 0;
+            } else {
+                text.* = s.text;
+                len.* = pos;
+            }
+            return 0;
+        }
+    }.f,
+    .GetParagraphReadingDirection = struct {
+        fn f(_: *Source) callconv(.winapi) u32 {
+            return 0; // DWRITE_READING_DIRECTION_LEFT_TO_RIGHT
+        }
+    }.f,
+    .GetLocaleName = struct {
+        fn f(s: *Source, pos: u32, len: *u32, name: *?[*:0]const u16) callconv(.winapi) HRESULT {
+            len.* = s.len -| pos;
+            name.* = locale;
+            return 0;
+        }
+    }.f,
+    .GetNumberSubstitution = struct {
+        fn f(s: *Source, pos: u32, len: *u32, ns: *?*anyopaque) callconv(.winapi) HRESULT {
+            len.* = s.len -| pos;
+            ns.* = null;
+            return 0;
+        }
+    }.f,
+};
+
+/// The runs of one script that `AnalyzeScript` gives.
+const Run = struct { pos: u32, len: u32, sa: SCRIPT_ANALYSIS };
+
+const Sink = extern struct {
+    vtbl: *const SinkVtbl = &sink_vtbl,
+    gpa: *const std.mem.Allocator,
+    runs: *std.ArrayListUnmanaged(Run),
+};
+const SinkVtbl = extern struct {
+    QueryInterface: *const fn (*Sink, *const GUID, *?*anyopaque) callconv(.winapi) HRESULT,
+    AddRef: *const fn (*Sink) callconv(.winapi) u32,
+    Release: *const fn (*Sink) callconv(.winapi) u32,
+    SetScriptAnalysis: *const fn (*Sink, u32, u32, *const SCRIPT_ANALYSIS) callconv(.winapi) HRESULT,
+    SetLineBreakpoints: *const fn (*Sink, u32, u32, *const anyopaque) callconv(.winapi) HRESULT,
+    SetBidiLevel: *const fn (*Sink, u32, u32, u8, u8) callconv(.winapi) HRESULT,
+    SetNumberSubstitution: *const fn (*Sink, u32, u32, ?*anyopaque) callconv(.winapi) HRESULT,
+};
+const sink_vtbl: SinkVtbl = .{
+    .QueryInterface = struct {
+        fn f(s: *Sink, iid: *const GUID, out: *?*anyopaque) callconv(.winapi) HRESULT {
+            if (std.meta.eql(iid.*, IID_IUnknown) or std.meta.eql(iid.*, IID_Sink)) {
+                out.* = s;
+                return 0;
+            }
+            out.* = null;
+            return E_NOINTERFACE;
+        }
+    }.f,
+    .AddRef = struct {
+        fn f(_: *Sink) callconv(.winapi) u32 {
+            return 1;
+        }
+    }.f,
+    .Release = struct {
+        fn f(_: *Sink) callconv(.winapi) u32 {
+            return 1;
+        }
+    }.f,
+    .SetScriptAnalysis = struct {
+        fn f(s: *Sink, pos: u32, len: u32, sa: *const SCRIPT_ANALYSIS) callconv(.winapi) HRESULT {
+            s.runs.append(s.gpa.*, .{ .pos = pos, .len = len, .sa = sa.* }) catch return @bitCast(@as(u32, 0x8007000E));
+            return 0;
+        }
+    }.f,
+    .SetLineBreakpoints = struct {
+        fn f(_: *Sink, _: u32, _: u32, _: *const anyopaque) callconv(.winapi) HRESULT {
+            return 0;
+        }
+    }.f,
+    .SetBidiLevel = struct {
+        fn f(_: *Sink, _: u32, _: u32, _: u8, _: u8) callconv(.winapi) HRESULT {
+            return 0;
+        }
+    }.f,
+    .SetNumberSubstitution = struct {
+        fn f(_: *Sink, _: u32, _: u32, _: ?*anyopaque) callconv(.winapi) HRESULT {
+            return 0;
+        }
+    }.f,
+};
+
+/// Shapes a line with `IDWriteTextAnalyzer`: the runs of each script,
+/// then the glyphs and their places for each run on the one face.
+fn vShape(ctx: *anyopaque, gpa: std.mem.Allocator, f: u32, em_px: f32, text: []const u8, out: *std.ArrayListUnmanaged(system.Glyph)) anyerror!f32 {
+    const d = self(ctx);
+    const an = d.analyzer orelse return error.NoShaper;
+    if (text.len == 0) return 0;
+    // UTF-16, and the byte index of each code unit. A bad UTF-8 byte is
+    // the replacement character.
+    var units: std.ArrayListUnmanaged(u16) = .empty;
+    defer units.deinit(gpa);
+    var bytes: std.ArrayListUnmanaged(u32) = .empty;
+    defer bytes.deinit(gpa);
+    var i: usize = 0;
+    while (i < text.len) {
+        const n = std.unicode.utf8ByteSequenceLength(text[i]) catch 1;
+        const cp: u21 = if (i + n <= text.len) (std.unicode.utf8Decode(text[i..][0..n]) catch 0xfffd) else 0xfffd;
+        const step: usize = if (i + n <= text.len) n else 1;
+        if (cp >= 0x10000) {
+            const v = cp - 0x10000;
+            try units.appendSlice(gpa, &.{ @intCast(0xd800 + (v >> 10)), @intCast(0xdc00 + (v & 0x3ff)) });
+            try bytes.appendSlice(gpa, &.{ @intCast(i), @intCast(i) });
+        } else {
+            try units.append(gpa, @intCast(cp));
+            try bytes.append(gpa, @intCast(i));
+        }
+        i += step;
+    }
+    const n_units: u32 = @intCast(units.items.len);
+    var runs: std.ArrayListUnmanaged(Run) = .empty;
+    defer runs.deinit(gpa);
+    var source: Source = .{ .text = units.items.ptr, .len = n_units };
+    var sink: Sink = .{ .gpa = &gpa, .runs = &runs };
+    if (com.call(HRESULT, an, analyzer_script, .{ &source, @as(u32, 0), n_units, &sink }) < 0) return error.Shape;
+    std.mem.sort(Run, runs.items, {}, struct {
+        fn less(_: void, a: Run, b: Run) bool {
+            return a.pos < b.pos;
+        }
+    }.less);
+    const face = d.faces.items[f].face;
+    var pen: f32 = 0;
+    for (runs.items) |r| {
+        const txt = units.items[r.pos..][0..r.len];
+        var max: u32 = r.len * 3 / 2 + 16;
+        const cmap = try gpa.alloc(u16, r.len);
+        defer gpa.free(cmap);
+        const tprops = try gpa.alloc(u16, r.len);
+        defer gpa.free(tprops);
+        var gids = try gpa.alloc(u16, max);
+        defer gpa.free(gids);
+        var gprops = try gpa.alloc(u16, max);
+        defer gpa.free(gprops);
+        var count: u32 = 0;
+        while (true) {
+            gids = try gpa.realloc(gids, max);
+            gprops = try gpa.realloc(gprops, max);
+            const hr = com.call(HRESULT, an, analyzer_glyphs, .{ txt.ptr, r.len, face, @as(i32, 0), @as(i32, 0), &r.sa, locale.ptr, @as(?*anyopaque, null), @as(?*anyopaque, null), @as(?*anyopaque, null), @as(u32, 0), max, cmap.ptr, tprops.ptr, gids.ptr, gprops.ptr, &count });
+            if (hr == E_NOT_SUFFICIENT_BUFFER and max < 1 << 20) {
+                max *= 2;
+                continue;
+            }
+            if (hr < 0) return error.Shape;
+            break;
+        }
+        const adv = try gpa.alloc(f32, count);
+        defer gpa.free(adv);
+        const offs = try gpa.alloc(GLYPH_OFFSET, count);
+        defer gpa.free(offs);
+        if (com.call(HRESULT, an, analyzer_placements, .{ txt.ptr, cmap.ptr, tprops.ptr, r.len, gids.ptr, gprops.ptr, count, face, em_px, @as(i32, 0), @as(i32, 0), &r.sa, locale.ptr, @as(?*anyopaque, null), @as(?*anyopaque, null), @as(u32, 0), adv.ptr, offs.ptr }) < 0) return error.Shape;
+        // The cluster of each glyph: the first code unit whose cluster
+        // map starts at or before the glyph.
+        var unit: u32 = 0;
+        for (0..count) |g| {
+            while (unit + 1 < r.len and cmap[unit + 1] <= g) unit += 1;
+            try out.append(gpa, .{
+                .id = gids[g],
+                .x = pen + offs[g].advanceOffset,
+                .y = -offs[g].ascenderOffset,
+                .cluster = bytes.items[r.pos + unit],
+            });
+            pen += adv[g];
+        }
+    }
+    return pen;
+}
+
 const vtable: system.System.VTable = .{
     .open = vOpen,
     .metrics = vMetrics,
@@ -281,6 +531,7 @@ const vtable: system.System.VTable = .{
     .advance = vAdvance,
     .kern = vKern,
     .raster = vRaster,
+    .shape = vShape,
 };
 
 test "dwrite: Segoe UI gives metrics, glyphs, advances, and an image of a glyph" {
@@ -321,4 +572,27 @@ test "dwrite: the families of ztk map to the fonts of Windows" {
     try std.testing.expectEqualStrings("Cascadia Mono", candidates(.{ .family = "monospace" }, &buf)[0]);
     try std.testing.expectEqualStrings("Arial", candidates(.{ .family = "Helvetica" }, &buf)[0]);
     try std.testing.expectEqualStrings("Georgia", candidates(.{ .family = "Georgia" }, &buf)[0]);
+}
+
+test "dwrite: the shaper kerns a pair and maps each glyph to its bytes" {
+    const d = DWrite.init(std.testing.allocator) orelse return error.SkipZigTest;
+    defer d.deinit();
+    const s = d.backend();
+    const id = s.open(.{ .family = "system-ui", .size = 14 }) orelse return error.NoFont;
+    const em: f32 = 100;
+    const unit = em / @as(f32, @floatFromInt(s.metrics(id).units_per_em));
+    var out: std.ArrayListUnmanaged(system.Glyph) = .empty;
+    defer out.deinit(std.testing.allocator);
+    const end = try s.vtable.shape.?(s.ctx, std.testing.allocator, id, em, "AVo", &out);
+    try std.testing.expectEqual(@as(usize, 3), out.items.len);
+    // The kerning of the pair A V puts V before the end of the advance of A.
+    const a_adv = @as(f32, @floatFromInt(s.advance(id, s.glyph(id, 'A')))) * unit;
+    try std.testing.expect(out.items[1].x < a_adv - 0.5);
+    try std.testing.expect(end > out.items[2].x);
+    // A character of two bytes and one of four.
+    out.clearRetainingCapacity();
+    _ = try s.vtable.shape.?(s.ctx, std.testing.allocator, id, em, "\xc3\xa9x\xf0\x9f\x98\x80y", &out);
+    try std.testing.expectEqual(@as(u32, 0), out.items[0].cluster);
+    try std.testing.expectEqual(@as(u32, 2), out.items[1].cluster);
+    try std.testing.expectEqual(@as(u32, 7), out.items[out.items.len - 1].cluster);
 }

@@ -24,6 +24,10 @@ pub const FaceMetrics = struct {
     line_gap: i32,
 };
 
+/// A glyph of a shaped line: its id, its place in device pixels from the
+/// line origin, and the byte index of its cluster in the text.
+pub const Glyph = struct { id: u16, x: f32, y: f32, cluster: u32 };
+
 pub const System = struct {
     ctx: *anyopaque,
     vtable: *const VTable,
@@ -40,6 +44,12 @@ pub const System = struct {
         /// The image of a glyph. `em_px` is the em size in device pixels,
         /// and `sub_x` the x offset of the origin, from 0 to 1.
         raster: *const fn (ctx: *anyopaque, gpa: std.mem.Allocator, face: u32, glyph: u16, em_px: f32, sub_x: f32) anyerror!Bitmap,
+        /// Shapes one line of text with the shaper of the system (the
+        /// features of the font, the kerning, the ligatures, and the
+        /// marks). Adds the glyphs to `out` and gives the end of the last
+        /// advance in device pixels. Null: the system has no shaper, and
+        /// `shape.zig` places each glyph by its advance.
+        shape: ?*const fn (ctx: *anyopaque, gpa: std.mem.Allocator, face: u32, em_px: f32, text: []const u8, out: *std.ArrayListUnmanaged(Glyph)) anyerror!f32 = null,
     };
 
     pub fn open(s: System, desc: FontDesc) ?u32 {
