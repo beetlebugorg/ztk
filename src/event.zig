@@ -40,6 +40,9 @@ pub const MenuAction = enum {
 };
 
 /// The commands of the application menu of the system (macOS) that go to the script.
+/// The phases of a drag of another app over a window (ztk#62).
+pub const DropPhase = enum(u8) { enter, over, leave, drop };
+
 /// The kinds of the `tray` event.
 pub const TrayAction = enum {
     /// A click of the primary button. On macOS only for a tray with no menu.
@@ -101,6 +104,11 @@ pub const Event = union(enum) {
     tray: struct { window: *Window, id: u32, action: TrayAction },
     /// A global shortcut of `hotkeyAdd`. It can come when the app has no focus.
     hotkey: struct { window: ?*Window = null, id: u32 },
+    /// A drag of another app over a window that accepts drops. `x` and `y`
+    /// are in the window, and 0 for `leave`. A `drop` has the files,
+    /// separated by 0, with `/` between the parts, or the text. The
+    /// strings live until the next poll.
+    drop: struct { window: *Window, phase: DropPhase, x: f32 = 0, y: f32 = 0, files: []const u8 = "", text: []const u8 = "" },
     /// A command of the application menu. It can come with no window open.
     app_command: struct { window: ?*Window = null, command: AppCommand },
 

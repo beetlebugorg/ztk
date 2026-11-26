@@ -517,7 +517,7 @@ pub const Table = struct {
 
 // ---- Substitution ----
 
-fn appendQuoted(a: std.mem.Allocator, out: *std.ArrayList(u8), s: []const u8) !void {
+pub fn appendQuoted(a: std.mem.Allocator, out: *std.ArrayList(u8), s: []const u8) !void {
     try ztcl.value.appendElement(a, out, s, true);
 }
 
@@ -560,7 +560,7 @@ pub fn substitute(gpa: std.mem.Allocator, script: []const u8, ev: *const WidgetE
             '#' => try out.print(gpa, "{d}", .{ev.serial}),
             'D' => if (wheel) {
                 if (ev.delta == @trunc(ev.delta)) try out.print(gpa, "{d}", .{@as(i64, @intFromFloat(ev.delta))}) else try out.print(gpa, "{d}", .{ev.delta});
-            } else try out.appendSlice(gpa, "??"),
+            } else if (ev.type == .virtual) try appendQuoted(gpa, &out, ev.data) else try out.appendSlice(gpa, "??"),
             'd' => if (ev.type == .virtual) try appendQuoted(gpa, &out, ev.data) else try out.appendSlice(gpa, "??"),
             else => try out.append(gpa, f),
         }

@@ -78,6 +78,7 @@ test {
     _ = @import("tests/ime.zig");
     _ = @import("tests/appearance.zig");
     _ = @import("tests/tray.zig");
+    _ = @import("tests/dnd.zig");
     _ = @import("tests/filedialog.zig");
     _ = @import("tests/taskbar.zig");
     _ = @import("tests/recent.zig");
@@ -132,6 +133,7 @@ test {
         _ = @import("platform/wintaskbar.zig");
         _ = @import("platform/winrecent.zig");
         _ = @import("platform/winhotkey.zig");
+        _ = @import("platform/windrop.zig");
     }
     _ = anim;
     _ = checks;

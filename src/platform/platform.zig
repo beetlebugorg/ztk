@@ -117,6 +117,17 @@ pub const TrayId = u32;
 /// The pixels are valid only during the call that gives them.
 pub const TrayIcon = struct { width: u32, height: u32, pixels: []const u8 };
 
+/// The kinds of data that a window accepts from the drops of other apps.
+pub const DropTypes = packed struct(u8) {
+    files: bool = false,
+    text: bool = false,
+    _pad: u6 = 0,
+
+    pub fn any(t: DropTypes) bool {
+        return t.files or t.text;
+    }
+};
+
 /// The options of a native file dialog. The strings are UTF-8 and are
 /// valid only during the call.
 pub const FileDialog = struct {
@@ -367,6 +378,10 @@ pub const Platform = struct {
         /// when another app has the shortcut.
         hotkeyAdd: ?*const fn (ptr: *anyopaque, w: *Window, mods: event.Mods, keysym: u32) HotkeyId = null,
         hotkeyRemove: ?*const fn (ptr: *anyopaque, id: HotkeyId) void = null,
+        /// Sets the kinds of data that `w` accepts from the drops of other
+        /// apps (ztk#62). No kind stops the drops. The drags come as `drop`
+        /// events.
+        dropTypes: ?*const fn (ptr: *anyopaque, w: *Window, types: DropTypes) void = null,
     };
 
     pub fn hasRecent(p: Platform) bool {
@@ -436,6 +451,12 @@ pub const Platform = struct {
     pub fn textSystem(p: Platform) ?@import("../text/system.zig").System {
         const f = p.vtable.textSystem orelse return null;
         return f(p.ptr);
+    }
+    pub fn hasDrops(p: Platform) bool {
+        return p.vtable.dropTypes != null;
+    }
+    pub fn dropTypes(p: Platform, w: *Window, types: DropTypes) void {
+        if (p.vtable.dropTypes) |f| f(p.ptr, w, types);
     }
     pub fn setMenuHandler(p: Platform, h: MenuHandler) void {
         if (p.vtable.setMenuHandler) |f| f(p.ptr, h);

@@ -646,6 +646,39 @@ test "windows: the taskbar state of a hidden window goes to ITaskbarList3" {
     p.attention(o.w, true);
 }
 
+const FakeData = extern struct {
+    vtbl: *const [12]*const anyopaque,
+};
+
+extern "kernel32" fn GlobalAlloc(flags: u32, size: usize) callconv(.winapi) ?*anyopaque;
+extern "kernel32" fn GlobalLock(h: *anyopaque) callconv(.winapi) ?*anyopaque;
+extern "kernel32" fn GlobalUnlock(h: *anyopaque) callconv(.winapi) i32;
+
+fn fakeStub(_: *FakeData) callconv(.winapi) i32 {
+    return @bitCast(@as(u32, 0x80004001)); // E_NOTIMPL
+}
+fn fakeRef(_: *FakeData) callconv(.winapi) u32 {
+    return 1;
+}
+fn fakeQuery(_: *FakeData, f: *const @import("../platform/windrop.zig").FORMATETC) callconv(.winapi) i32 {
+    return if (f.cfFormat == @import("../platform/windrop.zig").CF_HDROP) 0 else 1;
+}
+/// A DROPFILES of two wide paths, in a new HGLOBAL for each call.
+fn fakeGet(_: *FakeData, f: *const @import("../platform/windrop.zig").FORMATETC, m: *@import("../platform/windrop.zig").STGMEDIUM) callconv(.winapi) i32 {
+    if (f.cfFormat != @import("../platform/windrop.zig").CF_HDROP) return @bitCast(@as(u32, 0x80040064)); // DV_E_FORMATETC
+    const names = std.unicode.utf8ToUtf16LeStringLiteral("C:\\a\\one.txt\x00C:\\two.png\x00\x00");
+    const size = 20 + names.len * 2;
+    const g = GlobalAlloc(0x2, size) orelse return -1;
+    const p: [*]u8 = @ptrCast(GlobalLock(g).?);
+    @memset(p[0..20], 0);
+    std.mem.writeInt(u32, p[0..4], 20, .little);
+    std.mem.writeInt(u32, p[16..20], 1, .little);
+    @memcpy(p[20..size], std.mem.sliceAsBytes(names));
+    _ = GlobalUnlock(g);
+    m.* = .{ .tymed = 1, .data = g };
+    return 0;
+}
+
 test "windows: a global shortcut registers and its WM_HOTKEY is a hotkey event" {
     if (!enabled()) return;
     var events: std.ArrayListUnmanaged(Event) = .empty;
@@ -664,4 +697,38 @@ test "windows: a global shortcut registers and its WM_HOTKEY is a hotkey event" 
     try t.expectEqual(id, ev.hotkey.id);
     p.hotkeyRemove(id);
     try t.expectEqual(@as(usize, 0), o.b.hotkeys.items.len);
+}
+
+test "windows: an OLE drop of files on a window is a drop event" {
+    if (!enabled()) return;
+    var events: std.ArrayListUnmanaged(Event) = .empty;
+    defer events.deinit(t.allocator);
+    const o = try openHidden(&events);
+    defer o.b.deinit();
+    const p = o.b.platform();
+    p.dropTypes(o.w, .{ .files = true });
+    const target = o.b.recOf(o.w).?.drop orelse return error.NoTarget;
+    const stub: *const anyopaque = @ptrCast(&fakeStub);
+    const table = [12]*const anyopaque{ stub, @ptrCast(&fakeRef), @ptrCast(&fakeRef), @ptrCast(&fakeGet), stub, @ptrCast(&fakeQuery), stub, stub, stub, stub, stub, stub };
+    var data: FakeData = .{ .vtbl = &table };
+    var effect: u32 = 7;
+    _ = target.vtbl.DragEnter(target, &data, 0, .{ .x = 0, .y = 0 }, &effect);
+    try t.expectEqual(@as(u32, 1), effect);
+    effect = 7;
+    _ = target.vtbl.Drop(target, &data, 0, .{ .x = 0, .y = 0 }, &effect);
+    try pollAll(o.b, &events);
+    var got: ?Event = null;
+    for (events.items) |e| if (e == .drop and e.drop.phase == .drop) {
+        got = e;
+    };
+    const d = (got orelse return error.NoDrop).drop;
+    try t.expectEqualStrings("C:/a/one.txt\x00C:/two.png", d.files);
+    // A window that accepts only text refuses the files.
+    p.dropTypes(o.w, .{ .text = true });
+    effect = 7;
+    _ = target.vtbl.DragEnter(target, &data, 0, .{ .x = 0, .y = 0 }, &effect);
+    try t.expectEqual(@as(u32, 0), effect);
+    _ = target.vtbl.DragLeave(target);
+    p.dropTypes(o.w, .{});
+    try t.expect(o.b.recOf(o.w).?.drop == null);
 }
