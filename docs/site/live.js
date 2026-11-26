@@ -30,7 +30,6 @@
 const base = new URL("../play/", import.meta.url);
 const params = new URLSearchParams(location.search);
 const W = 360, H = 240;
-const PRE = `wm geometry . ${W}x${H}\n`;
 let lib = null;
 // The landing page has its own live cards, so the compiled module is
 // on globalThis, for one compile on each page.
@@ -175,6 +174,9 @@ const NAMES = { webgpu: "WebGPU", webgl2: "WebGL 2", cpu: "CPU" };
 
 class Demo {
   constructor(fig) {
+    // The size of the window in logical pixels: data-size of a wide
+    // snippet, or 360 by 240.
+    [this.W, this.H] = (fig.dataset.size || `${W}x${H}`).split("x").map(Number);
     this.fig = fig;
     // The replay player (assets/replay.js) drives the snippet through this.
     fig.ztkDemo = this;
@@ -334,15 +336,15 @@ class Demo {
     frame.className = "ld-frame";
     const canvas = document.createElement("canvas");
     canvas.setAttribute("aria-label", `The demo ${this.name}, running live`);
-    const shown = view.querySelector(".ld-frame").getBoundingClientRect().width || W;
+    const shown = view.querySelector(".ld-frame").getBoundingClientRect().width || this.W;
     canvas.style.width = shown + "px";
-    canvas.style.height = (shown * H) / W + "px";
+    canvas.style.height = (shown * this.H) / this.W + "px";
     frame.appendChild(canvas);
     frame.style.cssText = "position:absolute;visibility:hidden";
     view.appendChild(frame);
     let h;
     try {
-      const opts = { module, width: W, height: H, loop: false, renderer: this.renderer };
+      const opts = { module, width: this.W, height: this.H, loop: false, renderer: this.renderer };
       if (params.get("livescale")) opts.scale = Number(params.get("livescale"));
       h = await m.start(canvas, opts);
     } catch (e) {
@@ -350,7 +352,7 @@ class Demo {
       return this.fail(e.message);
     }
     if (seq !== this.seq) { h.destroy(); frame.remove(); return; }
-    const pre = h.eval(PRE + (this.theme === "classic" ? "ztk::style theme classic\n" : ""));
+    const pre = h.eval(`wm geometry . ${this.W}x${this.H}\n` + (this.theme === "classic" ? "ztk::style theme classic\n" : ""));
     if (!pre.ok) {
       h.destroy();
       frame.remove();
@@ -414,7 +416,7 @@ class Demo {
     this.layer.classList.toggle("pick", Boolean(this.inspecting));
     this.layer.replaceChildren();
     if (!on) return;
-    const k = this.h.canvas.getBoundingClientRect().width / W;
+    const k = this.h.canvas.getBoundingClientRect().width / this.W;
     const add = (b, cls, color) => {
       const d = document.createElement("div");
       d.className = cls;
@@ -439,7 +441,7 @@ class Demo {
   hover(e) {
     if (!this.inspecting) return;
     const r = this.layer.getBoundingClientRect();
-    const k = r.width / W;
+    const k = r.width / this.W;
     const x = (e.clientX - r.left) / k, y = (e.clientY - r.top) / k;
     let best = null;
     for (const b of this.boxes()) {
@@ -528,7 +530,7 @@ class Demo {
     const p = this.panel;
     if (!p || p.hidden || !this.picked || !this.layer) return;
     const lr = this.layer.getBoundingClientRect();
-    const k = lr.width / W;
+    const k = lr.width / this.W;
     const b = this.boxes().find((x) => x.kind === "w" && x.path === this.picked);
     const w = b ? { left: lr.left + b.x * k, top: lr.top + b.y * k, right: lr.left + (b.x + b.w) * k, bottom: lr.top + (b.y + b.h) * k } : lr;
     const vw = document.documentElement.clientWidth, vh = innerHeight, m = 8;
