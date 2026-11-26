@@ -11,6 +11,8 @@ Zig standard library     MIT            licenses/ztcl/zig-std-MIT.txt
 musl libc (math)         MIT            licenses/ztcl/musl-MIT.txt
 Go (parseFloat, pow)     BSD-3-Clause   licenses/ztcl/go-BSD-3-Clause.txt
 ARM optimized-routines   MIT or Apache  licenses/ztcl/arm-optimized-routines.txt
+libghostty-vt (Ghostty)  MIT            licenses/ztcl/ghostty-MIT.txt
+uucode (Unicode tables)  MIT            licenses/ztcl/uucode-MIT.txt
 Inter font               OFL-1.1        licenses/LICENSE-Inter.txt
 
 ztcl follows the language rules and the command behavior of Tcl, and ztk

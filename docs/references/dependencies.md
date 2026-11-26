@@ -7,6 +7,7 @@ The rule of the plan: ztk needs only the interfaces of the platform, ztcl, and t
 | Library | Use | License | Stage |
 |---|---|---|---|
 | ztcl | The Tcl interpreter | BSD-2-Clause | 1 |
+| libghostty-vt 1.0.2, through ztcl | The terminal state of `ztk::terminal` (`ztcl.vt`). The build of ztcl compiles it from source with `-Dsimd=false`, so it has no C code and no libc. The user approved it on 2026-11-26. | MIT | 2 |
 | Zig standard library | All | MIT | 1 |
 | libwayland-client | The Wayland protocol, only in the Wayland backend | MIT | 1 |
 | libxkbcommon | Key maps, only in the Wayland and X11 backends | MIT | 1 |

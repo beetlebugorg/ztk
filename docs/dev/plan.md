@@ -433,7 +433,7 @@ The rule: ztk needs only the interfaces of the platform, ztcl, and the Zig stand
 
 | Platform | What ztk links or opens | Why |
 |---|---|---|
-| All | ztcl, the Zig standard library | The interpreter |
+| All | ztcl, the Zig standard library, and libghostty-vt through ztcl | The interpreter, and the terminal state of `ztk::terminal`. The user approved libghostty-vt on 2026-11-26. |
 | Linux, direct, CPU | Nothing. One static program with no libc. | Kernel system calls only |
 | Linux, direct, GPU | libc, and the Vulkan loader at run time | The loader is a shared library |
 | Linux, Wayland | libc, `libwayland-client`, `libxkbcommon`, and the Vulkan loader at run time | Vulkan needs the Wayland client library for its surface. The compositor sends the key map in the XKB format. |
