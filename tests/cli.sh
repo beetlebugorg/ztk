@@ -44,4 +44,10 @@ out="$($cap "$ztk" --headless --allow nonsense "$work/f.tcl" 2>&1)"
 check "an unknown capability" "$out" 'ztk: unknown capability in "nonsense"'
 printf 'puts [llength [info commands exec]]\n' >"$work/exec.tcl"
 check "exec needs --allow" "$($cap "$ztk" --headless "$work/exec.tcl" 2>/dev/null)" "0"
+printf 'puts done\n' >"$work/part.tcl"
+printf 'puts [list [info commands file] [info commands open]]; source {%s/part.tcl}\n' "$work" >"$work/src.tcl"
+check "file, open, and source in --headless (#143)" "$($cap "$ztk" --headless "$work/src.tcl" 2>/dev/null)" "$(printf 'file open\ndone')"
+printf 'ttk::progressbar .busy -mode indeterminate\npack .busy\n.busy start\n' >"$work/busy.tcl"
+perl -e 'alarm 20; exec @ARGV' $cap "$ztk" --headless --exit-after-frames 2 "$work/busy.tcl" >/dev/null 2>&1
+check "an indeterminate progressbar ends at --exit-after-frames (#142)" "$?" "0"
 exit "$fail"
