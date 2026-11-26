@@ -18,6 +18,7 @@ set games {
     puffshot   "PUFFSHOT"    menu
     lamplighter "LAMPLIGHTER" ttk::notebook
     twinlanes  "TWIN LANES"  panedwindow
+    pixelpad   "PIXEL PAD"   text
 }
 . configure -background #1d1a33
 canvas .sky -width 360 -height 32 -background #1d1a33 -highlightthickness 0
@@ -57,7 +58,7 @@ proc pick {} {
 }
 proc move {d} {
     set i [lindex [.games curselection] 0]
-    set i [expr {max(0, min(7, $i + $d))}]
+    set i [expr {max(0, min([.games size] - 1, $i + $d))}]
     .games selection clear 0 end
     .games selection set $i
     .games activate $i
