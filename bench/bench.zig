@@ -307,6 +307,29 @@ pub fn main(init: std.process.Init) !void {
         report("scroll-wheel", buf[0..runs]);
     }
 
+    // menu-open: a press posts a menu of 20 entries beside 1,000 widgets, with
+    // transitions on, so the frame has the open move. The time is the post and its frame.
+    {
+        var mw: World = undefined;
+        try mw.it.init(gpa);
+        mw.head = try ztk.headless.Headless.init(gpa);
+        mw.app = try ztk.App.init(gpa, &mw.it, .{ .platform = mw.head.platform(), .io = io, .animations = true });
+        defer mw.deinit();
+        mw.head.skip_draw = true;
+        mw.eval(thousand);
+        mw.eval("menu .m -tearoff 0; for {set i 0} {$i < 20} {incr i} {.m add command -label \"Entry $i\" -accelerator Ctrl+$i}; update");
+        const runs = 200;
+        for (buf[0..runs]) |*slot| {
+            mw.head.advance(16);
+            const t0 = nowNs();
+            mw.eval("tk_popup .m 40 40; update");
+            slot.* = nowNs() - t0;
+            mw.head.advance(16);
+            mw.eval(".m unpost; update");
+        }
+        report("menu-open", buf[0..runs]);
+    }
+
     // listbox-scroll-10000: fine wheel steps scroll a listbox of 10,000 rows, one step
     // for each frame, with transitions on, and a press selects a row each 20 frames.
     {
