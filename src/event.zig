@@ -40,6 +40,17 @@ pub const MenuAction = enum {
 };
 
 /// The commands of the application menu of the system (macOS) that go to the script.
+/// The kinds of the `tray` event.
+pub const TrayAction = enum {
+    /// A click of the primary button. On macOS only for a tray with no menu.
+    click,
+    /// A double click. On macOS only for a tray with no menu.
+    double,
+    /// The request for the menu: the secondary button on Windows. The
+    /// backend shows the menu of a tray that has one.
+    menu,
+};
+
 pub const AppCommand = enum {
     /// About: the core calls `tkAboutDialog` when the script has it.
     about,
@@ -86,6 +97,8 @@ pub const Event = union(enum) {
     /// the menu bar or of the post. `entry` is an index into the entries of
     /// the last `menuSet` of the menu, or -1.
     menu: struct { window: *Window, menu: u32, entry: i32, action: MenuAction },
+    /// An action of the user on a tray icon. `window` is the window of `trayCreate`.
+    tray: struct { window: *Window, id: u32, action: TrayAction },
     /// A command of the application menu. It can come with no window open.
     app_command: struct { window: ?*Window = null, command: AppCommand },
 

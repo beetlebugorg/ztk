@@ -561,3 +561,42 @@ test "windows: tk_popup runs the menu loop of Windows and returns" {
     _ = try it.eval("tk_popup .pop 20 20; update");
     try t.expect(host.nowUs() - t0 < 2_000_000);
 }
+
+test "windows: a tray icon in the notification area, its actions, and its menu" {
+    if (!enabled()) return;
+    // A tray icon shows in the notification area of the desktop, so the
+    // test has its own variable, which CI sets (AGENTS.md, rule 12).
+    if (!(t.environ.contains(t.allocator, "ZTK_TEST_TRAY") catch false)) {
+        std.debug.print("SKIP: set ZTK_TEST_TRAY=1 to run the tray test\n", .{});
+        return;
+    }
+    var events: std.ArrayListUnmanaged(Event) = .empty;
+    defer events.deinit(t.allocator);
+    const o = try openHidden(&events);
+    defer o.b.deinit();
+    const p = o.b.platform();
+    var px: [16 * 16 * 4]u8 = @splat(0xC0);
+    const icon: plat.TrayIcon = .{ .width = 16, .height = 16, .pixels = &px };
+    const id = p.trayCreate(o.w, icon, false, "ztk test");
+    if (id == 0) {
+        std.debug.print("SKIP: the shell of this session has no notification area\n", .{});
+        return;
+    }
+    defer p.trayDrop(id);
+    p.menuSet(&.{ .id = 7, .entries = &.{ .{ .label = "Show" }, .{ .label = "Quit" } } });
+    p.traySet(id, icon, false, "ztk test", 7);
+    try t.expectEqual(@as(?plat.MenuId, 7), o.b.trayMenu(id));
+    const lp_click: w32.LPARAM = @intCast((id << 16) | w32.NIN_SELECT);
+    _ = w32.SendMessageW(o.hwnd, @import("../platform/wintray.zig").callback_msg, 0, lp_click);
+    try pollAll(o.b, &events);
+    const ev = has(events.items, .tray) orelse return error.NoTray;
+    try t.expectEqual(id, ev.tray.id);
+    try t.expect(ev.tray.action == .click);
+    // The menu shows in the menu loop, which a timer ends.
+    const timer = SetTimer(null, 0, 100, endMenu);
+    defer _ = KillTimer(null, timer);
+    const lp_menu: w32.LPARAM = @intCast((id << 16) | w32.WM_CONTEXTMENU);
+    _ = w32.SendMessageW(o.hwnd, @import("../platform/wintray.zig").callback_msg, (20 << 16) | 20, lp_menu);
+    try pollAll(o.b, &events);
+    try t.expect(has(events.items, .tray).?.tray.action == .menu);
+}

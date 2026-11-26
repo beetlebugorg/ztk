@@ -317,3 +317,48 @@ pub extern "user32" fn DrawMenuBar(hwnd: HWND) callconv(.winapi) BOOL;
 pub extern "user32" fn TrackPopupMenuEx(m: HMENU, flags: UINT, x: c_int, y: c_int, hwnd: HWND, params: ?*anyopaque) callconv(.winapi) BOOL;
 pub extern "user32" fn EndMenu() callconv(.winapi) BOOL;
 pub extern "user32" fn ClientToScreen(hwnd: HWND, p: *POINT) callconv(.winapi) BOOL;
+// Tray icons and icons from pixels.
+pub const NOTIFYICONDATAW = extern struct {
+    cbSize: DWORD = @sizeOf(NOTIFYICONDATAW),
+    hWnd: ?HWND = null,
+    uID: UINT = 0,
+    uFlags: UINT = 0,
+    uCallbackMessage: UINT = 0,
+    hIcon: ?HICON = null,
+    szTip: [128]u16 = @splat(0),
+    dwState: DWORD = 0,
+    dwStateMask: DWORD = 0,
+    szInfo: [256]u16 = @splat(0),
+    uVersion: UINT = 0,
+    szInfoTitle: [64]u16 = @splat(0),
+    dwInfoFlags: DWORD = 0,
+    guidItem: [16]u8 align(4) = @splat(0),
+    hBalloonIcon: ?HICON = null,
+};
+pub const ICONINFO = extern struct { fIcon: BOOL = 1, xHotspot: DWORD = 0, yHotspot: DWORD = 0, hbmMask: ?*anyopaque = null, hbmColor: ?*anyopaque = null };
+pub const NIM_ADD: DWORD = 0;
+pub const NIM_MODIFY: DWORD = 1;
+pub const NIM_DELETE: DWORD = 2;
+pub const NIM_SETVERSION: DWORD = 4;
+pub const NIF_MESSAGE: UINT = 0x1;
+pub const NIF_ICON: UINT = 0x2;
+pub const NIF_TIP: UINT = 0x4;
+pub const NIF_SHOWTIP: UINT = 0x80;
+pub const NOTIFYICON_VERSION_4: UINT = 4;
+pub const NIN_SELECT: UINT = 0x400;
+pub const NIN_KEYSELECT: UINT = 0x401;
+pub const WM_NULL: UINT = 0x0000;
+pub const WM_CONTEXTMENU: UINT = 0x007B;
+pub const WM_LBUTTONDBLCLK: UINT = 0x0203;
+pub const WM_APP: UINT = 0x8000;
+pub const IDI_APPLICATION: usize = 32512;
+
+pub extern "shell32" fn Shell_NotifyIconW(message: DWORD, data: *NOTIFYICONDATAW) callconv(.winapi) BOOL;
+pub extern "user32" fn CreateIconIndirect(info: *const ICONINFO) callconv(.winapi) ?HICON;
+pub extern "user32" fn DestroyIcon(icon: HICON) callconv(.winapi) BOOL;
+pub extern "user32" fn LoadIconW(inst: ?HINSTANCE, name: usize) callconv(.winapi) ?HICON;
+pub extern "user32" fn SetForegroundWindow(hwnd: HWND) callconv(.winapi) BOOL;
+pub extern "user32" fn RegisterWindowMessageW(name: LPCWSTR) callconv(.winapi) UINT;
+pub extern "gdi32" fn CreateDIBSection(dc: ?HDC, info: *const BITMAPINFOHEADER, usage: UINT, bits: *?*anyopaque, section: ?HANDLE, offset: DWORD) callconv(.winapi) ?*anyopaque;
+pub extern "gdi32" fn CreateBitmap(w: c_int, h: c_int, planes: UINT, bits: UINT, data: ?*const anyopaque) callconv(.winapi) ?*anyopaque;
+pub extern "gdi32" fn DeleteObject(obj: *anyopaque) callconv(.winapi) BOOL;
