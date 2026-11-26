@@ -25,12 +25,12 @@ pack .c -fill both -expand 1
 
 ## Showcase: the spreadsheet
 
-![A spreadsheet with a formula bar, number formats, and a grid of costs by quarter with totals and error cells](../site/shots/spreadsheet-light.png)
+![A spreadsheet with a menu bar, a formula bar, number formats, and a grid of costs by quarter with totals and error cells](../site/shots/spreadsheet-light.png)
 
 [`examples/spreadsheet.tcl`](../../examples/spreadsheet.tcl) has 10,000 rows on one canvas. It makes items only for the cells in view. Formulas such as `=sum(B2:B7)` are Tcl expressions, with recalculation and cycle errors. A scroll frame uses 0.75 ms of CPU time at the median.
 
 ## Showcase: the vector tool
 
-![A drawing tool with tools, a page with a sun, mountains, and a tilted square, a properties panel, and a console](../site/shots/vector-light.png)
+![A drawing tool with a menu bar, tools, a page with a sun, mountains, and a tilted square, a properties panel, and a console](../site/shots/vector-light.png)
 
 [`examples/vector.tcl`](../../examples/vector.tcl) draws rectangles, ellipses, lines, polygons, paths, and text, with handles that move, resize, and rotate. It has undo, groups, the z-order, zoom, and SVG export. Its console runs Tcl in a child interpreter under `ztk::limit`, a step and memory limit for one script.

@@ -320,6 +320,24 @@ button .tools.load -text "Load CSV" -command ss::load
 button .tools.save -text "Save CSV" -command ss::save
 pack .tools.load .tools.save -side right -padx {6 0}
 
+# The menu bar, and the context menu of the grid.
+menu .menubar -tearoff 0
+. configure -menu .menubar
+foreach {m t} {file File edit Edit format Format} {
+    menu .menubar.$m -tearoff 0
+    .menubar add cascade -label $t -menu .menubar.$m -underline 0
+}
+.menubar.file add command -label "Load CSV..." -command ss::load
+.menubar.file add command -label "Save CSV..." -command ss::save
+.menubar.edit add command -label Undo -accelerator Ctrl+Z -command ss::undo
+.menubar.edit add separator
+.menubar.edit add command -label Copy -accelerator Ctrl+C -command ss::copy
+.menubar.edit add command -label Paste -accelerator Ctrl+V -command ss::paste
+foreach {v t} {general General fixed 0.00 thousands 1,000 percent %} {
+    .menubar.format add radiobutton -label $t -variable ss::fmtsel -value $v -command ss::setfmt
+}
+bind .c <Button-3> {tk_popup .menubar.edit %X %Y}
+
 label .status -textvariable ss::status -anchor w -padx 10 -pady 4
 pack .status -side bottom -fill x
 cls .status muted

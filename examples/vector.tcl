@@ -861,6 +861,28 @@ bind .c <KeyRelease-space> {set vec::space 0}
 bind .c <Return> {if {$vec::mode eq "poly"} vec::finish}
 bind .c <Escape> vec::cancel
 bind .c <Delete> {if {[llength $vec::sel]} {vec::checkpoint; vec::remove $vec::sel}}
+
+# The menu bar, and the context menu of the page.
+menu .menubar -tearoff 0
+. configure -menu .menubar
+foreach {m t} {file File edit Edit arrange Arrange} {
+    menu .menubar.$m -tearoff 0
+    .menubar add cascade -label $t -menu .menubar.$m -underline 0
+}
+.menubar.file add command -label Save -command vec::save
+.menubar.file add command -label Load -command vec::load
+.menubar.file add separator
+.menubar.file add command -label "Export SVG" -command vec::exportsvg
+.menubar.edit add command -label Undo -command vec::undo
+.menubar.edit add command -label Redo -command vec::redo
+.menubar.edit add separator
+.menubar.edit add command -label Delete -accelerator Delete -command {if {[llength $vec::sel]} {vec::checkpoint; vec::remove $vec::sel}}
+.menubar.arrange add command -label Raise -command {vec::zorder raise}
+.menubar.arrange add command -label Lower -command {vec::zorder lower}
+.menubar.arrange add separator
+.menubar.arrange add command -label Group -command vec::group
+.menubar.arrange add command -label Ungroup -command vec::ungroup
+bind .c <Button-3> {tk_popup .menubar.arrange %X %Y}
 bind .c <BackSpace> {if {[llength $vec::sel]} {vec::checkpoint; vec::remove $vec::sel}}
 bind .c <Control-z> vec::undo
 bind .c <Control-y> vec::redo
