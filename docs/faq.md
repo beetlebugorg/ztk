@@ -14,7 +14,7 @@ Yes. `ztk::style theme classic` or `ttk::style theme use classic` gives the reli
 
 ## Which platforms does it run on?
 
-Linux with Wayland, Windows with Win32 and Direct3D 12 ([On Windows](windows.md)), the browser, and a headless backend on Linux, macOS, and Windows. Native windows on macOS (Metal) are planned.
+Linux with Wayland, Windows with Win32 and Direct3D 12 ([On Windows](windows.md)), the browser, and a headless backend on Linux, macOS, and Windows. macOS has AppKit and Metal ([On macOS](macos.md)).
 
 ## Why does my script fail with `invalid command name "open"`?
 

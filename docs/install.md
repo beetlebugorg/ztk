@@ -23,7 +23,7 @@ zig-out/bin/ztk examples/gallery.tcl  # opens a window in a Wayland session
 
 `zig build test` runs the tests. `zig build wasm` makes the web build in `zig-out/web`.
 
-On Windows, the build has the native Win32 backend with Direct3D 12: [On Windows](windows.md) has the steps and the limits. On macOS, the build has the headless backend only. It draws to an image file.
+On Windows, the build has the native Win32 backend with Direct3D 12: [On Windows](windows.md) has the steps and the limits. On macOS, the build has the native AppKit backend with Metal: [On macOS](macos.md) has the steps and how to make an app.
 
 ## Release binaries
 
