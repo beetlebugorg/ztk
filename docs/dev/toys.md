@@ -20,18 +20,23 @@ This file is the state of the toys and the rules for the next ones. It is not on
 | Puffshot | menus | menu bar and `tk_popup` run a shooter | Yes. Next: a Sound entry and a Difficulty cascade. |
 | Lamplighter | panes | `ttk::notebook` tabs are scenes | Mostly. Next: a timer and a way to lose. |
 | Twin Lanes | panes | `panedwindow` sash sets the road widths | Yes |
-| Skate Pond | listbox | `listbox` picks the level | No. Next: an inventory puzzle; `-selectmode multiple` combines items. |
+| Skate Pond | listbox | `listbox` with `-selectmode multiple` is the bag of an ice puzzle: rock, plank, and rope with a plank as a bridge; 5 ponds in 90 s | Yes (#203) |
+
+## The Toys page (user, 2026-11-26)
+
+The Toys page is one handheld and the code (#204): a game list in a listbox, a pick runs the game and puts its code in the editor, Menu or Escape goes back, and `?game=SLUG` keeps the game. A new toy needs a heading `### Play: NAME` before its marker on its widget page, and a row in the list of `docs/toys.md` (its name without `toy-`, its title, and its widget). The list has 8 rows that fit in 240 pixels: a ninth game needs a smaller font or a scroll.
 
 ## Next, in order
 
 1. Pixel Pad on the text page: a game whose rules are Tcl in a `text` widget. The draft below runs: `<<Modified>>` makes the proc `frame` again, and an error tags its line `err`. It needs a goal: for example, keep a falling ball out of a hole for 60 seconds by editing the rules.
-2. Skate Pond as an inventory puzzle.
-3. treeview (tree page): a pretend disk; open folders, find the files, follow the clues.
-4. buttons (basic page): a rhythm or reaction game with the buttons as pads, with the active state as feedback.
-5. spinbox or combobox (entry page): dial in a code to open a safe.
-6. canvas page: the playfield itself.
+2. treeview (tree page): a pretend disk; open folders, find the files, follow the clues.
+3. buttons (basic page): a rhythm or reaction game with the buttons as pads, with the active state as feedback.
+4. spinbox or combobox (entry page): dial in a code to open a safe.
+5. canvas page: the playfield itself.
 
-Each toy is one PR: write the code, run it in `ztk --headless`, write the shots for its snippet (the awk of `tools/shots.sh` for one name), run `tests/docs-live.sh widgets/PAGE`, check it in a headless Chromium, add its row to docs/toys.md, merge, and check the deployed page.
+6. Puffshot: a Sound entry and a Difficulty cascade. Lamplighter: a timer and a way to lose. Twin Lanes: check the rules again.
+
+Each toy is one PR: write the code, run it in `ztk --headless`, check that each level can be won (a breadth-first search, as for Skate Pond), write the shots for its snippet (the awk of `tools/shots.sh` for one name), run `tests/docs-live.sh widgets/PAGE`, check it in a headless Chromium, add its row to the game list of docs/toys.md, merge, and check the deployed page. Use a git worktree for each branch, so that a test run keeps its files.
 
 ## Draft: Pixel Pad
 
