@@ -13,6 +13,14 @@
 //! replies) go to the PTY, or to the script of `-inputcommand` when the
 //! widget has no program.
 //!
+//! With `-shell 1`, the widget runs the shell of the `ztcl` program in
+//! its own interpreter, with no program and no PTY: the keys go to the
+//! line editor of `ztcl.shell`, and the output of the editor, of `puts`,
+//! and of the results goes to the screen. The shell is in a box of its
+//! own on the heap. A command of the shell can destroy the widget, so a
+//! teardown during a key marks the box, and the key handler frees it
+//! after the shell returns.
+//!
 //! The paint draws each row in two passes. The first pass merges the
 //! cells with one background into one box. The second pass shapes each
 //! run of cells with one foreground and one font, and then puts glyph k
@@ -79,6 +87,7 @@ pub const specs = [_]Spec{
     .{ .name = "-height", .db_name = "height", .db_class = "Height", .type = .int, .default = "24" },
     .{ .name = "-inputcommand", .db_name = "inputCommand", .db_class = "Command", .type = .script, .allow_empty = true },
     .{ .name = "-relief", .db_name = "relief", .db_class = "Relief", .type = .relief, .default = "flat", .from_style = true },
+    .{ .name = "-shell", .db_name = "shell", .db_class = "Shell", .type = .boolean, .default = "0" },
     .{ .name = "-scrollback", .db_name = "scrollback", .db_class = "Scrollback", .type = .int, .default = "10000" },
     .{ .name = "-takefocus", .db_name = "takeFocus", .db_class = "TakeFocus", .type = .string, .default = "1", .allow_empty = true },
     .{ .name = "-width", .db_name = "width", .db_class = "Width", .type = .int, .default = "80" },
@@ -142,6 +151,18 @@ const Data = struct {
     sel_anim: paint.PartAnim = .{},
     /// True after the create command ran `created`.
     created: bool = false,
+    /// The shell of `-shell`, or null.
+    shell: ?*ShellBox = null,
+    /// True when the shell needs the size of the screen.
+    resize_shell: bool = false,
+};
+
+const ShellBox = struct {
+    sh: ztcl.shell.Shell,
+    /// The widget, or null after its teardown.
+    w: ?*Widget,
+    /// True while a key runs in the shell.
+    busy: bool = false,
 };
 
 fn data(w: *const Widget) *Data {
@@ -179,6 +200,77 @@ fn teardown(w: *Widget) void {
     if (d.timer) |t| _ = w.app.loop.cancel(t);
     d.timer = null;
     closePty(w);
+    stopShell(w);
+}
+
+fn optBool(w: *const Widget, comptime name: []const u8) bool {
+    const v = options.get(w, name).value;
+    return switch (v) {
+        .int => |n| n != 0,
+        .boolean => |b| b,
+        else => false,
+    };
+}
+
+// The shell of `-shell`.
+
+fn shellOut(ctx: *anyopaque, bytes: []const u8) void {
+    const box: *ShellBox = @ptrCast(@alignCast(ctx));
+    const w = box.w orelse return;
+    data(w).screen.write(bytes);
+}
+
+fn startShell(w: *Widget) ztcl.Error!void {
+    const d = data(w);
+    if (d.shell != null) return;
+    if (d.chan.len > 0) return w.app.it.fail("ztk::terminal: -shell and -command cannot run together", .{});
+    const gpa = w.app.gpa;
+    const box = gpa.create(ShellBox) catch return error.OutOfMemory;
+    box.* = .{ .w = w, .sh = ztcl.shell.Shell.init(gpa, w.app.it, .{ .io = std.Io.failing, .puts_to_term = true }) };
+    box.sh.term.out = .{ .ctx = box, .write = shellOut };
+    box.sh.term.cols = d.screen.cols;
+    box.sh.term.rows = d.screen.rows;
+    d.shell = box;
+    box.sh.begin() catch return error.OutOfMemory;
+    shellDrawn(w);
+}
+
+fn stopShell(w: *Widget) void {
+    const d = data(w);
+    const box = d.shell orelse return;
+    d.shell = null;
+    box.w = null;
+    if (!box.busy) freeShell(w.app.gpa, box);
+}
+
+fn freeShell(gpa: std.mem.Allocator, box: *ShellBox) void {
+    box.sh.deinit();
+    gpa.destroy(box);
+}
+
+/// Drops the replies of the screen, which the shell does not read, and
+/// draws again.
+fn shellDrawn(w: *Widget) void {
+    data(w).screen.reply.clearRetainingCapacity();
+    w.invalidate(.{ .style = false, .measure = false, .layout = false });
+}
+
+/// Gives key bytes to the shell. Ctrl-D on an empty line starts a new
+/// prompt. The editor key gives the line back with no change, because
+/// the widget has no editor.
+fn feedShell(w: *Widget, box: *ShellBox, bytes: []const u8) void {
+    const gpa = w.app.gpa;
+    box.busy = true;
+    const more = box.sh.feed(bytes, true) catch true;
+    box.busy = false;
+    if (box.w == null) return freeShell(gpa, box);
+    if (!more) box.sh.begin() catch {};
+    if (box.sh.editor_request) {
+        const t = gpa.dupe(u8, box.sh.ed.buf.items) catch return;
+        defer gpa.free(t);
+        box.sh.setLine(t) catch {};
+    }
+    shellDrawn(w);
 }
 
 fn created(w: *Widget) ztcl.Error!void {
@@ -189,6 +281,7 @@ fn created(w: *Widget) ztcl.Error!void {
     d.screen.scrollback_max = @intCast(std.math.clamp(optInt(w, "-scrollback", 10000), 0, 1_000_000));
     d.created = true;
     if (optText(w, "-command").len > 0) try spawn(w);
+    if (optBool(w, "-shell")) try startShell(w);
 }
 
 fn configured(w: *Widget, changed: []const usize) ztcl.Error!void {
@@ -200,6 +293,9 @@ fn configured(w: *Widget, changed: []const usize) ztcl.Error!void {
         if (std.mem.eql(u8, name, "-command") and d.created) {
             closePty(w);
             if (optText(w, "-command").len > 0) try spawn(w);
+        }
+        if (std.mem.eql(u8, name, "-shell") and d.created) {
+            if (optBool(w, "-shell")) try startShell(w) else stopShell(w);
         }
     }
     w.invalidate(.{});
@@ -273,6 +369,13 @@ fn tick(ctx: ?*anyopaque) void {
     if (!w.alive()) return;
     const d = data(w);
     d.timer = null;
+    if (d.resize_shell) {
+        d.resize_shell = false;
+        if (d.shell) |box| {
+            box.sh.resize(d.screen.cols, d.screen.rows) catch {};
+            shellDrawn(w);
+        }
+    }
     if (d.fd < 0) return;
     if (comptime !pty_ok) return;
     if (d.resize_pty) {
@@ -389,9 +492,10 @@ fn flushPending(w: *Widget) void {
     }
 }
 
-/// Sends bytes to the program, or to `-inputcommand`.
+/// Sends bytes to the shell, to the program, or to `-inputcommand`.
 fn send(w: *Widget, bytes: []const u8) void {
     const d = data(w);
+    if (d.shell) |box| return feedShell(w, box, bytes);
     if (d.fd >= 0) {
         d.pending.appendSlice(w.app.gpa, bytes) catch return;
         flushPending(w);
@@ -528,6 +632,10 @@ fn paintTerminal(w: *Widget, b: *scene.Builder) anyerror!void {
         d.view_off = @min(d.view_off, d.screen.scrollbackLen());
         if (d.fd >= 0) {
             d.resize_pty = true;
+            schedule(w, 0);
+        }
+        if (d.shell != null) {
+            d.resize_shell = true;
             schedule(w, 0);
         }
     }

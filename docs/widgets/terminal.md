@@ -19,6 +19,7 @@ focus .t
 
 - `-command list` runs a program on a pseudo-terminal with `ztcl::pty spawn`, for example `-command {/bin/sh -l}` or `-command {vim notes.txt}`. The interpreter needs the `exec` capability of ztcl. The `ztk` program does not turn it on, so in `ztk` and in the playground `-command` gives an error. An embedder that turns on `exec` and `channels` gets a full terminal. `-cwd dir` is the working folder of the program, and `-exitcommand script` runs with the status of `ztcl::pty status` when the program ends. On Windows the program runs on a pseudo console (ConPTY), for example `-command cmd.exe` or `-command {powershell.exe -NoLogo}`, and its output has the escape sequences of a VT terminal.
 - Without a program, `pathName write data` puts text and control sequences on the screen, and the keys and the replies of the terminal go to the script of `-inputcommand`, with the bytes as the last word.
+- `-shell 1` runs the interactive shell of the `ztcl` program in the interpreter of the widget, with no program and no PTY. It is the same line editor as in a terminal: Tab completes commands, subcommands, variables, and the file names when the interpreter has `file`. Up and Down go through the history, `shell mode vi` turns on vim keys, and the code has colors. The output of `puts` goes to the screen. The shell has the capabilities and the compute limit of the interpreter, so in `ztk` and in the playground it has no files, network, or clock. Ctrl-D on an empty line starts a new prompt. The editor key (Ctrl-X Ctrl-E) gives the line back with no change, because the widget has no editor. See [The shell in the widget](#the-shell-in-the-widget).
 - `-width` and `-height` are the size in cells. After the layout, the size of the grid follows the size of the widget, and the program gets the new size.
 - The terminal understands the sequences of xterm that shells and full-screen programs use: the cursor moves, the erase and insert functions, the scroll region, SGR with 16, 256, and 24-bit colors, bold, italic, underline, inverse, and strike, the alternate screen, the DEC line drawing set, wide characters, bracketed paste, the mouse reports (X10, normal, button, and any-motion, in the SGR form or the X10 form), the focus reports, the window title, and the replies to the status queries and the color queries.
 - The box drawing characters and the block elements are drawn as boxes, so their lines meet with each font.
@@ -28,3 +29,14 @@ focus .t
 - The part `::selection` accepts CSS rules. The class `Terminal` gets its colors from the theme.
 
 The terminal keeps no combining marks, and a resize cuts long lines and does not wrap them again. The plan of the terminal and the choice of a VT parser in Zig are in `docs/dev/terminal.md`.
+
+### The shell in the widget
+
+This snippet runs the shell of `ztcl` in the widget. Click the terminal, type `pu`, and press Tab.
+
+<!-- live -->
+```tcl
+ztk::terminal .t -shell 1 -width 60 -height 14
+pack .t -fill both -expand 1
+focus .t
+```
