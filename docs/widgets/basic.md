@@ -4,6 +4,9 @@
 
 ## frame, label, and button
 
+![A frame with the label Print farm and the buttons Start and Stop, with Stop disabled](../site/shots/widget-button-light.png)
+
+<!-- widget: button; shot: update -->
 ```tcl
 frame .card -padx 16 -pady 12
 label .card.title -text "Print farm"
@@ -20,6 +23,9 @@ pack .card.go .card.off -side left -padx 4 -pady 8
 
 ## labelframe and message
 
+![A labelframe with the title Notes around a message of three lines](../site/shots/widget-labelframe-light.png)
+
+<!-- widget: labelframe; shot: update -->
 ```tcl
 labelframe .notes -text "Notes" -padx 12 -pady 6
 message .notes.m -width 260 -text "A message breaks its text into lines. A labelframe puts a title above a group of widgets."
@@ -44,6 +50,9 @@ Each `toplevel` has its own window and render thread. `grab` is local: `-global`
 
 `ztk::tooltip path ?text?` shows a text when the pointer rests on a widget. The tooltip fades in and out, and its part `::tooltip` accepts CSS rules.
 
+![A window with one button, Save](../site/shots/widget-tooltip-light.png)
+
+<!-- widget: tooltip; shot: update -->
 ```tcl
 button .save -text "Save"
 pack .save -padx 20 -pady 20

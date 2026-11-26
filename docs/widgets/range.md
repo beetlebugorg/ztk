@@ -4,6 +4,9 @@
 
 ## scale
 
+![A horizontal scale at 40 with the ticks 0, 25, 50, 75, and 100](../site/shots/widget-scale-light.png)
+
+<!-- widget: scale; shot: update -->
 ```tcl
 set vol 40
 scale .vol -orient horizontal -from 0 -to 100 -variable vol -tickinterval 25 -length 260
@@ -15,6 +18,9 @@ pack .vol -fill x -padx 12 -pady 8
 
 ## scrollbar
 
+![An entry with a long line of text and a horizontal scrollbar under it](../site/shots/widget-scrollbar-light.png)
+
+<!-- widget: scrollbar; shot: update -->
 ```tcl
 entry .e -width 22 -xscrollcommand {.s set}
 scrollbar .s -orient horizontal -command {.e xview}

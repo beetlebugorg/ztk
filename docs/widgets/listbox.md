@@ -4,6 +4,9 @@
 
 ## listbox
 
+![A listbox with four file names](../site/shots/widget-listbox-light.png)
+
+<!-- widget: listbox; shot: update -->
 ```tcl
 listbox .files -height 6 -selectmode extended -yscrollcommand {.sb set} -emptytext "No files"
 scrollbar .sb -command {.files yview}

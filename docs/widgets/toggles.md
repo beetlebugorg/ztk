@@ -4,6 +4,9 @@
 
 ## checkbutton
 
+![The check button Sync files on, the check button Some of the folders, in the mixed state, and a Wi-Fi switch that is off](../site/shots/widget-checkbutton-light.png)
+
+<!-- widget: checkbutton; shot: update -->
 ```tcl
 set opts(sync) 1
 set opts(mixed) x
@@ -20,6 +23,9 @@ pack .sync .mixed .wifi -anchor w -padx 12 -pady 2
 
 ## radiobutton
 
+![Three radio buttons with Fine detail selected, and a segmented control of List, Grid, and Columns with List selected](../site/shots/widget-radiobutton-light.png)
+
+<!-- widget: radiobutton; shot: update -->
 ```tcl
 set quality high
 foreach {v t} {low Draft normal Normal high "Fine detail"} {
