@@ -233,6 +233,16 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - An item that opens or closes moves the rows below it in 200 ms, and its arrow turns. `bbox`, `identify`, and the other subcommands use the end state.
 - `zig build bench`, ReleaseFast, 2026-11-26, development machine: `treeview-10000-scroll` (10,000 rows in 100 open folders, wheel steps) has a median of 0.35 ms and a 99th percentile of 0.53 ms, and `treeview-open` (a folder of 99 rows opens and closes) has a median of 0.70 ms and a 99th percentile of 1.11 ms. The gate is 8 ms.
 
+## The dialogs (task 17)
+
+- The dialogs are Tcl procedures in `src/library/dialogs.tcl` on the widgets of ztk. A backend with native file dialogs keeps its `tk_getOpenFile`, `tk_getSaveFile`, and `tk_chooseDirectory`. A backend with `messageBox` in its interface shows its own message box, after `tk_messageBox` checks the options. The drawn file dialogs stay at `::ztk::dialog::FileDialog open|save|dir`.
+- The drawn file dialogs have the options and the messages of `wish` 8.6.16 on X11. They need the file capability and a root folder, and else give the message `the file dialogs need the file capability`. The list has the folders, with "/" after each name, then the files that match the filter. A double click opens a folder, and the up button goes to the parent folder. There is no list of recent folders, and no completion of a typed name.
+- `tk_chooseColor` has 24 swatches, sliders for red, green, and blue, and a hex field. It has no hue and saturation area.
+- A dialog fades in with the keyframes `dialog-in` of the part box of `Dialog`: the background fades, and the widgets in the dialog show at once. The dialog does not scale in.
+- `ztk::toast` slides with `after` steps of 16 ms on the UI thread, so a busy script stops the slide. `ztk::animate reduce 1` shows the end place at once.
+- `winfo rgb` is new in this task, and `raise` and `lower` of widgets do not exist yet.
+- `zig build bench`, ReleaseFast, 2026-11-26, development machine: `dialog-open` (a message box opens over the window, and each frame of its fade is measured) has a median of 0.02 ms and a 99th percentile of 0.75 ms. The gate is 8 ms.
+
 ## Additions
 
 - `ztk::animate`, `ztk::clock`, the timing function `spring()`, and the flag `--time` of the `ztk` program.
@@ -254,3 +264,4 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - The parts `::tab`, `::tab-selected`, `::tab-hover`, `::tab-disabled`, `::indicator`, and `::client` of `TNotebook`, the slide of the indicator, and the fade of the page.
 - The part `::selection` of `Text`, for the tag `sel`.
 - The parts `::sash` and `::sash-active` of `Panedwindow` and `TPanedwindow`. The sash under the pointer fades to `::sash-active` in 120 ms.
+- `ztk::toast text ?-duration ms?`, the style class `banner` of a frame, and the style classes of the parts of the dialogs: `dialog-icon`, `dialog-message`, `dialog-detail`, `dialog-buttons`, `dialog-swatch`, and `toast`.

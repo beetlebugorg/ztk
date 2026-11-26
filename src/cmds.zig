@@ -18,6 +18,7 @@ const wm = @import("wm.zig");
 const bind = @import("bind.zig");
 const dispatch = @import("dispatch.zig");
 const focus = @import("focus.zig");
+const geom = @import("geom.zig");
 const App = app_mod.App;
 const Value = ztcl.Value;
 
@@ -91,6 +92,7 @@ pub fn register(app: *App) !void {
     app.root.?.data = win;
     app.root.?.mapped = true;
     app.root.?.geom = .{ .w = win.size.w, .h = win.size.h };
+    try @import("dialogs.zig").register(app);
 }
 
 /// `ztk::limit ?-steps count? ?-memory bytes? script`: runs the script in
@@ -167,7 +169,7 @@ fn cmdDestroy(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.
 
 const winfo_options = "cells, children, class, colormapfull, depth, geometry, height, id, ismapped, manager, name, parent, pointerx, pointery, pointerxy, reqheight, reqwidth, rootx, rooty, screen, screencells, screendepth, screenheight, screenwidth, screenmmheight, screenmmwidth, screenvisual, server, toplevel, viewable, visual, visualid, vrootheight, vrootwidth, vrootx, vrooty, width, x, y, atom, atomname, containing, interps, pathname, exists, fpixels, pixels, rgb, or visualsavailable";
 
-const Winfo = enum { children, exists, parent, class, name, toplevel, manager, x, y, width, height, reqwidth, reqheight, rootx, rooty, ismapped, viewable, geometry };
+const Winfo = enum { children, exists, parent, class, name, toplevel, manager, x, y, width, height, reqwidth, reqheight, rootx, rooty, ismapped, viewable, geometry, rgb };
 
 fn cmdWinfo(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
     const app = App.of(it);
@@ -177,6 +179,16 @@ fn cmdWinfo(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
     const sub = try it.str(argv[1]);
     const which = std.meta.stringToEnum(Winfo, sub) orelse
         return it.fail("bad option \"{s}\": must be " ++ winfo_options, .{sub});
+    if (which == .rgb) {
+        // `winfo rgb window color`: the color as three 16-bit values.
+        if (argv.len != 4) return it.fail("wrong # args: should be \"winfo rgb window colorName\"", .{});
+        const p = try it.str(argv[2]);
+        if (app.lookup(p) == null) return it.fail("bad window path name \"{s}\"", .{p});
+        const name = try it.str(argv[3]);
+        const c = geom.Color.parseTk(name) orelse return it.fail("unknown color name \"{s}\"", .{name});
+        const vals = [_]Value{ .{ .int = @as(i64, c.r) * 257 }, .{ .int = @as(i64, c.g) * 257 }, .{ .int = @as(i64, c.b) * 257 } };
+        return try ztcl.value.newList(it.alloc(), &vals);
+    }
     if (argv.len != 3) return it.fail("wrong # args: should be \"winfo {s} window\"", .{sub});
     const path = try it.str(argv[2]);
     if (which == .exists) return .{ .int = @intFromBool(app.find(path) != null) };
@@ -184,7 +196,7 @@ fn cmdWinfo(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
     const w = app.lookup(path) orelse return it.fail("bad window path name \"{s}\"", .{path});
     const a = it.alloc();
     switch (which) {
-        .exists => unreachable,
+        .exists, .rgb => unreachable,
         .children => {
             const items = try a.alloc(Value, w.children.items.len);
             for (w.children.items, items) |c, *slot| slot.* = .{ .str = try a.dupe(u8, c.path) };

@@ -92,7 +92,8 @@ pub fn cmdWm(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.E
     const a = it.alloc();
     const st = app.wmOf(w);
     if (eq(name, "title")) {
-        if (args.len == 0) return .{ .str = if (st.title.len > 0) st.title else if (w == app.root) app.app_name else w.name() };
+        // The title is copied: the widget can go away while the value lives.
+        if (args.len == 0) return .{ .str = try a.dupe(u8, if (st.title.len > 0) st.title else if (w == app.root) app.app_name else w.name()) };
         if (args.len > 1) return it.fail("wrong # args: should be \"wm title window ?newTitle?\"", .{});
         const t = try it.str(args[0]);
         const copy = try app.gpa.dupe(u8, t);

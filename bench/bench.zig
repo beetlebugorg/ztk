@@ -551,6 +551,26 @@ pub fn main(init: std.process.Init) !void {
         }
         report("treeview-open", buf[0..runs]);
     }
+    // dialog-open: a message box opens over the window and fades in. Each
+    // frame of the fade is measured, then the box closes, 10 times.
+    {
+        var dg: World = undefined;
+        try dg.it.init(gpa);
+        dg.head = try ztk.headless.Headless.init(gpa);
+        dg.app = try ztk.App.init(gpa, &dg.it, .{ .platform = dg.head.platform(), .io = io, .animations = true });
+        defer dg.deinit();
+        dg.head.skip_draw = true;
+        dg.eval("label .l -text main; pack .l -padx 100 -pady 80; update");
+        const runs = 200;
+        for (buf[0..runs], 0..) |*slot, i| {
+            if (i % 20 == 0) dg.eval("catch {destroy .__tk__messagebox}; ::ztk::dialog::MessageBox . Save warning {Save the changes?} {The changes are lost.} {yes Yes no No cancel Cancel} yes");
+            dg.head.advance(16);
+            const t0 = nowNs();
+            dg.eval("update");
+            slot.* = nowNs() - t0;
+        }
+        report("dialog-open", buf[0..runs]);
+    }
 
     // sheet-10000-scroll: examples/spreadsheet.tcl with 10 000 rows of numbers and a formula in
     // each row scrolls by fine wheel steps, one step for each frame, with transitions on. The

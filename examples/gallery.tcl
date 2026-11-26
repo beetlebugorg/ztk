@@ -275,4 +275,17 @@ $tx.t window create end -window $tx.t.ok -align center -padx 2
 pack $tx.t -fill x
 pack .cols.left.text -fill x -pady 4
 
+# Dialogs: a banner, and buttons that open a message box, a color dialog, and a toast.
+set dg [card .cols.left.dialogs "Dialogs"]
+frame $dg.banner
+label $dg.banner.l -text "A banner shows a message in the page."
+pack $dg.banner.l -anchor w
+cls $dg.banner banner
+button $dg.ask -text "Message box" -command {tk_messageBox -message "Save the changes?" -type yesnocancel -icon question}
+button $dg.color -text "Color" -command {tk_chooseColor -initialcolor #2563eb}
+button $dg.toast -text "Toast" -command {if {$ztk} {::ztk::toast "Saved"}}
+grid $dg.banner - - -sticky ew -padx 4 -pady {0 6}
+grid $dg.ask $dg.color $dg.toast -sticky w -padx 4
+pack .cols.left.dialogs -fill x -pady 4
+
 set status ""

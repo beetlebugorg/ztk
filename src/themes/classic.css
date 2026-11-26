@@ -271,6 +271,22 @@ Treeview::indicator {
 
 Treeview::empty {
   color: var(--muted);
+
+Frame.banner {
+  background-color: var(--bg);
+  border: 1px solid var(--fg);
+  padding: 4px 8px;
+}
+
+Label.toast {
+  color: var(--bg);
+  background-color: var(--fg);
+  padding: 4px 8px;
+}
+
+Label.dialog-icon {
+  color: var(--fg);
+  font-weight: 700;
 }
 
 Listbox {
