@@ -95,36 +95,36 @@ pub fn register(app: *App) !void {
     try @import("dialogs.zig").register(app);
 }
 
-/// `ztk::limit ?-steps count? ?-memory bytes? script`: runs the script in
-/// the frame of the caller with a lower step limit and memory limit. A
+/// `ztk::limit ?-compute units? ?-memory bytes? script`: runs the script in
+/// the frame of the caller with a lower compute limit and memory limit. A
 /// child interpreter gets the limits of its caller, so
-/// `ztk::limit -steps 1000 {interp eval c $text}` bounds the child. The
-/// steps that the script used count against the limit of the caller, and
+/// `ztk::limit -compute 1000 {interp eval c $text}` bounds the child. The
+/// compute units that the script used count against the limit of the caller, and
 /// the old memory limit comes back at the end. A script inside cannot
 /// catch the end of its limit, and the caller of `ztk::limit` can.
 fn cmdLimit(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
-    const usage = "ztk::limit ?-steps count? ?-memory bytes? script";
+    const usage = "ztk::limit ?-compute units? ?-memory bytes? script";
     if (argv.len < 2 or argv.len % 2 != 0) return it.wrongArgs(usage);
-    var steps: u64 = it.step_limit;
+    var units: u64 = it.compute_limit;
     var memory: usize = it.mem_limit;
     var i: usize = 1;
     while (i + 1 < argv.len) : (i += 2) {
         const o = try it.str(argv[i]);
         const n = try it.int(argv[i + 1]);
         if (n < 0) return it.fail("expected a count of 0 or more but got \"{d}\"", .{n});
-        if (std.mem.eql(u8, o, "-steps")) {
-            steps = @min(steps, @as(u64, @intCast(n)));
+        if (std.mem.eql(u8, o, "-compute")) {
+            units = @min(units, @as(u64, @intCast(n)));
         } else if (std.mem.eql(u8, o, "-memory")) {
             memory = @min(memory, it.memUsed() +| @as(usize, @intCast(n)));
-        } else return it.fail("bad option \"{s}\": must be -memory or -steps", .{o});
+        } else return it.fail("bad option \"{s}\": must be -compute or -memory", .{o});
     }
     const script = try it.compile(try it.alloc().dupe(u8, try it.str(argv[argv.len - 1])));
-    const old_steps = it.step_limit;
+    const old_units = it.compute_limit;
     const old_memory = it.mem_limit;
-    it.step_limit = steps;
+    it.compute_limit = units;
     it.mem_limit = memory;
     const r = it.evalScript(script);
-    it.step_limit = old_steps -| (steps - it.step_limit);
+    it.compute_limit = old_units -| (units - it.compute_limit);
     it.mem_limit = old_memory;
     // A request that the lower memory limit refused sets a flag on the
     // counter of the root, and `catch` passes each error on while the

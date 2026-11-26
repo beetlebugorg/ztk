@@ -8,7 +8,7 @@ This plan is for item 5 of the ztk features that dockyard needs: a child interpr
 interp create -safe app            ;# or a child with the capabilities of the project
 frame .pane -container 1
 ztk::embed create .pane app        ;# the child gets ztk, and its "." is .pane
-ztk::limit -steps 5000000 -memory 64000000 {interp eval app {source /main.tcl}}
+ztk::limit -compute 5000000 -memory 64000000 {interp eval app {source /main.tcl}}
 ztk::embed reset .pane             ;# destroys each widget of the child, keeps the interpreter
 ztk::embed destroy .pane           ;# ends the App of the child
 ```
@@ -28,7 +28,7 @@ ztk::embed destroy .pane           ;# ends the App of the child
 ## The order of the PRs
 
 1. The embed backend and `App.Options.shared` (fonts and atlas), with unit tests on the headless backend: a child label shows in the scene of the parent at the origin of the pane.
-2. `ztk::embed` and the copy of the scene in the paint of a container frame. Tests: geometry, clip, `reset`, `destroy`, and a child that runs out of its step limit.
+2. `ztk::embed` and the copy of the scene in the paint of a container frame. Tests: geometry, clip, `reset`, `destroy`, and a child that runs out of its compute limit.
 3. Input to the child, the focus, and the `-errorcommand`.
 4. The docs (`docs/widgets/embed.md`, a line in `docs/differences.md`).
 

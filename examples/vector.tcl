@@ -1086,8 +1086,8 @@ proc vec::newconsole {} {
     }
 }
 
-# Runs a script of the console with a step limit and a memory limit. A
-# script that ends its steps or its memory gives an error here, and the
+# Runs a script of the console with a compute limit and a memory limit. A
+# script that uses all its compute units or its memory gives an error here, and the
 # app goes on.
 proc vec::run {script} {
     variable history; variable hpos
@@ -1095,7 +1095,7 @@ proc vec::run {script} {
     log "% $script"
     checkpoint
     if {[llength [info commands ::ztk::limit]]} {
-        set code [catch {::ztk::limit -steps 200000 -memory 16000000 [list interp eval con $script]} r]
+        set code [catch {::ztk::limit -compute 200000 -memory 16000000 [list interp eval con $script]} r]
     } else {
         # wish: a command limit, and a time limit for a loop with no commands.
         interp limit con time -seconds [expr {[clock seconds] + 2}]
@@ -1147,7 +1147,7 @@ proc vec::start {} {
     add text {60 52} -text "Valley at noon" -fill #0f172a
     set pfill #60a5fa; set pstroke #1e3a8a; set pwidth 2
     select 2
-    log "Console: Tcl in a child interpreter with a step limit. Press Up for sample scripts."
+    log "Console: Tcl in a child interpreter with a compute limit. Press Up for sample scripts."
     log "Commands: shape rect|oval|line|polygon|text|list|get|config|delete, select, move, each, clear."
 }
 vec::start

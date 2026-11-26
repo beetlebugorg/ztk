@@ -48,7 +48,7 @@ The user asked for two apps in place of a generic drawing app (2026-11-24). Each
    - zoom and pan with the wheel, a pinch, and a drag with Space held;
    - undo and redo;
    - export to SVG (and PostScript when the canvas has it), and save and load in its own format;
-   - a console pane (an `entry` and an output area) that runs Tcl on the document with a small API (`shape rect x y w h -fill red`, `shape list`, `select`, `move`, `each shape {...}`). The script runs in a child interpreter with a step limit and a memory limit, so that a bad script cannot stop the app. Its errors show in the console. The history of the console has 3 sample scripts, for example a spiral of circles.
+   - a console pane (an `entry` and an output area) that runs Tcl on the document with a small API (`shape rect x y w h -fill red`, `shape list`, `select`, `move`, `each shape {...}`). The script runs in a child interpreter with a compute limit and a memory limit, so that a bad script cannot stop the app. Its errors show in the console. The history of the console has 3 sample scripts, for example a spiral of circles.
 
 The fluid gates apply to both apps: the spreadsheet with 10 000 rows, and the vector tool with 10 000 shapes. Tests drive each app headless: they enter formulas and check the results, draw and transform shapes, run a console script, undo, and export SVG and check it.
 

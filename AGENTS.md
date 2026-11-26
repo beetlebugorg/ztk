@@ -11,6 +11,8 @@ Read these pages before you work:
 
 Put plans, task lists, reports, and limits in `docs/dev/`. The docs site publishes only the user pages that `tools/build-docs.py` lists. A new widget gets a section on its page in `docs/widgets/` and a line in `docs/differences.md`.
 
+The CPU limit of ztcl is the compute limit, and it counts compute units. Use these terms in code, docs, and messages. `ztk::limit -compute N` sets it.
+
 ## Commands
 
 Use Zig 0.17.0. Run each build, test, benchmark, and suite command under a memory cap:
