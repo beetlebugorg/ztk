@@ -278,7 +278,8 @@ pub fn main(init: std.process.Init) !void {
     }
     if (screenshot) |file| {
         if (head) |h| {
-            if (app.window) |win| if (h.image(win)) |img| {
+            if (app.window) |win| if (try h.composite(init.gpa, win)) |img| {
+                defer init.gpa.free(img.pixels);
                 const bytes = try ztk.png.encode(init.gpa, img);
                 defer init.gpa.free(bytes);
                 try Io.Dir.cwd().writeFile(io, .{ .sub_path = file, .data = bytes });

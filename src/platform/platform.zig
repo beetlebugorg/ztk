@@ -28,10 +28,19 @@ pub const Popup = struct {
     parent: *Window,
     /// The rectangle in the parent, in logical pixels, that the popup goes next to.
     anchor: geom.Rect,
-    /// The side of the anchor for the popup. When the screen has no room
-    /// on that side, the backend flips the popup to the other side or
-    /// slides it along the edge.
+    /// The side of the anchor for the popup. With `below`, the top-left
+    /// corner of the popup goes at the bottom-left corner of the anchor.
+    /// With `right`, it goes at the top-right corner. With `above` and
+    /// `left`, the popup ends at the top and the left edge of the anchor.
+    /// When the screen has no room on that side, the backend flips the
+    /// popup to the other side of the anchor or slides it along the edge.
     side: Side = .below,
+    /// A move of the popup from its place at the anchor, in logical pixels.
+    offset: geom.Point = .{},
+    /// The edges of the surface outside the box of the popup, for a shadow.
+    /// The anchor, the offset, and the edges of the screen place the box.
+    /// On Wayland it is the window geometry of the `xdg_surface`.
+    margin: geom.Insets = .{},
     /// True: the popup gets the pointer and the keys of the program until it closes.
     grab: bool = true,
 
@@ -159,6 +168,10 @@ pub const Window = struct {
     user: ?*anyopaque = null,
     /// The data of the backend.
     impl: ?*anyopaque = null,
+    /// For a popup: the place of the top-left corner of its surface (with
+    /// the margin) in the surface of its parent window, in logical pixels. The backend sets it, and sends `resize` when the
+    /// place changes after a flip or a slide.
+    pos: geom.Point = .{},
     /// The render thread of the window, for the pointer positions that the
     /// backend gives it from any thread. Null when the window has none.
     render: std.atomic.Value(?*RenderThread) = .init(null),

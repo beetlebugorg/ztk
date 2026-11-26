@@ -7,7 +7,10 @@
 //! window that asked for a frame.
 //!
 //! The backend has popup surfaces and native menus for the tests. A popup
-//! is a window with its `Popup` options in its record. The native menus
+//! is a window with its `Popup` options in its record. The screen of a
+//! popup is the toplevel window at the root of its chain, at 0,0. A popup
+//! that ends past the screen on the side of its anchor flips to the other
+//! side when it fits there, and then slides into the screen. The native menus
 //! are off until a test sets `native_menus`. Then each menu call adds one
 //! line of text to `menu_log`. `menuAction` calls the menu handler of the
 //! core or queues a `menu` event, and `appCommand` queues an `app_command`.
@@ -199,6 +202,111 @@ pub const Headless = struct {
         h.queue.append(h.gpa, .{ .app_command = .{ .command = cmd } }) catch {};
     }
 
+    /// The place of a window in the coordinates of the toplevel window at
+    /// the root of its popup chain.
+    pub fn absPos(h: *Headless, w: *const Window) geom.Point {
+        for (h.windows.items) |r| if (r.win == w) {
+            const p = r.popup orelse return .{};
+            const o = h.absPos(p.parent);
+            return .{ .x = o.x + w.pos.x, .y = o.y + w.pos.y };
+        };
+        return .{};
+    }
+
+    fn screenOf(h: *Headless, w: *const Window) geom.Size {
+        for (h.windows.items) |r| if (r.win == w) {
+            const p = r.popup orelse return w.size;
+            return h.screenOf(p.parent);
+        };
+        return w.size;
+    }
+
+    /// The place of a new popup in its parent: at its anchor, flipped
+    /// and slid into the screen.
+    fn place(h: *Headless, p: plat.Popup, surface: geom.Size) geom.Point {
+        const mg = p.margin;
+        const size: geom.Size = .{ .w = surface.w - mg.left - mg.right, .h = surface.h - mg.top - mg.bottom };
+        const a = p.anchor;
+        const o = p.offset;
+        var x: i32 = undefined;
+        var y: i32 = undefined;
+        switch (p.side) {
+            .below => {
+                x = a.x + o.x;
+                y = a.y + a.h + o.y;
+            },
+            .above => {
+                x = a.x + o.x;
+                y = a.y - size.h + o.y;
+            },
+            .right => {
+                x = a.x + a.w + o.x;
+                y = a.y + o.y;
+            },
+            .left => {
+                x = a.x - size.w + o.x;
+                y = a.y + o.y;
+            },
+        }
+        const base = h.absPos(p.parent);
+        const scr = h.screenOf(p.parent);
+        // The flip mirrors the gap between the popup and the anchor.
+        switch (p.side) {
+            .below => if (base.y + y + size.h > scr.h) {
+                const fy = a.y - (y - (a.y + a.h)) - size.h;
+                if (base.y + fy >= 0) y = fy;
+            },
+            .above => if (base.y + y < 0) {
+                const fy = a.y + a.h + (a.y - (y + size.h));
+                if (base.y + fy + size.h <= scr.h) y = fy;
+            },
+            .right => if (base.x + x + size.w > scr.w) {
+                const fx = a.x - (x - (a.x + a.w)) - size.w;
+                if (base.x + fx >= 0) x = fx;
+            },
+            .left => if (base.x + x < 0) {
+                const fx = a.x + a.w + (a.x - (x + size.w));
+                if (base.x + fx + size.w <= scr.w) x = fx;
+            },
+        }
+        x = std.math.clamp(base.x + x, 0, @max(scr.w - size.w, 0)) - base.x;
+        y = std.math.clamp(base.y + y, 0, @max(scr.h - size.h, 0)) - base.y;
+        return .{ .x = x - mg.left, .y = y - mg.top };
+    }
+
+    /// The image of a toplevel window with the images of its popups over
+    /// it, at their places, as a screen shows them. The caller frees the pixels.
+    pub fn composite(h: *Headless, gpa: std.mem.Allocator, w: *Window) !?Image {
+        const base = h.image(w) orelse return null;
+        const out: Image = .{ .width = base.width, .height = base.height, .pixels = try gpa.dupe(u8, base.pixels) };
+        for (h.windows.items) |r| {
+            if (r.popup == null or r.win == w) continue;
+            const img = r.surface.image orelse continue;
+            var root = r.win;
+            while (h.popupOf(root)) |p| root = p.parent;
+            if (root != w) continue;
+            const o = h.absPos(r.win);
+            const ox: i64 = @intFromFloat(@round(@as(f32, @floatFromInt(o.x)) * w.scale));
+            const oy: i64 = @intFromFloat(@round(@as(f32, @floatFromInt(o.y)) * w.scale));
+            var y: u32 = 0;
+            while (y < img.height) : (y += 1) {
+                const dy = oy + y;
+                if (dy < 0 or dy >= out.height) continue;
+                var x: u32 = 0;
+                while (x < img.width) : (x += 1) {
+                    const dx = ox + x;
+                    if (dx < 0 or dx >= out.width) continue;
+                    // Source over with the premultiplied alpha of the popup.
+                    const s = img.pixels[(@as(usize, y) * img.width + x) * 4 ..][0..4];
+                    const d = out.pixels[(@as(usize, @intCast(dy)) * out.width + @as(usize, @intCast(dx))) * 4 ..][0..4];
+                    const ia: u32 = 255 - s[3];
+                    for (0..4) |i| d[i] = @intCast(@min(255, @as(u32, s[i]) + (@as(u32, d[i]) * ia + 127) / 255));
+                }
+            }
+        }
+        return out;
+    }
+
     /// The `Popup` options of a window, or null for a toplevel window.
     pub fn popupOf(h: *Headless, w: *Window) ?plat.Popup {
         for (h.windows.items) |r| if (r.win == w) return r.popup;
@@ -289,6 +397,10 @@ pub const Headless = struct {
         const w = try h.gpa.create(Window);
         errdefer h.gpa.destroy(w);
         w.* = .{ .size = opts.size };
+        if (opts.popup) |p| {
+            w.scale = p.parent.scale;
+            w.pos = h.place(p, opts.size);
+        }
         const surf = try h.gpa.create(Surface);
         errdefer h.gpa.destroy(surf);
         surf.* = .{ .host = h, .atlas = Atlas.init(h.gpa) };

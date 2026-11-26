@@ -37,6 +37,9 @@ pub const Atlas = struct {
     generation: u32 = 0,
     /// The regions of the page that changed since `takePatches`: x, y, w, h.
     pending: std.ArrayListUnmanaged([4]u32) = .empty,
+    /// Counts the takes that gave patches, so `takePatchesFor` knows when
+    /// another surface took the patches of a change.
+    takes: u32 = 0,
 
     pub fn init(gpa: std.mem.Allocator) Atlas {
         return .{ .gpa = gpa };
@@ -98,7 +101,29 @@ pub const Atlas = struct {
             }
             try out.append(gpa, .{ .x = r[0], .y = r[1], .w = r[2], .h = r[3], .bytes = bytes });
         }
+        if (a.pending.items.len > 0) a.takes +%= 1;
         a.pending.clearRetainingCapacity();
+    }
+
+    /// The `seen` of a surface that has none of the page.
+    pub const seen_none: u32 = std.math.maxInt(u32);
+
+    /// Takes the patches for one of several surfaces. `seen` is the count
+    /// of takes after the last take of the surface. When another surface
+    /// took patches since then, the surface gets one patch with each used
+    /// row of the page.
+    pub fn takePatchesFor(a: *Atlas, gpa: std.mem.Allocator, out: *std.ArrayListUnmanaged(AtlasPatch), seen: *u32) !void {
+        const rows = @min(a.shelf_y + a.shelf_h, page_size);
+        if (seen.* != a.takes and a.pixels.len > 0 and rows > 0) {
+            const bytes = try gpa.dupe(u8, a.pixels[0 .. @as(usize, rows) * page_size]);
+            errdefer gpa.free(bytes);
+            try out.append(gpa, .{ .x = 0, .y = 0, .w = page_size, .h = rows, .bytes = bytes });
+            a.pending.clearRetainingCapacity();
+            a.takes +%= 1;
+        } else {
+            try a.takePatches(gpa, out);
+        }
+        seen.* = a.takes;
     }
 
     /// Copies the bytes of a patch into the page. The render thread uses it on its own copy.
