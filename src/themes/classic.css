@@ -404,3 +404,31 @@ Panedwindow::sash, TPanedwindow::sash {
 Panedwindow::sash-active, TPanedwindow::sash-active {
   background-color: var(--muted);
 }
+
+/* A notebook has a raised client area and gray tabs. */
+TNotebook {
+  background-color: var(--bg);
+}
+
+TNotebook::client {
+  background-color: var(--bg);
+  border: 1px solid var(--muted);
+}
+
+TNotebook::tab, TNotebook::tab-selected, TNotebook::tab-hover, TNotebook::tab-disabled {
+  color: var(--fg);
+  background-color: var(--trough);
+  padding: 3px 10px;
+}
+
+TNotebook::tab-selected {
+  background-color: var(--bg);
+}
+
+TNotebook::tab-disabled {
+  color: var(--muted);
+}
+
+TNotebook::indicator {
+  background-color: var(--fg);
+}

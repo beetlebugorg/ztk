@@ -573,6 +573,7 @@ pub const App = struct {
         b.pushClip(.{ .x = 0, .y = 0, .w = w.geom.w, .h = w.geom.h });
         defer b.popClip();
         for (w.children.items) |c| try app.paintNode(c, b);
+        if (w.class.overlay) |f| try f(w, b);
     }
 
     /// Paints the quads of one widget. A widget with an animation of its

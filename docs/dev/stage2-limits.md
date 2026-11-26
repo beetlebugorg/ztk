@@ -197,6 +197,14 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - The Tk test file `panedwindow.test` does not run in ztk: the interpreter has no `package` command. Its counts in `wish` were not measured for this task.
 - `zig build bench`, ReleaseFast, 2026-11-25, development machine: `sash-drag` (a drag of the sash of a `panedwindow` with 500 labels in each pane, one motion for each frame) has a median of 0.88 ms and a 99th percentile of 1.00 ms. The gate is 8 ms.
 
+## ttk::notebook (task 13)
+
+- `ttk::notebook` has the options of `wish` 8.6.16 in its order. Each subcommand gives the results and the messages of `wish` for the cases of `src/tests/notebook.zig`, also `index end`, `index current`, and `index @x,y`. A hidden tab that `select` names becomes `normal`, and `select` of a disabled tab keeps the selection, as in `wish`.
+- `<<NotebookTabChanged>>` is an idle callback of `after idle`, so it arrives after the script, as in `wish`. A script that changes the tab two times before an update gets two events.
+- The row of tabs has the height of the theme, so the place and the size of a page differ from `wish`, and `identify` gives `label` over the text of a tab and `tab` over its padding. `-image` and `-compound` of a tab are stored with no effect.
+- The class bindings are in Zig (`::ztk::priv::notebook`). `TNotebook` also has `<Motion>` and `<Leave>` for the hover of a tab. `ttk::notebook::enableTraversal` adds the bindings of `wish` to the toplevel, and its procs have the names of `wish`.
+- `zig build bench`, ReleaseFast, 2026-11-25, development machine: `tab-change` (a notebook of 3 tabs with 300 labels on each page changes its tab each 10 frames, with transitions on) has a median of 0.29 ms and a 99th percentile of 0.56 ms. The gate is 8 ms.
+
 ## Additions
 
 - `ztk::animate`, `ztk::clock`, the timing function `spring()`, and the flag `--time` of the `ztk` program.
@@ -214,4 +222,5 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - `-placeholder` and `-placeholderforeground` for `ttk::entry`.
 - `-placeholder` and `-placeholderforeground` for `ttk::combobox` and `ttk::spinbox`. The parts `::arrow`, `::popdown`, `::item`, and `::item-active` of a combobox, and `::trough` and `::bar` of a progress bar.
 - `-emptytext` and the style class `sidebar` of a listbox, and its parts `::item`, `::selection`, `::active`, and `::empty`.
+- The parts `::tab`, `::tab-selected`, `::tab-hover`, `::tab-disabled`, `::indicator`, and `::client` of `TNotebook`, the slide of the indicator, and the fade of the page.
 - The parts `::sash` and `::sash-active` of `Panedwindow` and `TPanedwindow`. The sash under the pointer fades to `::sash-active` in 120 ms.

@@ -512,7 +512,7 @@ fn manage(w: *Widget, c: *Widget, at: usize) ztcl.Error!*Pane {
 /// Checks that `c` can be a pane of `w`.
 fn checkPane(it: *ztcl.Interp, w: *Widget, c: *Widget) ztcl.Error!void {
     if (w.class.ttk) {
-        if (c == w or c.isToplevel() or !grid.isDescendant(c, w)) return it.fail("can't add {s} as slave of {s}", .{ c.path, w.path });
+        if (c == w or c.isToplevel() or !grid.isDescendant(w, c.parent.?)) return it.fail("can't add {s} as slave of {s}", .{ c.path, w.path });
         return;
     }
     if (c == w) return it.fail("can't add {s} to itself", .{c.path});

@@ -372,6 +372,36 @@ Panedwindow::sash-active, TPanedwindow::sash-active {
   border-radius: 2px;
 }
 
+/* A notebook: a row of tabs over a client area. A line under the
+   selected tab slides to the next selected tab. */
+TNotebook {
+  background-color: var(--bg);
+}
+
+TNotebook::client {
+  background-color: var(--field-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+TNotebook::tab, TNotebook::tab-selected, TNotebook::tab-hover, TNotebook::tab-disabled {
+  color: var(--muted);
+  padding: 6px 12px;
+}
+
+TNotebook::tab-selected, TNotebook::tab-hover {
+  color: var(--fg);
+}
+
+TNotebook::tab-disabled {
+  opacity: 0.5;
+}
+
+TNotebook::indicator {
+  background-color: var(--accent);
+  border-radius: 1px;
+}
+
 /* A list of rows in a field. The selection background eases from row to
    row. The sidebar style has no field, and its selection is a round
    accent row. */
