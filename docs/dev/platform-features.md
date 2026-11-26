@@ -37,13 +37,14 @@ The features of ztk go through `Platform.VTable`, as the menus do: optional entr
 
 **Tray (ztk#54).**
 
-- `trayCreate(icon: Image, tooltip) TrayId`, `traySet(id, icon, tooltip, menu: MenuId)`, and `trayDrop(id)`. The icon is an RGBA image of the core. The menu is a native menu of `docs/dev/menus.md`, with `menuSet` before `traySet`.
-- An event `tray` with the id and an action: `click`, `double`, or `menu`. The backend shows the menu itself for `menu` when the tray has one: macOS opens the menu of `NSStatusItem`, and Windows posts the menu at the pointer after `SetForegroundWindow`, as the documentation of `TrackPopupMenu` asks.
-- `ztk::tray create -image photo -tooltip text -menu .m -command script` gives a name, with `configure` and `destroy`. The script gets the action in `%a`.
+- `trayCreate(icon: Image, template: bool, tooltip) TrayId`, `traySet(id, icon, template, tooltip, menu: MenuId)`, and `trayDrop(id)`. The icon is an RGBA image of the core. With `template`, macOS sets `template` on the `NSImage` of the status item and draws the icon in the colors of the menu bar for light, dark, and highlight. Windows and Linux ignore it. The menu is a native menu of `docs/dev/menus.md`, with `menuSet` before `traySet`.
+- An event `tray` with the id and an action: `click`, `double`, or `menu`. A tray with a menu shows it in the backend: on macOS a status item with a menu opens it on each click, and Windows posts the menu at the pointer after `SetForegroundWindow` on a click of the right button, as the documentation of `TrackPopupMenu` asks. On macOS `click` and `double` come only for a tray with no menu. Windows gives them for the left button also with a menu. A script that needs the same behavior on both gives a tray either a menu or a command.
+- `ztk::tray create -image photo -template bool -tooltip text -menu .m -command script` gives a name, with `configure` and `destroy`. The script gets the action in `%a`.
 
 **Dialogs (ztk#57).**
 
 - `fileDialog(opts) ?[][]u8`: a modal dialog with a kind (`open`, `save`, `folder`), the parent window, the title, the first folder and the first file, the filters of `-filetypes`, the default extension, and multiple selection. It returns the paths in UTF-8, or null for Cancel. The core maps the options and the result of `tk_getOpenFile`, `tk_getSaveFile`, and `tk_chooseDirectory` onto it, as the manual pages give them.
+  The call is synchronous on each platform. With a parent window, macOS begins a sheet and runs a modal loop until the completion handler of the sheet, so `tk_getOpenFile` keeps its result as in Tk.
 - `colorDialog(parent, title, initial) ?Color` for `tk_chooseColor`. A font dialog follows when ztk has a `tk fontchooser`.
 - A backend without the entry gets the dialogs that the core draws, from task 17 of the widget stage.
 
