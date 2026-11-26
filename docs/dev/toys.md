@@ -22,17 +22,19 @@ This file is the state of the toys and the rules for the next ones. It is not on
 | Twin Lanes | panes | `panedwindow` sash sets the road widths | Yes |
 | Pixel Pad | text | `text` holds the rule of the paddle; `<<Modified>>` makes the proc again; stars and bombs, 4 levels in 90 s | Yes (#213) |
 | Skate Pond | listbox | `listbox` with `-selectmode multiple` is the bag of an ice puzzle: rock, plank, and rope with a plank as a bridge; 5 ponds in 90 s | Yes (#203) |
+| Disk Hound | tree | `ttk::treeview` is a pretend disk: open folders, find the files, and follow the clues | Yes (#219) |
+| Egg Drop | basic | `button` pads are baskets that catch eggs | Yes (#220) |
 
 ## The Toys page (user, 2026-11-26)
 
 The Toys page is one handheld and the code (#204): a game list in a listbox, a pick runs the game and puts its code in the editor, Menu or Escape goes back, and `?game=SLUG` keeps the game. A new toy needs a heading `### Play: NAME` before its marker on its widget page, and a row in the list of `docs/toys.md` (its name without `toy-`, its title, and its widget). The list has 8 rows that fit in 240 pixels: a ninth game needs a smaller font or a scroll.
 
+Build stages (#221): Backspin and Tin Moon have a page `toys/NAME/` that replays their build one part at a time (docs/build/NAME.md, docs/site/replays/toy-NAME.json, tests/stage.mjs).
+
 Since then (2026-11-26): the keys of each handheld on a click, P to pause, and one molded shell (#207); the Inspect panel in view (#208); a page-wide fallback from a blank WebGPU to WebGL 2 (#206, #209). #211 put the code of the Toys page under the handheld (80 columns fit), mapped A and D to Left and Right (the key line shows W A S D), and kept the keys with a game that starts from the list.
 
 ## Next, in order
 
-2. treeview (tree page): a pretend disk; open folders, find the files, follow the clues.
-3. buttons (basic page): a rhythm or reaction game with the buttons as pads, with the active state as feedback.
 4. spinbox or combobox (entry page): dial in a code to open a safe.
 5. canvas page: the playfield itself.
 
