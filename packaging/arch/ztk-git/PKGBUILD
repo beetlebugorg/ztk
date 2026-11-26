@@ -1,0 +1,47 @@
+# Maintainer: beetlebugorg
+# Builds ztk from the main branch with the Zig of Arch Linux.
+pkgname=ztk-git
+pkgver=r161.aebc04f8
+pkgrel=1
+pkgdesc='GUI toolkit AI can see: Tk rebuilt in Zig'
+arch=('x86_64' 'aarch64')
+url='https://beetlebug.org/ztk/'
+license=('BSD-2-Clause')
+depends=('wayland' 'libxkbcommon')
+optdepends=('vulkan-icd-loader: render with Vulkan')
+makedepends=('git' 'zig>=0.17.0' 'zig<0.18.0')
+provides=('ztk')
+conflicts=('ztk' 'ztk-bin')
+options=('!debug' '!strip')
+source=('ztk::git+https://github.com/beetlebugorg/ztk.git')
+sha256sums=('SKIP')
+
+pkgver() {
+  cd ztk
+  printf 'r%s.%s' "$(git rev-list --count HEAD)" "$(git rev-parse --short=8 HEAD)"
+}
+
+prepare() {
+  cd ztk
+  export ZIG_GLOBAL_CACHE_DIR="$srcdir/zig-global"
+  zig build --fetch
+}
+
+build() {
+  cd ztk
+  export ZIG_GLOBAL_CACHE_DIR="$srcdir/zig-global"
+  zig build -Doptimize=ReleaseFast -Dcpu=baseline
+}
+
+check() {
+  cd ztk
+  printf 'label .l -text hi\npack .l\nafter 50 exit\n' > "$srcdir/check.tcl"
+  ./zig-out/bin/ztk --headless "$srcdir/check.tcl"
+}
+
+package() {
+  cd ztk
+  install -Dm755 zig-out/bin/ztk "$pkgdir/usr/bin/ztk"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+}
