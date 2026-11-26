@@ -32,6 +32,7 @@ const texttag = @import("texttag.zig");
 const textview = @import("textview.zig");
 const textbind = @import("textbind.zig");
 const textsearch = @import("textsearch.zig");
+const textembed = @import("textembed.zig");
 const undo_mod = @import("../text_widget/undo.zig");
 const scroll = @import("../scroll.zig");
 const bind = @import("../bind.zig");
@@ -139,6 +140,11 @@ pub const Data = struct {
     debug: bool = false,
     scan_xy: [2]i64 = .{ 0, 0 },
     scan_pos: [2]f64 = .{ 0, 0 },
+    /// The embedded windows and images, and the idle call of `-create`.
+    embeds: std.ArrayListUnmanaged(*textembed.Embed) = .empty,
+    create_idle: ?u64 = null,
+    /// The scroll offsets of the last arrange of the embedded windows.
+    arranged_at: [2]f64 = .{ -1, -1 },
 };
 
 pub fn data(w: *const Widget) *Data {
@@ -191,6 +197,7 @@ fn configured(w: *Widget, changed_opts: []const usize) ztcl.Error!void {
 
 fn deinit(w: *Widget) void {
     const d = data(w);
+    textembed.deinit(w);
     d.buf.deinit();
     d.bindings.deinit();
     d.view.deinit(w.app.gpa);
@@ -214,7 +221,9 @@ pub fn disabled(w: *const Widget) bool {
 }
 
 fn repaint(w: *Widget) void {
-    w.invalidate(.{ .style = false, .measure = false, .layout = false, .paint = true });
+    // The embedded windows move with an edit.
+    const lay = data(w).embeds.items.len > 0 and textembed.windowCount(w) > 0;
+    w.invalidate(.{ .style = false, .measure = false, .layout = lay, .paint = true });
 }
 
 // ---- Geometry ----
@@ -277,6 +286,7 @@ fn named(ptr: *anyopaque, name: []const u8) index.Error!?Pos {
     const lk: *Lookup = @ptrCast(@alignCast(ptr));
     const d = data(lk.w);
     if (d.buf.getMark(name)) |m| return m.pos;
+    if (textembed.named(lk.w, name)) |p| return p;
     const dot = std.mem.lastIndexOfScalar(u8, name, '.') orelse return null;
     const tail = name[dot + 1 ..];
     if (!std.mem.eql(u8, tail, "first") and !std.mem.eql(u8, tail, "last")) return null;
@@ -294,11 +304,43 @@ fn atPoint(ptr: *anyopaque, x: i64, y: i64) Pos {
     return nearestChar(lk.w, x, y);
 }
 
+fn displayMove(ptr: *anyopaque, op: index.Display, p: Pos, n: i64) Pos {
+    const lk: *Lookup = @ptrCast(@alignCast(ptr));
+    const w = lk.w;
+    w.app.ensureStyle(w);
+    const d = data(w);
+    return switch (op) {
+        .linestart => textview.displayEdge(w, p, false),
+        .lineend => textview.displayEdge(w, p, true),
+        .lines => blk: {
+            if (n == 0) break :blk p;
+            const m: i32 = @intCast(std.math.clamp(n, -(1 << 30), 1 << 30));
+            // `end` is at x 0 of a display line after the last one.
+            if (p.line >= d.buf.lineCount()) {
+                if (m > 0) break :blk p;
+                const start = textview.displayEdge(w, d.buf.last(), false);
+                break :blk if (m == -1) start else clampMove(w, start, m + 1, 0);
+            }
+            break :blk clampMove(w, p, m, textview.xOf(w, p));
+        },
+    };
+}
+
+/// A move by `m` display lines at the x offset `goal`. A move past the
+/// first display line gives 1.0, and a move past the last one gives the
+/// end of the last line, as in `wish`.
+fn clampMove(w: *Widget, p: Pos, m: i32, goal: i32) Pos {
+    const r = textview.moveLines(w, p, m, goal);
+    const moved = @abs(textview.displayLines(w, p, r));
+    if (moved >= @abs(m)) return r;
+    return if (m < 0) .{} else data(w).buf.last();
+}
+
 /// The position of an index, or the message of `wish`.
 pub fn getIndex(w: *Widget, it: *ztcl.Interp, v: Value) ztcl.Error!Pos {
     const s = try it.str(v);
     var lk: Lookup = .{ .w = w };
-    const c: index.Ctx = .{ .buf = &data(w).buf, .ptr = &lk, .named = named, .at = atPoint };
+    const c: index.Ctx = .{ .buf = &data(w).buf, .ptr = &lk, .named = named, .at = atPoint, .display = displayMove };
     return index.parse(c, s) catch |e| switch (e) {
         error.BadIndex => it.fail("bad text index \"{s}\"", .{s}),
         error.NoTag => it.fail("text doesn't contain any characters tagged with \"{s}\"", .{lk.tag}),
@@ -352,10 +394,12 @@ fn deleteRange(w: *Widget, a0: Pos, z0: Pos) void {
     if (recording(w)) {
         var out: std.ArrayList(u8) = .empty;
         defer out.deinit(w.app.gpa);
-        d.buf.get(a, z, &out, w.app.gpa) catch {};
+        textembed.getText(w, a, z, &out, w.app.gpa) catch {};
         d.undo.record(w.app.gpa, .delete, a, out.items, autoSep(w), maxUndo(w)) catch {};
     }
+    textembed.deleteIn(w, a, z);
     d.buf.delete(a, z);
+    textembed.shiftDelete(w, a, z);
     textview.noteEdit(w, a.line, z.line - a.line + 1, 1);
     setModified(w, true);
 }
@@ -365,7 +409,15 @@ fn deleteRange(w: *Widget, a0: Pos, z0: Pos) void {
 pub fn insertText(w: *Widget, p: Pos, s: []const u8) ztcl.Error!Pos {
     const d = data(w);
     if (recording(w)) d.undo.record(w.app.gpa, .insert, p, s, autoSep(w), maxUndo(w)) catch return error.OutOfMemory;
+    return insertRaw(w, p, s);
+}
+
+/// Inserts a text with no undo record: the edit, the move of the embeds,
+/// the heights, and the flag of `edit modified`.
+pub fn insertRaw(w: *Widget, p: Pos, s: []const u8) ztcl.Error!Pos {
+    const d = data(w);
     const e = d.buf.insert(p, s) catch return error.OutOfMemory;
+    textembed.shiftInsert(w, p, e);
     textview.noteEdit(w, p.line, 1, e.line - p.line + 1);
     setModified(w, true);
     return e;
@@ -589,8 +641,14 @@ fn countOne(w: *Widget, which: usize, p: Pos, z: Pos) i64 {
     const d = data(w);
     switch (which) {
         0, 1, 2, 4 => {
-            if (z.lt(p)) return -@as(i64, @intCast(d.buf.charsBetween(z, p)));
-            return @intCast(d.buf.charsBetween(p, z));
+            const lo = if (z.lt(p)) z else p;
+            const hi = if (z.lt(p)) p else z;
+            var n: i64 = @intCast(d.buf.charsBetween(lo, hi));
+            // `-chars` and `-displaychars` leave out the embeds.
+            if (which < 2) for (d.embeds.items) |e| {
+                if (!e.pos.lt(lo) and e.pos.lt(hi)) n -= 1;
+            };
+            return if (z.lt(p)) -n else n;
         },
         3 => return textview.displayLines(w, p, z),
         5 => return @as(i64, z.line) - @as(i64, p.line),
@@ -645,7 +703,7 @@ fn cmdGet(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!Value {
         const p = try getIndex(w, it, argv[i]);
         const z = if (i + 1 < argv.len) try getIndex(w, it, argv[i + 1]) else d.buf.forward(p, 1);
         var out: std.ArrayList(u8) = .empty;
-        if (p.lt(z)) try d.buf.get(p, z, &out, a);
+        if (p.lt(z)) try textembed.getText(w, p, z, &out, a);
         try parts.append(a, .{ .str = out.items });
     }
     if (parts.items.len == 1) return parts.items[0];
@@ -767,9 +825,24 @@ fn subcommand(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!?Val
     }
     if (eq(u8, sub, "scan")) return try cmdScan(w, it, argv);
     if (eq(u8, sub, "pendingsync")) return .{ .int = 0 };
-    const later = [_][]const u8{ "image", "peer", "window" };
-    for (later) |n| if (eq(u8, sub, n)) return it.fail("the text subcommand \"{s}\" is not in ztk yet", .{n});
+    if (eq(u8, sub, "window")) return try textembed.cmdEmbed(w, it, argv, .window);
+    if (eq(u8, sub, "image")) return try textembed.cmdEmbed(w, it, argv, .image);
+    if (eq(u8, sub, "peer")) return try cmdPeer(w, it, argv);
     return null;
+}
+
+/// `peer`: `names` gives an empty list, and `create` gives the message
+/// of a limit, since ztk has no peers.
+fn cmdPeer(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!Value {
+    if (argv.len < 3) return it.fail("wrong # args: should be \"{s} peer option ?arg ...?\"", .{w.path});
+    const sub = try it.str(argv[2]);
+    const which = unique(&.{ "create", "names" }, sub) orelse return it.fail("bad peer option \"{s}\": must be create or names", .{sub});
+    if (which == 1) {
+        if (argv.len != 3) return it.fail("wrong # args: should be \"{s} peer names\"", .{w.path});
+        return Value.empty;
+    }
+    if (argv.len < 4) return it.fail("wrong # args: should be \"{s} peer create pathName ?-option value ...?\"", .{w.path});
+    return it.fail("the text subcommand \"peer create\" is not in ztk", .{});
 }
 
 pub fn register(app: *App) !void {

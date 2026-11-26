@@ -15,9 +15,11 @@
 //!
 //! A line before line 1 gives 1.0, and a line after the last line gives
 //! `end`. A move by lines keeps the count of characters of the position,
-//! at most the length of the new line. The display forms move by the
-//! lines of the text: the widget has no elided text and no wrapped lines
-//! in the counts yet.
+//! at most the length of the new line. The display forms of `lines`,
+//! `linestart`, and `lineend` use the display lines of the layout of the
+//! widget through `Ctx.display`, so a wrapped line has more than one.
+//! A move by display lines keeps the x offset of the position. With no
+//! `display` function, the display forms act as the forms of the text.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -36,7 +38,12 @@ pub const Ctx = struct {
     named: *const fn (ptr: *anyopaque, name: []const u8) Error!?Pos,
     /// The position nearest to a point of the widget.
     at: *const fn (ptr: *anyopaque, x: i64, y: i64) Pos,
+    /// The display forms: `n` display lines from `p`, or the start or the
+    /// end of the display line of `p`.
+    display: ?*const fn (ptr: *anyopaque, op: Display, p: Pos, n: i64) Pos = null,
 };
+
+pub const Display = enum { lines, linestart, lineend };
 
 fn isWordChar(c: u21) bool {
     return c == '_' or (c < 0x80 and std.ascii.isAlphanumeric(@intCast(c))) or c >= 0xC0;
@@ -126,7 +133,7 @@ pub fn parse(c: Ctx, s: []const u8) Error!Pos {
         rest = s[e..];
     }
     if (rest.len > 0 and !isBreak(rest[0])) return error.BadIndex;
-    return modifiers(buf, p, rest);
+    return modifiers(c, p, rest);
 }
 
 /// The next word of `s` from `i`, after spaces: the bytes up to a space,
@@ -142,7 +149,12 @@ fn isSubmodifier(w: []const u8) bool {
     return prefixOf(w, "display", 1) or prefixOf(w, "any", 1);
 }
 
-fn modifiers(buf: *const Buffer, start: Pos, s: []const u8) Error!Pos {
+fn isDisplay(w: []const u8) bool {
+    return prefixOf(w, "display", 1);
+}
+
+fn modifiers(c: Ctx, start: Pos, s: []const u8) Error!Pos {
+    const buf = c.buf;
     var p = start;
     var i: usize = 0;
     while (true) {
@@ -156,11 +168,20 @@ fn modifiers(buf: *const Buffer, start: Pos, s: []const u8) Error!Pos {
             // The count can have its own sign, as in `+-3c`.
             i += n.n;
             var unit = word(s, &i);
-            if (isSubmodifier(unit)) unit = word(s, &i) else if (std.mem.startsWith(u8, unit, "display") and unit.len > 7) unit = unit[7..];
+            var disp = false;
+            if (isSubmodifier(unit)) {
+                disp = isDisplay(unit);
+                unit = word(s, &i);
+            } else if (std.mem.startsWith(u8, unit, "display") and unit.len > 7) {
+                disp = true;
+                unit = unit[7..];
+            }
             if (unit.len == 0) return error.BadIndex;
             const count: i64 = if (neg) -n.v else n.v;
             if (prefixOf(unit, "chars", 1) or prefixOf(unit, "indices", 1)) {
                 p = if (count >= 0) buf.forward(p, @intCast(count)) else buf.backward(p, @abs(count));
+            } else if (prefixOf(unit, "lines", 1) and disp and c.display != null) {
+                p = c.display.?(c.ptr, .lines, p, count);
             } else if (prefixOf(unit, "lines", 1)) {
                 const target = std.math.clamp(@as(i64, p.line) + count, 0, buf.lineCount());
                 if (target >= buf.lineCount()) {
@@ -172,8 +193,14 @@ fn modifiers(buf: *const Buffer, start: Pos, s: []const u8) Error!Pos {
             } else return error.BadIndex;
         } else {
             var w = word(s, &i);
-            if (isSubmodifier(w)) w = word(s, &i);
-            if (prefixOf(w, "linestart", 5)) {
+            var disp = false;
+            if (isSubmodifier(w)) {
+                disp = isDisplay(w);
+                w = word(s, &i);
+            }
+            if (disp and c.display != null and (prefixOf(w, "linestart", 5) or prefixOf(w, "lineend", 5))) {
+                if (p.line < buf.lineCount()) p = c.display.?(c.ptr, if (prefixOf(w, "linestart", 5)) .linestart else .lineend, p, 0);
+            } else if (prefixOf(w, "linestart", 5)) {
                 if (p.line < buf.lineCount()) p.ch = 0;
             } else if (prefixOf(w, "lineend", 5)) {
                 if (p.line < buf.lineCount()) p.ch = buf.lineChars(p.line);

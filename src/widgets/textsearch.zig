@@ -20,6 +20,7 @@ const widget = @import("../widget.zig");
 const buffer = @import("../text_widget/buffer.zig");
 const index = @import("../text_widget/index.zig");
 const text = @import("text.zig");
+const textembed = @import("textembed.zig");
 const Widget = widget.Widget;
 const Value = ztcl.Value;
 const Pos = buffer.Pos;
@@ -210,6 +211,8 @@ pub fn cmdDump(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!Val
     var want_text = false;
     var want_mark = false;
     var want_tag = false;
+    var want_image = false;
+    var want_window = false;
     var command: ?[]const u8 = null;
     while (i < argv.len) {
         const s = try it.str(argv[i]);
@@ -221,24 +224,29 @@ pub fn cmdDump(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!Val
                 want_text = true;
                 want_mark = true;
                 want_tag = true;
+                want_image = true;
+                want_window = true;
             },
             1 => {
                 if (i >= argv.len) break;
                 command = try it.str(argv[i]);
                 i += 1;
             },
+            2 => want_image = true,
             3 => want_mark = true,
             4 => want_tag = true,
             5 => want_text = true,
-            else => {},
+            else => want_window = true,
         }
     }
     const rest = argv[i..];
     if (rest.len != 1 and rest.len != 2) return it.fail("Usage: {s} dump ?-all -image -text -mark -tag -window? ?-command script? index ?index2?", .{w.path});
-    if (!want_text and !want_mark and !want_tag) {
+    if (!want_text and !want_mark and !want_tag and !want_image and !want_window) {
         want_text = true;
         want_mark = true;
         want_tag = true;
+        want_image = true;
+        want_window = true;
     }
     const p1 = try text.getIndex(w, it, rest[0]);
     const p2 = if (rest.len == 2) try text.getIndex(w, it, rest[1]) else d.buf.forward(p1, 1);
@@ -263,6 +271,11 @@ pub fn cmdDump(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!Val
             }
         }
         for (d.buf.marks.values()) |m| if (m.pos.line == line and m.pos.ch > from) try stops.append(a, m.pos.ch);
+        // An embed is one segment: a stop at it and a stop after it.
+        for (d.embeds.items) |e| if (e.pos.line == line and e.pos.ch >= from) {
+            if (e.pos.ch > from) try stops.append(a, e.pos.ch);
+            try stops.append(a, e.pos.ch + 1);
+        };
         std.mem.sort(u32, stops.items, {}, std.sort.asc(u32));
         var prev: ?u32 = null;
         for (stops.items, 0..) |c, si| {
@@ -289,6 +302,14 @@ pub fn cmdDump(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!Val
                     try out.appendSlice(a, &.{ .{ .str = "mark" }, .{ .str = try a.dupe(u8, name) }, .{ .str = at } });
                     after = m;
                 }
+            }
+            if (textembed.at(w, p)) |e| {
+                if (e.kind == .window and want_window) {
+                    const name: []const u8 = if (e.win) |cw| cw.path else "";
+                    try out.appendSlice(a, &.{ .{ .str = "window" }, .{ .str = name }, .{ .str = at } });
+                }
+                if (e.kind == .image and want_image) try out.appendSlice(a, &.{ .{ .str = "image" }, .{ .str = e.id }, .{ .str = at } });
+                continue;
             }
             if (want_text and c <= n) {
                 var next: u32 = n + 1;
