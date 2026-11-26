@@ -363,3 +363,35 @@ test "appkit: a tray icon in the menu bar" {
     try t.expect(a.trays.find(id) == null);
     p.menuDrop(5);
 }
+
+extern "AppKit" const NSModalPanelRunLoopMode: objc.Id;
+
+/// Aborts the modal loop of AppKit after `seconds`, as a test of a modal
+/// dialog needs with no user.
+fn abortModalLater(app: objc.Id, seconds: f64) void {
+    const modes = objc.call(fn (objc.Class, objc.Sel, objc.Id) callconv(.c) objc.Id, objc.class("NSArray").?, "arrayWithObject:", .{NSModalPanelRunLoopMode});
+    objc.call(fn (objc.Id, objc.Sel, objc.Sel, ?objc.Id, f64, objc.Id) callconv(.c) void, app, "performSelector:withObject:afterDelay:inModes:", .{ objc.sel("abortModal"), null, seconds, modes });
+}
+
+test "appkit: a file dialog runs as a sheet and alone, and ends" {
+    if (!windowsAllowed()) return;
+    const a = try appkit.AppKit.init(t.allocator);
+    const p = a.platform();
+    defer p.vtable.deinit(p.ptr);
+    const win = try p.createWindow(.{ .title = "ztk dialog", .size = .{ .w = 400, .h = 300 } });
+    defer p.destroyWindow(win);
+    _ = try waitFor(p, .frame);
+    const w: *appkit.Win = @ptrCast(@alignCast(win.impl.?));
+    const f = p.vtable.fileDialog.?;
+
+    // A sheet of the window: the abort ends the dialog with no answer,
+    // and no sheet stays on the window.
+    abortModalLater(a.app, 0.5);
+    const filters = [_]plat.FileDialog.Filter{.{ .name = "Text", .patterns = &.{"*.txt"} }};
+    try t.expect(f(p.ptr, t.allocator, &.{ .kind = .open, .parent = win, .title = "Open", .filters = &filters, .initial_dir = "/tmp" }) == null);
+    try t.expect(objc.call(fn (objc.Id, objc.Sel) callconv(.c) ?objc.Id, w.ns_window, "attachedSheet", .{}) == null);
+
+    // A save with no parent runs as a panel of its own.
+    abortModalLater(a.app, 0.5);
+    try t.expect(f(p.ptr, t.allocator, &.{ .kind = .save, .initial_file = "a.txt", .default_ext = "txt" }) == null);
+}
