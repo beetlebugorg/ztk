@@ -23,11 +23,11 @@ zig-out/bin/ztk examples/gallery.tcl  # opens a window in a Wayland session
 
 `zig build test` runs the tests. `zig build wasm` makes the web build in `zig-out/web`.
 
-On macOS and Windows, the build has the headless backend only. It draws to an image file.
+On Windows, the build has the native Win32 backend with Direct3D 12: [On Windows](windows.md) has the steps and the limits. On macOS, the build has the headless backend only. It draws to an image file.
 
 ## Release binaries
 
-Each [release](https://github.com/beetlebugorg/ztk/releases) has `ztk` for Linux (x86-64 and arm64), macOS (x86-64 and arm64), and Windows (x86-64). These programs have the headless backend, and on Linux also the direct backend. They draw a script to a PNG file:
+Each [release](https://github.com/beetlebugorg/ztk/releases) has `ztk` for Linux (x86-64 and arm64), macOS (x86-64 and arm64), and Windows (x86-64). These programs have the headless backend, on Linux also the direct backend, and on Windows also the Win32 backend. With `--headless`, they draw a script to a PNG file:
 
 ```sh
 ztk --headless --scale 2 --exit-after-frames 1 --screenshot gallery.png examples/gallery.tcl
