@@ -355,6 +355,24 @@ fn commandWidget(it: *ztcl.Interp, argv: []const ztcl.Value, cmd: ?*ztcl.interp.
     return h.widget;
 }
 
+/// A copy of `v` in the arena of the interpreter. A subcommand can give
+/// a string that the widget owns, for example the text of a tree item,
+/// and the widget frees that string at a later change or delete. A
+/// variable that holds the result keeps the copy.
+fn own(it: *ztcl.Interp, v: ztcl.Value) ztcl.Error!ztcl.Value {
+    const a = it.alloc();
+    switch (v) {
+        .str => |s| return .{ .str = try a.dupe(u8, s) },
+        .list => |l| {
+            const src = l.items();
+            const out = try a.alloc(ztcl.Value, src.len);
+            for (src, out) |x, *o| o.* = try own(it, x);
+            return try ztcl.value.newList(a, out);
+        },
+        else => return v,
+    }
+}
+
 /// The widget command: `.f option ?arg ...?`. The `ctx` of the command is a `Handle`.
 pub fn widgetCommand(it: *ztcl.Interp, argv: []const ztcl.Value, cmd: ?*ztcl.interp.Cmd) ztcl.Error!ztcl.Value {
     const w = (try commandWidget(it, argv, cmd)) orelse return it.fail("invalid command name \"{s}\"", .{try it.str(argv[0])});
@@ -365,13 +383,13 @@ pub fn widgetCommand(it: *ztcl.Interp, argv: []const ztcl.Value, cmd: ?*ztcl.int
         return it.fail("wrong # args: should be \"{s} option ?arg ...?\"", .{w.path});
     }
     const sub = try it.str(argv[1]);
-    if (sub.len >= 2 and std.mem.startsWith(u8, "configure", sub)) return options.configure(w, it, argv[2..]);
+    if (sub.len >= 2 and std.mem.startsWith(u8, "configure", sub)) return own(it, try options.configure(w, it, argv[2..]));
     if (sub.len >= 2 and std.mem.startsWith(u8, "cget", sub)) {
         if (argv.len != 3) return it.fail("wrong # args: should be \"{s} cget option\"", .{w.path});
-        return options.cget(w, it, argv[2]);
+        return own(it, try options.cget(w, it, argv[2]));
     }
     if (w.class.subcommand) |f| {
-        if (try f(w, it, argv)) |v| return v;
+        if (try f(w, it, argv)) |v| return own(it, v);
     }
     if (w.class.bad_option_list.len > 0) return it.fail("bad option \"{s}\": must be {s}", .{ sub, w.class.bad_option_list });
     if (w.class.extra_subcommands.len == 0) return it.fail("bad option \"{s}\": must be cget or configure", .{sub});

@@ -178,3 +178,16 @@ test "treeview: an item opens with a move of the rows, a frame in the middle, an
     try h.update();
     try t.expectEqual(@as(f32, 0), treeview.openShownOf(w, "p"));
 }
+
+test "treeview: a result of a subcommand stays after a delete of its item" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    // The text of an item, an element of it, and an id from children
+    // keep their value after the item goes away and new items reuse the
+    // memory of the widget.
+    _ = try h.eval("ttk::treeview .t; .t insert {} end -id a -text hello.rom; set x [.t item a -text]; " ++
+        "set y [lindex [.t item a -text] 0]; set k [lindex [.t children {}] 0]; .t delete a; " ++
+        "for {set i 0} {$i < 20} {incr i} { .t insert {} end -id b$i -text [string repeat Z 9] }");
+    try t.expectEqualStrings("hello.rom hello.rom a", try h.eval("list $x $y $k"));
+}
