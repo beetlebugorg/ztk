@@ -44,7 +44,7 @@ pub const tail = [_]Spec{
     s("-style", "style", "Style", .string, ""),
     .{ .name = "-class", .type = .string, .allow_empty = true, .create_only = true },
 };
-const text_specs = [_]Spec{
+pub const text_specs = [_]Spec{
     s("-text", "text", "Text", .string, ""),
     s("-textvariable", "textVariable", "Variable", .variable, ""),
     s("-underline", "underline", "Underline", .int, "-1"),

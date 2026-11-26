@@ -369,3 +369,18 @@ Menu::bar-item-active {
   background-color: var(--select);
   padding: 2px 6px;
 }
+
+Menubutton {
+  color: var(--fg);
+  background-color: var(--bg);
+  border: 1px raised var(--bg);
+  padding: 4px 24px 4px 10px;
+}
+
+Menubutton:disabled {
+  color: var(--muted);
+}
+
+Menubutton::indicator {
+  color: var(--fg);
+}

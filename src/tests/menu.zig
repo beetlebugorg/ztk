@@ -365,3 +365,57 @@ test "menu: F10, Alt with a letter, and the arrows move on the menu bar" {
     try t.expect(h.app.menu_root == null);
     try t.expect(h.app.grab.widget == null);
 }
+
+test "menu: menubutton and ttk::menubutton have the options of wish" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval("menubutton .mb; ttk::menubutton .tb");
+    try expectEval(&h, "lmap c [.mb configure] {lindex $c 0}", "-activebackground -activeforeground -anchor -background -bd -bg -bitmap -borderwidth -cursor -direction -disabledforeground -fg -font -foreground -height -highlightbackground -highlightcolor -highlightthickness -image -indicatoron -justify -menu -padx -pady -relief -compound -state -takefocus -text -textvariable -underline -width -wraplength");
+    try expectEval(&h, "lmap c [.tb configure] {lindex $c 0}", "-menu -direction -takefocus -text -textvariable -underline -width -image -compound -padding -state -cursor -style -class");
+    try expectEval(&h, "list [winfo class .mb] [winfo class .tb] [.mb cget -direction] [.tb cget -direction]", "Menubutton TMenubutton below below");
+    try expectError(&h, ".mb configure -direction up", "bad direction \"up\": must be above, below, flush, left, or right");
+}
+
+test "menu: a menubutton posts its menu below and a drag to an entry invokes it" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval(
+        \\wm geometry . 400x300
+        \\menubutton .mb -text Pick -menu .mb.m
+        \\menu .mb.m -tearoff 0
+        \\.mb.m add command -label One -command {lappend ::log one}
+        \\.mb.m add command -label Two -command {lappend ::log two}
+        \\ttk::menubutton .tb -text Up -menu .mb.m -direction above
+        \\place .mb -x 20 -y 20
+        \\place .tb -x 20 -y 250
+        \\set log {}
+    );
+    try h.update();
+    const md = @import("../widgets/menudraw.zig");
+    const mb = h.app.find(".mb").?;
+    const m = h.app.find(".mb.m").?;
+    h.head.pointerMove(h.win, 25, 25);
+    h.head.pointerButton(h.win, 1, true);
+    try h.update();
+    try t.expect(h.app.menu_root == m);
+    try t.expect(h.app.menu_button == mb);
+    const r = md.rect(m);
+    try t.expect(r.y >= mb.geom.y + mb.geom.h);
+    // The drag goes to the second entry, and the release invokes it.
+    const y2 = r.y + @import("../widgets/menu.zig").yOf(m, 1) + 4;
+    h.head.pointerMove(h.win, @floatFromInt(r.x + 10), @floatFromInt(y2));
+    h.head.pointerButton(h.win, 1, false);
+    try h.update();
+    try expectEval(&h, "set log", "two");
+    try t.expect(h.app.menu_root == null and h.app.menu_button == null);
+    // The ttk button posts above, and space posts with the first entry active.
+    _ = try h.eval("focus .tb; event generate .tb <Key-space>");
+    const tb = h.app.find(".tb").?;
+    try t.expect(md.rect(m).y + md.rect(m).h <= tb.geom.y);
+    try expectEval(&h, ".mb.m index active", "0");
+    try h.head.press(h.win, "Return");
+    try h.update();
+    try expectEval(&h, "set log", "two one");
+}

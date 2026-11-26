@@ -588,3 +588,31 @@ Menu::bar-item-active {
   border-radius: 5px;
   padding: 3px 8px;
 }
+
+/* A menu button: a button with a chevron in its right padding. */
+Menubutton {
+  color: var(--fg);
+  background-color: var(--field-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 28px 6px 12px;
+  transition: all 120ms ease;
+}
+
+Menubutton:hover {
+  border-color: var(--accent);
+}
+
+Menubutton:focus {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+Menubutton:disabled {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+Menubutton::indicator {
+  color: var(--muted);
+}
