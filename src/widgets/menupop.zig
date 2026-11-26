@@ -69,6 +69,10 @@ pub const Pop = struct {
     /// For a ghost: the place of the window in the toplevel at the start of the close move.
     abs: geom.Point = .{},
     atlas_seen: u32 = Atlas.seen_none,
+    /// True after the first paint.
+    painted: bool = false,
+    /// The time of the last draw of a frame animation in `inline_draw` mode.
+    advanced_us: i64 = 0,
 };
 
 pub const Pops = struct {
@@ -273,6 +277,29 @@ fn paintPop(app: *App, p: *Pop, org: geom.Point, ghost: bool) !void {
     b.popOffset();
     try app.atlas.takePatchesFor(app.gpa, &fr.patches, &p.atlas_seen);
     p.render.submit();
+    p.painted = true;
+    p.advanced_us = app.platform.nowUs();
+    keepMoving(app, p);
+}
+
+/// In `inline_draw` mode, the render thread draws the frame animations of
+/// the popup (the fade and the slide) only at `advance`: a running
+/// animation asks for the next refresh of the popup. A clock that did not
+/// move asks for no refresh, so a test with a manual clock ends.
+fn keepMoving(app: *App, p: *Pop) void {
+    if (p.render.mode == .inline_draw and p.render.held_running) app.platform.requestFrame(p.win);
+}
+
+/// A refresh of a popup: the next step of its frame animation, or a paint.
+fn refresh(app: *App, p: *Pop, org: geom.Point, ghost: bool) void {
+    if (p.painted and p.render.mode == .inline_draw) {
+        const now = app.platform.nowUs();
+        if (now == p.advanced_us) return;
+        p.advanced_us = now;
+        if (p.render.advance(now)) keepMoving(app, p);
+        return;
+    }
+    paintPop(app, p, org, ghost) catch |e| app.frameError(e);
 }
 
 /// An event of a popup window with the window of the toplevel and the
@@ -312,7 +339,7 @@ pub fn handleEvent(app: *App, ev: event.Event) bool {
     if (ps.n == 0 and ps.ng == 0) return false;
     const win = ev.window() orelse return false;
     for (ps.ghosts[0..ps.ng]) |*p| if (p.win == win) {
-        if (ev == .frame) paintPop(app, p, p.abs, true) catch |e| app.frameError(e);
+        if (ev == .frame) refresh(app, p, p.abs, true);
         return true;
     };
     const k = for (ps.live[0..ps.n], 0..) |p, i| {
@@ -321,7 +348,7 @@ pub fn handleEvent(app: *App, ev: event.Event) bool {
     const p = &ps.live[k];
     const top = p.spec.top;
     switch (ev) {
-        .frame => paintPop(app, p, absOf(ps, k), false) catch |e| app.frameError(e),
+        .frame => refresh(app, p, absOf(ps, k), false),
         // The system dismissed the popup, for example after a press outside each window of the program.
         .close => md.unpostAll(app),
         // A flip or a slide moved the popup: the toplevel paints the popups again.

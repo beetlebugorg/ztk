@@ -37,8 +37,8 @@ pub const Atlas = struct {
     generation: u32 = 0,
     /// The regions of the page that changed since `takePatches`: x, y, w, h.
     pending: std.ArrayListUnmanaged([4]u32) = .empty,
-    /// Counts the takes that gave patches, so `takePatchesFor` knows when
-    /// another surface took the patches of a change.
+    /// Counts the takes that gave patches. `takePatchesFor` compares it
+    /// with the count of a surface to find the takes of other surfaces.
     takes: u32 = 0,
 
     pub fn init(gpa: std.mem.Allocator) Atlas {

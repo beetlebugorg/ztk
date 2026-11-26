@@ -1,6 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: BSD-2-Clause
-# Runs ztk on a private headless compositor. The compositor is sway with the
+# Runs ztk on a private headless compositor, and then a menu in popup
+# surfaces. The compositor is sway with the
 # headless backend and the pixman renderer. It has its own runtime folder and
 # bus, so it never touches the desktop session of the user.
 # Use: tests/wayland-smoke.sh
@@ -38,3 +39,10 @@ echo "$out"
 [ "$status" -eq 0 ] || { echo "FAIL: status $status"; exit 1; }
 echo "$out" | grep -q '^frames: 5$' || { echo "FAIL: no line 'frames: 5'"; exit 1; }
 echo "PASS: ztk drew 5 frames on a private compositor with the CPU renderer"
+out="$($cap env XDG_RUNTIME_DIR="$rt" WAYLAND_DISPLAY=wayland-1 timeout 60 "$root/zig-out/bin/ztk" --exit-after-frames 5 "$root/tests/scripts/popup.tcl" 2>&1)"
+status=$?
+echo "$out"
+[ "$status" -eq 0 ] || { echo "FAIL: popup.tcl: status $status"; exit 1; }
+echo "$out" | grep -q '^frames: 5$' || { echo "FAIL: popup.tcl: no line 'frames: 5'"; exit 1; }
+if echo "$out" | grep -qi error; then echo "FAIL: popup.tcl printed an error"; exit 1; fi
+echo "PASS: a menu and its cascade opened in xdg_popup surfaces"
