@@ -26,8 +26,9 @@ pack .t -side left -fill both -expand 1 -padx 8 -pady 8
 focus .t
 ```
 
-- The text widget has the options, the indexes, and the subcommands of Tk 8.6: `bbox`, `compare`, `count`, `delete`, `dlineinfo`, `edit`, `get`, `index`, `insert`, `mark`, `replace`, `see`, `tag`, `xview`, and `yview`. An index has the forms and the modifiers of `text.n`, such as `insert wordend` and `end - 1 chars`.
+- The text widget has the options, the indexes, and the subcommands of Tk 8.6: `bbox`, `compare`, `count`, `delete`, `dlineinfo`, `dump`, `edit`, `get`, `index`, `insert`, `mark`, `replace`, `search`, `see`, `tag`, `xview`, and `yview`. An index has the forms and the modifiers of `text.n`, such as `insert wordend` and `end - 1 chars`.
 - Tags give text colors, fonts, underlines, margins, spacing, justification, and elided text. `tag bind` runs a script for the events of the tagged text, with `<Enter>` and `<Leave>` as the pointer moves between tags.
+- `search` finds exact text or a regular expression, forwards or backwards, with `-all`, `-count`, and `-nocase`. `dump` lists the text, the marks, and the tag edges of a range.
 - Marks keep a place in the text with their gravity. `insert` is the caret and `current` is the character under the pointer.
 - `-wrap char`, `word`, and `none` wrap the lines, and tabs go to the stops of `-tabs`. A buffer of 1 MB scrolls at the full frame rate: the widget lays out only the lines in the window.
 - `-undo 1` turns on undo and redo, with `edit undo`, `edit redo`, `edit separator`, and Control-z. `<<Modified>>` comes when the text changes.
