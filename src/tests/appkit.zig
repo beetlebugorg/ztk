@@ -415,3 +415,27 @@ test "appkit: a file dialog runs as a sheet and alone, and ends" {
     abortModalLater(a.app, 0.5);
     try t.expect(f(p.ptr, t.allocator, &.{ .kind = .save, .initial_file = "a.txt", .default_ext = "txt" }) == null);
 }
+
+test "appkit: the menu of the Dock icon and the tabs of a window" {
+    if (!windowsAllowed()) return;
+    const a = try appkit.AppKit.init(t.allocator);
+    const p = a.platform();
+    defer p.vtable.deinit(p.ptr);
+    const win = try p.createWindow(.{ .title = "ztk tabs", .size = .{ .w = 200, .h = 100 } });
+    defer p.destroyWindow(win);
+    const w: *appkit.Win = @ptrCast(@alignCast(win.impl.?));
+
+    p.menuSet(&.{ .id = 9, .entries = &.{.{ .label = "New Window" }} });
+    p.vtable.macDockMenu.?(p.ptr, 9);
+    const d = a.app_delegate.?;
+    const got = objc.call(fn (objc.Id, objc.Sel, objc.Id) callconv(.c) ?objc.Id, d, "applicationDockMenu:", .{a.app});
+    try t.expect(got == a.menus.menus.get(9).?.ns);
+    p.vtable.macDockMenu.?(p.ptr, 0);
+    try t.expect(objc.call(fn (objc.Id, objc.Sel, objc.Id) callconv(.c) ?objc.Id, d, "applicationDockMenu:", .{a.app}) == null);
+    p.menuDrop(9);
+
+    p.vtable.macTabbing.?(p.ptr, win, .preferred, "docs");
+    try t.expectEqual(@as(isize, 1), objc.call(fn (objc.Id, objc.Sel) callconv(.c) isize, w.ns_window, "tabbingMode", .{}));
+    const id = objc.call(fn (objc.Id, objc.Sel) callconv(.c) objc.Id, w.ns_window, "tabbingIdentifier", .{});
+    try t.expectEqualStrings("docs", objc.utf8(id));
+}
