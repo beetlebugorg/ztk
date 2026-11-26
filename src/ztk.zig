@@ -112,6 +112,7 @@ test {
         _ = @import("platform/tsf.zig");
         _ = @import("tests/tsf.zig");
         _ = @import("platform/winkeys.zig");
+        _ = @import("platform/winmenu.zig");
     }
     _ = anim;
     _ = checks;

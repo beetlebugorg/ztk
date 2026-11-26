@@ -43,6 +43,7 @@ const keysym_mod = @import("../keysym.zig");
 const Mods = event.Mods;
 const Cursor = plat.Cursor;
 const tsf = @import("tsf.zig");
+const winmenu = @import("winmenu.zig");
 
 pub const Renderer = enum { auto, d3d12, cpu };
 
@@ -83,6 +84,9 @@ const WinRec = struct {
     tracking: bool = false,
     /// The text store of the input method, when TSF exists.
     store: ?*tsf.Store = null,
+    /// The menu bar of the window and the id of its menu.
+    bar: ?w32.HMENU = null,
+    bar_id: plat.MenuId = 0,
     /// The buttons that are down, bit 0 for button 1.
     buttons: u8 = 0,
 };
@@ -106,6 +110,9 @@ pub const Win32 = struct {
     /// The texts of the input method events, freed one `poll` later.
     ime_texts: std.ArrayListUnmanaged([]u8) = .empty,
     ime_texts_old: std.ArrayListUnmanaged([]u8) = .empty,
+    /// The native menus, and the handler of the core for their menu loop.
+    menus: winmenu.Menus,
+    menu_handler: ?plat.MenuHandler = null,
     last_frame_us: i64 = 0,
     /// Counts of the frames that each output drew, for the tests.
     gpu_frames: std.atomic.Value(u32) = .init(0),
@@ -127,7 +134,7 @@ pub const Win32 = struct {
         // A manual reset keeps the tick signaled after the wait, so `poll` sees it.
         const timer = w32.CreateWaitableTimerExW(null, null, w32.CREATE_WAITABLE_TIMER_MANUAL_RESET | w32.CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, w32.TIMER_ALL_ACCESS) orelse return error.NoTimer;
         const b = try gpa.create(Win32);
-        b.* = .{ .gpa = gpa, .opts = opts, .inst = inst, .timer = timer };
+        b.* = .{ .gpa = gpa, .opts = opts, .inst = inst, .timer = timer, .menus = .{ .gpa = gpa } };
         b.tsf = tsf.Tsf.init() catch null;
         return b;
     }
@@ -136,6 +143,7 @@ pub const Win32 = struct {
         while (b.windows.items.len > 0) destroy(b, b.windows.items[b.windows.items.len - 1].win);
         b.windows.deinit(b.gpa);
         b.queue.deinit(b.gpa);
+        b.menus.deinit();
         if (b.tsf) |*m| m.deinit();
         b.freeTexts(&b.ime_texts);
         b.freeTexts(&b.ime_texts_old);
@@ -146,7 +154,7 @@ pub const Win32 = struct {
     }
 
     pub fn platform(b: *Win32) Platform {
-        return .{ .ptr = b, .vtable = &vtable, .live = true, .thread_safe_draw = true };
+        return .{ .ptr = b, .vtable = &vtable, .live = true, .thread_safe_draw = true, .native_menus = true };
     }
 
     const vtable: Platform.VTable = .{
@@ -166,6 +174,13 @@ pub const Win32 = struct {
         .clipboardGet = vClipboardGet,
         .textInput = vTextInput,
         .appearance = vAppearance,
+        .menuSet = vMenuSet,
+        .menuEntrySet = vMenuEntrySet,
+        .menuDrop = vMenuDrop,
+        .setMenuBar = vSetMenuBar,
+        .postMenu = vPostMenu,
+        .unpostMenu = vUnpostMenu,
+        .setMenuHandler = vSetMenuHandler,
     };
 
     fn self(ptr: *anyopaque) *Win32 {
@@ -196,7 +211,8 @@ pub const Win32 = struct {
             .right = @intFromFloat(@round(@as(f32, @floatFromInt(size.w)) * scale)),
             .bottom = @intFromFloat(@round(@as(f32, @floatFromInt(size.h)) * scale)),
         };
-        _ = w32.AdjustWindowRectExForDpi(&r, w32.WS_OVERLAPPEDWINDOW, 0, 0, w32.GetDpiForWindow(hwnd));
+        const has_menu: w32.BOOL = if (w32.GetMenu(hwnd) != null) 1 else 0;
+        _ = w32.AdjustWindowRectExForDpi(&r, w32.WS_OVERLAPPEDWINDOW, has_menu, 0, w32.GetDpiForWindow(hwnd));
         return .{ r.right - r.left, r.bottom - r.top };
     }
 
@@ -255,6 +271,11 @@ pub const Win32 = struct {
             s.deinit();
         }
         freeSurface(b, rec.surface);
+        // DestroyWindow destroys the menu of a window, and the popups of the bar belong to their records.
+        if (rec.bar) |bar| {
+            _ = w32.SetMenu(rec.hwnd, null);
+            b.menus.dropBar(bar);
+        }
         _ = w32.DestroyWindow(rec.hwnd);
         b.gpa.destroy(rec);
         b.gpa.destroy(w);
@@ -390,6 +411,85 @@ pub const Win32 = struct {
             .nwse_resize => w32.IDC_SIZENWSE,
             .nesw_resize => w32.IDC_SIZENESW,
         };
+    }
+
+    // ---- Menus ----
+
+    /// Builds the bar of each window whose bar is the menu `id` again.
+    fn rebuildBars(b: *Win32, id: plat.MenuId) void {
+        for (b.windows.items) |r| if (r.bar_id == id) b.attachBar(r, id);
+    }
+
+    /// Gives a window the bar of a menu, or no bar for 0, and keeps the
+    /// client size: the bar goes above the client area.
+    fn attachBar(b: *Win32, rec: *WinRec, id: plat.MenuId) void {
+        const old = rec.bar;
+        // SetMenu gives WM_SIZE with the smaller client area, so the size to keep is the one from before.
+        const keep = rec.win.size;
+        const bar: ?w32.HMENU = if (id == 0) null else b.menus.makeBar(id) catch null;
+        _ = w32.SetMenu(rec.hwnd, bar);
+        if (old) |h| b.menus.dropBar(h);
+        rec.bar = bar;
+        rec.bar_id = if (bar != null) id else 0;
+        _ = w32.DrawMenuBar(rec.hwnd);
+        const outer = outerSize(rec.hwnd, keep, rec.win.scale);
+        _ = w32.SetWindowPos(rec.hwnd, null, 0, 0, outer[0], outer[1], w32.SWP_NOMOVE | w32.SWP_NOZORDER | w32.SWP_NOACTIVATE);
+    }
+
+    fn vMenuSet(ptr: *anyopaque, menu: *const plat.Menu) void {
+        const b = self(ptr);
+        b.menus.set(menu) catch return;
+        b.rebuildBars(menu.id);
+    }
+
+    fn vMenuEntrySet(ptr: *anyopaque, id: plat.MenuId, index: u32, entry: *const plat.MenuEntry) void {
+        const b = self(ptr);
+        b.menus.setEntry(id, index, entry) catch return;
+        b.rebuildBars(id);
+    }
+
+    fn vMenuDrop(ptr: *anyopaque, id: plat.MenuId) void {
+        self(ptr).menus.drop(id);
+    }
+
+    fn vSetMenuBar(ptr: *anyopaque, w: *Window, id: plat.MenuId) void {
+        const b = self(ptr);
+        const rec = b.recOf(w) orelse return;
+        b.attachBar(rec, id);
+    }
+
+    /// Shows a menu at a point of the window. `TrackPopupMenuEx` runs the
+    /// menu loop and returns after the menu closed. It cannot put an
+    /// entry at the point, so the hint `entry` has no effect.
+    fn vPostMenu(ptr: *anyopaque, w: *Window, id: plat.MenuId, at: geom.Point, _: i32) void {
+        const b = self(ptr);
+        const rec = b.recOf(w) orelse return;
+        const h = b.menus.handleOf(id) orelse return;
+        var p: w32.POINT = .{
+            .x = @intFromFloat(@round(@as(f32, @floatFromInt(at.x)) * w.scale)),
+            .y = @intFromFloat(@round(@as(f32, @floatFromInt(at.y)) * w.scale)),
+        };
+        _ = w32.ClientToScreen(rec.hwnd, &p);
+        _ = w32.TrackPopupMenuEx(h, w32.TPM_RIGHTBUTTON, p.x, p.y, rec.hwnd, null);
+    }
+
+    fn vUnpostMenu(_: *anyopaque, _: plat.MenuId) void {
+        // Windows has one menu loop at a time, and EndMenu ends it.
+        _ = w32.EndMenu();
+    }
+
+    fn vSetMenuHandler(ptr: *anyopaque, h: plat.MenuHandler) void {
+        self(ptr).menu_handler = h;
+    }
+
+    /// An `opening` or a `select` in the menu loop: a call of the handler
+    /// of the core, or a queued event when the core gave no handler.
+    fn menuNow(b: *Win32, rec: *WinRec, id: plat.MenuId, entry: i32, action: event.MenuAction) void {
+        if (b.menu_handler) |h| {
+            h.call(h.ctx, id, entry, action);
+            return;
+        }
+        b.push(.{ .menu = .{ .window = rec.win, .menu = id, .entry = entry, .action = action } });
     }
 
     // ---- Appearance ----
@@ -599,11 +699,14 @@ pub const Win32 = struct {
     /// Removes the character message that `TranslateMessage` posted for the
     /// key that is in dispatch, and joins a surrogate pair. Null: the key
     /// gives no character.
-    fn takeChar(hwnd: w32.HWND, sys: bool) ?u21 {
+    /// With `remove` false the character stays in the queue, for the
+    /// mnemonics of a menu bar in DefWindowProc.
+    fn takeChar(hwnd: w32.HWND, sys: bool, remove: bool) ?u21 {
         const id = if (sys) w32.WM_SYSCHAR else w32.WM_CHAR;
         var m: w32.MSG = .{};
-        if (w32.PeekMessageW(&m, hwnd, id, id, w32.PM_REMOVE) == 0) return null;
+        if (w32.PeekMessageW(&m, hwnd, id, id, if (remove) w32.PM_REMOVE else 0) == 0) return null;
         const first: u16 = @intCast(m.wParam & 0xffff);
+        if (!remove) return if (isHigh(first) or isLow(first)) null else first;
         if (!isHigh(first)) return if (isLow(first)) null else first;
         if (w32.PeekMessageW(&m, hwnd, id, id, w32.PM_REMOVE) == 0) return null;
         const second: u16 = @intCast(m.wParam & 0xffff);
@@ -639,7 +742,9 @@ pub const Win32 = struct {
             return;
         }
         const repeat = (ulp >> 30) & 1 != 0;
-        const cp = takeChar(rec.hwnd, msg == w32.WM_SYSKEYDOWN);
+        // With a menu bar, an Alt character stays for DefWindowProc, which opens the menu of its mnemonic.
+        const keep = msg == w32.WM_SYSKEYDOWN and rec.bar != null;
+        const cp = takeChar(rec.hwnd, msg == w32.WM_SYSKEYDOWN, !keep);
         const m = mods(rec);
         var sym: u32 = 0;
         if (cp) |c| if (c >= 0x20 and c != 0x7f and !winkeys.mapFirst(vk)) {
@@ -769,9 +874,13 @@ pub const Win32 = struct {
                 // Alt+F4 goes on to DefWindowProc, which sends WM_CLOSE. Alt and F10
                 // alone open the system menu there, so the other keys stop here.
                 if ((msg == w32.WM_SYSKEYDOWN or msg == w32.WM_SYSKEYUP) and wp == 0x73) return w32.DefWindowProcW(rec.hwnd, msg, wp, lp);
+                // With a menu bar, Alt and F10 go on too, so they open the bar.
+                if ((msg == w32.WM_SYSKEYDOWN or msg == w32.WM_SYSKEYUP) and rec.bar != null) return w32.DefWindowProcW(rec.hwnd, msg, wp, lp);
                 return 0;
             },
             w32.WM_CHAR, w32.WM_SYSCHAR => {
+                // The mnemonic of a menu bar: the key event of the press already went to the core.
+                if (msg == w32.WM_SYSCHAR and rec.bar != null) return w32.DefWindowProcW(rec.hwnd, msg, wp, lp);
                 // A character with no key message before it, such as one that SendInput gives.
                 b.charOnly(rec, @intCast(wp & 0xffff));
                 return 0;
@@ -793,6 +902,33 @@ pub const Win32 = struct {
             },
             w32.WM_DWMCOLORIZATIONCOLORCHANGED => {
                 b.push(.{ .appearance = .{ .window = w } });
+                return 0;
+            },
+            w32.WM_INITMENUPOPUP => {
+                // The high word is 1 for the system menu of the window, which ztk does not own.
+                if (w32.hiword(lp) != 0) return w32.DefWindowProcW(rec.hwnd, msg, wp, lp);
+                const id = b.menus.idOf(wp) orelse return 0;
+                b.menuNow(rec, id, -1, .opening);
+                return 0;
+            },
+            w32.WM_MENUSELECT => {
+                const flags: u16 = @bitCast(w32.hiword(wp));
+                const item: u16 = @bitCast(w32.loword(wp));
+                if (lp == 0 or flags & w32.MF_SYSMENU != 0) return w32.DefWindowProcW(rec.hwnd, msg, wp, lp);
+                const id = b.menus.idOf(@bitCast(lp)) orelse return 0;
+                // A cascade gives its position, and another item its ID, the index plus 1.
+                const entry: i32 = if (flags & w32.MF_POPUP != 0) item else @as(i32, item) - 1;
+                b.menuNow(rec, id, entry, .select);
+                return 0;
+            },
+            w32.WM_MENUCOMMAND => {
+                const id = b.menus.idOf(@bitCast(lp)) orelse return 0;
+                b.push(.{ .menu = .{ .window = w, .menu = id, .entry = @intCast(wp), .action = .invoke } });
+                return 0;
+            },
+            w32.WM_UNINITMENUPOPUP => {
+                const id = b.menus.idOf(wp) orelse return 0;
+                b.push(.{ .menu = .{ .window = w, .menu = id, .entry = -1, .action = .closed } });
                 return 0;
             },
             w32.WM_ERASEBKGND => return 1,
