@@ -190,6 +190,8 @@ pub const App = struct {
     taskbar: @import("platform/platform.zig").Taskbar = .{},
     /// The shortcuts of `ztk::hotkey`.
     hotkeys: @import("hotkey.zig").State = .{},
+    /// The drop targets of `tkdnd::drop_target`.
+    dnd: @import("dnd.zig").State = .{},
     /// The accent color of the system, when the backend gives one. The themes do not use it yet.
     accent: ?geom.Color = null,
     anim_last_us: i64 = -1,
@@ -360,6 +362,7 @@ pub const App = struct {
         app.text_input.deinit(app.gpa);
         app.trays.deinit(app);
         app.hotkeys.deinit(app);
+        app.dnd.deinit(app);
         while (app.handles) |h| {
             app.handles = h.next;
             app.gpa.destroy(h);
@@ -978,6 +981,7 @@ pub const App = struct {
             .appearance => app.followSystem(),
             .tray => |tr| @import("tray.zig").handleEvent(app, tr.id, tr.action),
             .hotkey => |hk| @import("hotkey.zig").handleEvent(app, hk.id),
+            .drop => |dr| @import("dnd.zig").handleEvent(app, dr, top),
             .menu => |m| @import("widgets/menu.zig").handleEvent(app, m.menu, m.entry, m.action),
             .app_command => {},
         }
