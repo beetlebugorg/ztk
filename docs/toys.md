@@ -20,6 +20,7 @@ set games {
     twinlanes  "TWIN LANES"  panedwindow
     pixelpad   "PIXEL PAD"   text
     diskhound  "DISK HOUND"  ttk::treeview
+    eggdrop    "EGG DROP"    button
 }
 . configure -background #1d1a33
 canvas .sky -width 360 -height 32 -background #1d1a33 -highlightthickness 0
