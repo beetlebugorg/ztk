@@ -203,7 +203,18 @@ class Build:
         self.anchors[page] = ids
         body = self.md.renderer.render(tokens, self.md.options, {"root": rel(page, "")})
         body = body.replace("<table>", '<div class="table"><table>').replace("</table>", "</table></div>")
+        body = self.more(src, body)
         return title or src, self.alerts(body)
+
+    @staticmethod
+    def more(src, body):
+        """`<!-- more: TITLE -->` and `<!-- end more -->` lines make a folded
+        section: the reader opens it with its title."""
+        body, opened = re.subn(r"<p>&lt;!-- more: (.+?) --&gt;</p>", r'<details class="more"><summary>\1</summary>', body)
+        body, closed = re.subn(r"<p>&lt;!-- end more --&gt;</p>", "</details>", body)
+        if opened != closed:
+            raise SystemExit(f"{src}: {opened} lines of <!-- more: --> and {closed} of <!-- end more -->")
+        return body
 
     def live_blocks(self, src, tokens):
         """Marks each `tcl` block after a live marker, and drops the marker

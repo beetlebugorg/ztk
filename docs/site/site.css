@@ -456,3 +456,9 @@ figure.chart { margin: 0; }
   .live-demo.toy .ld-view { background: linear-gradient(180deg, #4a4470 0%, #34304f 100%); box-shadow: inset 0 2px 1px rgb(255 255 255 / 22%), inset 0 -5px 10px rgb(0 0 0 / 40%), 0 14px 28px rgb(0 0 0 / 45%); }
   .toy-pad::after { background: radial-gradient(circle, rgb(0 0 0 / 55%) 1.6px, transparent 2.2px) 0 0 / 8px 8px; }
 }
+
+/* A folded section of a page: <!-- more: TITLE --> in the Markdown. */
+details.more { margin: 16px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+details.more > summary { cursor: pointer; padding: 10px 14px; font-weight: 600; color: var(--text-2); }
+details.more[open] > summary { border-bottom: 1px solid var(--line); }
+details.more > :not(summary) { margin-left: 14px; margin-right: 14px; }
