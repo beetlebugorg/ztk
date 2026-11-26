@@ -253,3 +253,67 @@ test "win32: loword and hiword keep the sign of a coordinate" {
     try std.testing.expectEqual(@as(i16, 20), loword(lp));
     try std.testing.expectEqual(@as(i16, -10), hiword(lp));
 }
+
+// Menus.
+pub const MENUITEMINFOW = extern struct {
+    cbSize: UINT = @sizeOf(MENUITEMINFOW),
+    fMask: UINT = 0,
+    fType: UINT = 0,
+    fState: UINT = 0,
+    wID: UINT = 0,
+    hSubMenu: ?HMENU = null,
+    hbmpChecked: ?*anyopaque = null,
+    hbmpUnchecked: ?*anyopaque = null,
+    dwItemData: usize = 0,
+    dwTypeData: ?[*:0]u16 = null,
+    cch: UINT = 0,
+    hbmpItem: ?*anyopaque = null,
+};
+pub const MENUINFO = extern struct {
+    cbSize: DWORD = @sizeOf(MENUINFO),
+    fMask: DWORD = 0,
+    dwStyle: DWORD = 0,
+    cyMax: UINT = 0,
+    hbrBack: ?HBRUSH = null,
+    dwContextHelpID: DWORD = 0,
+    dwMenuData: usize = 0,
+};
+pub const MIIM_STATE: UINT = 0x1;
+pub const MIIM_ID: UINT = 0x2;
+pub const MIIM_SUBMENU: UINT = 0x4;
+pub const MIIM_STRING: UINT = 0x40;
+pub const MIIM_FTYPE: UINT = 0x100;
+pub const MFT_STRING: UINT = 0;
+pub const MFT_MENUBARBREAK: UINT = 0x20;
+pub const MFT_RADIOCHECK: UINT = 0x200;
+pub const MFT_SEPARATOR: UINT = 0x800;
+pub const MFT_RIGHTJUSTIFY: UINT = 0x4000;
+pub const MFS_GRAYED: UINT = 0x3;
+pub const MFS_CHECKED: UINT = 0x8;
+pub const MF_BYPOSITION: UINT = 0x400;
+pub const MF_POPUP: UINT = 0x10;
+pub const MF_SYSMENU: UINT = 0x2000;
+pub const MIM_STYLE: DWORD = 0x10;
+pub const MNS_NOTIFYBYPOS: DWORD = 0x08000000;
+pub const TPM_RIGHTBUTTON: UINT = 0x2;
+pub const WM_INITMENUPOPUP: UINT = 0x0117;
+pub const WM_MENUSELECT: UINT = 0x011F;
+pub const WM_UNINITMENUPOPUP: UINT = 0x0125;
+pub const WM_MENUCOMMAND: UINT = 0x0126;
+
+pub extern "user32" fn CreateMenu() callconv(.winapi) ?HMENU;
+pub extern "user32" fn CreatePopupMenu() callconv(.winapi) ?HMENU;
+pub extern "user32" fn DestroyMenu(m: HMENU) callconv(.winapi) BOOL;
+pub extern "user32" fn IsMenu(m: HMENU) callconv(.winapi) BOOL;
+pub extern "user32" fn InsertMenuItemW(m: HMENU, item: UINT, by_position: BOOL, info: *const MENUITEMINFOW) callconv(.winapi) BOOL;
+pub extern "user32" fn SetMenuItemInfoW(m: HMENU, item: UINT, by_position: BOOL, info: *const MENUITEMINFOW) callconv(.winapi) BOOL;
+pub extern "user32" fn GetMenuItemInfoW(m: HMENU, item: UINT, by_position: BOOL, info: *MENUITEMINFOW) callconv(.winapi) BOOL;
+pub extern "user32" fn RemoveMenu(m: HMENU, pos: UINT, flags: UINT) callconv(.winapi) BOOL;
+pub extern "user32" fn GetMenuItemCount(m: HMENU) callconv(.winapi) c_int;
+pub extern "user32" fn SetMenuInfo(m: HMENU, info: *const MENUINFO) callconv(.winapi) BOOL;
+pub extern "user32" fn SetMenu(hwnd: HWND, m: ?HMENU) callconv(.winapi) BOOL;
+pub extern "user32" fn GetMenu(hwnd: HWND) callconv(.winapi) ?HMENU;
+pub extern "user32" fn DrawMenuBar(hwnd: HWND) callconv(.winapi) BOOL;
+pub extern "user32" fn TrackPopupMenuEx(m: HMENU, flags: UINT, x: c_int, y: c_int, hwnd: HWND, params: ?*anyopaque) callconv(.winapi) BOOL;
+pub extern "user32" fn EndMenu() callconv(.winapi) BOOL;
+pub extern "user32" fn ClientToScreen(hwnd: HWND, p: *POINT) callconv(.winapi) BOOL;

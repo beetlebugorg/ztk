@@ -83,7 +83,6 @@ const slot = struct {
 extern "ole32" fn CoInitializeEx(reserved: ?*anyopaque, flags: u32) callconv(.winapi) HRESULT;
 extern "ole32" fn CoUninitialize() callconv(.winapi) void;
 extern "ole32" fn CoCreateInstance(clsid: *const GUID, outer: ?*anyopaque, ctx: u32, iid: *const GUID, out: *?*anyopaque) callconv(.winapi) HRESULT;
-extern "user32" fn ClientToScreen(hwnd: w32.HWND, p: *w32.POINT) callconv(.winapi) w32.BOOL;
 
 /// What the store tells its owner: the composition text and the committed text, in UTF-8.
 pub const Owner = struct {
@@ -217,7 +216,7 @@ pub const Store = struct {
             .x = @intFromFloat(@round(@as(f32, @floatFromInt(r.x)) * s.scale)),
             .y = @intFromFloat(@round(@as(f32, @floatFromInt(r.y)) * s.scale)),
         };
-        if (s.hwnd) |h| _ = ClientToScreen(h, &p);
+        if (s.hwnd) |h| _ = w32.ClientToScreen(h, &p);
         return .{
             .left = p.x,
             .top = p.y,
@@ -455,7 +454,7 @@ pub const Store = struct {
         var client: w32.RECT = .{};
         if (s.hwnd) |h| _ = w32.GetClientRect(h, &client);
         var p: w32.POINT = .{};
-        if (s.hwnd) |h| _ = ClientToScreen(h, &p);
+        if (s.hwnd) |h| _ = w32.ClientToScreen(h, &p);
         rc.* = .{ .left = p.x, .top = p.y, .right = p.x + client.right, .bottom = p.y + client.bottom };
         return S_OK;
     }
