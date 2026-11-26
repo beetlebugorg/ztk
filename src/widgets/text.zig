@@ -31,6 +31,7 @@ const tags_mod = @import("../text_widget/tags.zig");
 const texttag = @import("texttag.zig");
 const textview = @import("textview.zig");
 const textbind = @import("textbind.zig");
+const textsearch = @import("textsearch.zig");
 const undo_mod = @import("../text_widget/undo.zig");
 const scroll = @import("../scroll.zig");
 const bind = @import("../bind.zig");
@@ -134,6 +135,10 @@ pub const Data = struct {
     /// True while a typed text replaces the selection, so the delete and
     /// the insert are one compound action.
     compound: bool = false,
+    /// The flag of `debug`, and the point and the offsets of `scan mark`.
+    debug: bool = false,
+    scan_xy: [2]i64 = .{ 0, 0 },
+    scan_pos: [2]f64 = .{ 0, 0 },
 };
 
 pub fn data(w: *const Widget) *Data {
@@ -487,6 +492,37 @@ fn cmdDelete(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!Value
 
 // ---- Subcommands ----
 
+fn cmdScan(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!Value {
+    const d = data(w);
+    if (argv.len < 5 or argv.len > 6) return it.fail("wrong # args: should be \"{s} scan mark x y\" or \"{s} scan dragto x y ?gain?\"", .{ w.path, w.path });
+    const op = try it.str(argv[2]);
+    const mark = prefix(op, "mark");
+    if (!mark and !prefix(op, "dragto")) return it.fail("bad scan option \"{s}\": must be mark or dragto", .{op});
+    if (mark and argv.len != 5) return it.fail("wrong # args: should be \"{s} scan mark x y\" or \"{s} scan dragto x y ?gain?\"", .{ w.path, w.path });
+    var xy: [2]i64 = undefined;
+    for (0..2) |k| {
+        const t = try it.str(argv[3 + k]);
+        xy[k] = std.fmt.parseInt(i64, std.mem.trim(u8, t, " "), 0) catch return it.fail("expected integer but got \"{s}\"", .{t});
+    }
+    if (mark) {
+        d.scan_xy = xy;
+        d.scan_pos = .{ d.vx.pos, d.vy.pos };
+        return Value.empty;
+    }
+    var gain: i64 = 10;
+    if (argv.len == 6) {
+        const t = try it.str(argv[5]);
+        gain = std.fmt.parseInt(i64, std.mem.trim(u8, t, " "), 0) catch return it.fail("expected integer but got \"{s}\"", .{t});
+    }
+    // The view moves by the gain times the move of the pointer.
+    textview.sync(w);
+    const g: f64 = @floatFromInt(gain);
+    d.vx.jump(d.vx.clampPos(d.scan_pos[0] - g * @as(f64, @floatFromInt(xy[0] - d.scan_xy[0]))));
+    d.vy.jump(d.vy.clampPos(d.scan_pos[1] - g * @as(f64, @floatFromInt(xy[1] - d.scan_xy[1]))));
+    repaint(w);
+    return Value.empty;
+}
+
 const edit_names = [_][]const u8{ "canundo", "canredo", "modified", "redo", "reset", "separator", "undo" };
 
 fn cmdEdit(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!Value {
@@ -716,8 +752,22 @@ fn subcommand(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!?Val
     }
     if (eq(u8, sub, "sync")) return Value.empty;
     if (eq(u8, sub, "edit")) return try cmdEdit(w, it, argv);
+    if (eq(u8, sub, "search")) {
+        if (argv.len < 4) return it.fail("wrong # args: should be \"{s} search ?switches? pattern index ?stopIndex?\"", .{w.path});
+        return try textsearch.cmdSearch(w, it, argv);
+    }
+    if (eq(u8, sub, "dump")) return try textsearch.cmdDump(w, it, argv);
+    if (eq(u8, sub, "debug")) {
+        const d = data(w);
+        if (argv.len > 3) return it.fail("wrong # args: should be \"{s} debug boolean\"", .{w.path});
+        if (argv.len == 2) return .{ .int = @intFromBool(d.debug) };
+        const t = try it.str(argv[2]);
+        d.debug = options.parseBool(t) orelse return it.fail("expected boolean value but got \"{s}\"", .{t});
+        return Value.empty;
+    }
+    if (eq(u8, sub, "scan")) return try cmdScan(w, it, argv);
     if (eq(u8, sub, "pendingsync")) return .{ .int = 0 };
-    const later = [_][]const u8{ "debug", "dump", "image", "peer", "scan", "search", "window" };
+    const later = [_][]const u8{ "image", "peer", "window" };
     for (later) |n| if (eq(u8, sub, n)) return it.fail("the text subcommand \"{s}\" is not in ztk yet", .{n});
     return null;
 }

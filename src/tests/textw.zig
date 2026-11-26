@@ -396,3 +396,69 @@ test "textw: the class bindings for keys, clicks, and the selection" {
     try h.update();
     try t.expectEqualStrings("ello world", try h.eval(".t get 1.0 1.end"));
 }
+
+test "textw: search and dump" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval(
+        \\text .t
+        \\.t insert end "hello world\nHello again\nfoo bar foo"
+        \\.t tag add b 1.2 1.4
+        \\.t mark set m 2.3
+    );
+    // The expected texts are from wish 8.6.16.
+    try expectEvals(&h, &.{
+        .{ ".t search hello 1.0", "1.0" },
+        .{ ".t search hello 1.1", "1.0" },
+        .{ ".t search -nocase hello 1.1", "2.0" },
+        .{ ".t search -backwards hello end", "1.0" },
+        .{ ".t search -backwards hello 1.3", "1.0" },
+        .{ ".t search -regexp {o+ [a-z]} 1.0", "1.4" },
+        .{ ".t search -count n -regexp {f.o} 1.0; set n", "3" },
+        .{ ".t search -all foo 1.0", "3.0 3.8" },
+        .{ ".t search -all -count c o 1.0 2.0; set c", "1 1" },
+        .{ ".t search xyz 1.0", "" },
+        .{ ".t search hello 1.1 2.0", "" },
+        .{ ".t search \"world\\nHe\" 1.0", "1.6" },
+        .{ ".t search -regexp -nocase {^hello} 2.0", "2.0" },
+        .{ ".t search -- -x 1.0", "" },
+        .{ ".t search {} 1.0", "1.0" },
+        .{ ".t dump 1.0 end", "text he 1.0 tagon b 1.2 text ll 1.2 tagoff b 1.4 text {o world\n} 1.4 text Hel 2.0 mark m 2.3 text {lo again\n} 2.3 text {foo bar foo} 3.0 mark insert 3.11 mark current 3.11 text {\n} 3.11" },
+        .{ ".t dump -text 1.0 2.0", "text he 1.0 text ll 1.2 text {o world\n} 1.4" },
+        .{ ".t dump -mark 1.0 end", "mark m 2.3 mark insert 3.11 mark current 3.11" },
+        .{ ".t dump -tag 1.0 end", "tagon b 1.2 tagoff b 1.4" },
+        .{ ".t dump 1.3", "text l 1.3" },
+        .{ "set r {}; .t dump -command {lappend ::r} 1.0 1.5; set r", "text he 1.0 tagon b 1.2 text ll 1.2 tagoff b 1.4 text o 1.4" },
+        .{ ".t dump -all 1.0 1.3", "text he 1.0 tagon b 1.2 text l 1.2" },
+    });
+    try expectErrors(&h, &.{
+        .{ ".t search", "wrong # args: should be \".t search ?switches? pattern index ?stopIndex?\"" },
+        .{ ".t search -bogus x 1.0", "bad switch \"-bogus\": must be --, -all, -backwards, -count, -elide, -exact, -forwards, -nocase, -nolinestop, -overlap, -regexp, or -strictlimits" },
+        .{ ".t search x", "wrong # args: should be \".t search ?switches? pattern index ?stopIndex?\"" },
+        .{ ".t search -regexp {(} 1.0", "couldn't compile regular expression pattern: parentheses () not balanced" },
+        .{ ".t dump", "Usage: .t dump ?-all -image -text -mark -tag -window? ?-command script? index ?index2?" },
+        .{ ".t dump -bogus 1.0", "bad option \"-bogus\": must be -all, -command, -image, -mark, -tag, -text, or -window" },
+    });
+}
+
+test "textw: debug and scan" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval("text .t -height 5; pack .t; for {set i 1} {$i <= 50} {incr i} {.t insert end \"line $i\\n\"}; update");
+    // The expected texts are from wish 8.6.16.
+    try expectEvals(&h, &.{
+        .{ ".t debug", "0" },
+        .{ ".t debug 1; .t debug", "1" },
+        .{ ".t scan mark 0 100; .t scan dragto 0 90; expr {[lindex [.t yview] 0] > 0}", "1" },
+    });
+    try expectErrors(&h, &.{
+        .{ ".t debug foo", "expected boolean value but got \"foo\"" },
+        .{ ".t debug 0 1", "wrong # args: should be \".t debug boolean\"" },
+        .{ ".t scan", "wrong # args: should be \".t scan mark x y\" or \".t scan dragto x y ?gain?\"" },
+        .{ ".t scan foo 1 2", "bad scan option \"foo\": must be mark or dragto" },
+        .{ ".t scan mark x 2", "expected integer but got \"x\"" },
+        .{ ".t scan dragto 1 2 3 4", "wrong # args: should be \".t scan mark x y\" or \".t scan dragto x y ?gain?\"" },
+    });
+}
