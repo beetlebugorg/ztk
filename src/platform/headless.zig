@@ -90,6 +90,11 @@ pub const Headless = struct {
     dialog_filters: usize = 0,
     dialog_multiple: bool = false,
     dialog_ext: [16]u8 = @splat(0),
+    /// The last state of `taskbarSet`, and the count and the last kind of
+    /// `attention`.
+    taskbar: plat.Taskbar = .{},
+    attentions: u32 = 0,
+    attention_critical: bool = false,
     /// The texts of the input method events in the queue, freed at the next `poll`.
     ime_texts: std.ArrayListUnmanaged([]u8) = .empty,
     ime_texts_old: std.ArrayListUnmanaged([]u8) = .empty,
@@ -164,6 +169,8 @@ pub const Headless = struct {
         .trayCreate = vTrayCreate,
         .traySet = vTraySet,
         .trayDrop = vTrayDrop,
+        .taskbarSet = vTaskbarSet,
+        .attention = vAttention,
     };
 
     pub const TrayRec = struct { id: plat.TrayId, width: u32 = 0, template: bool = false, tooltip: std.ArrayListUnmanaged(u8) = .empty, menu: plat.MenuId = 0 };
@@ -196,6 +203,16 @@ pub const Headless = struct {
     }
 
     /// The record of a tray, or null after its drop.
+    fn vTaskbarSet(ptr: *anyopaque, _: *Window, state: plat.Taskbar) void {
+        self(ptr).taskbar = state;
+    }
+
+    fn vAttention(ptr: *anyopaque, _: *Window, critical: bool) void {
+        const h = self(ptr);
+        h.attentions += 1;
+        h.attention_critical = critical;
+    }
+
     pub fn tray(h: *Headless, id: plat.TrayId) ?*TrayRec {
         for (h.trays.items) |*r| if (r.id == id) return r;
         return null;

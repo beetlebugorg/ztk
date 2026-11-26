@@ -35,6 +35,6 @@ test "tray: the errors of the options and of the names" {
     try t.expectEqualStrings("image \"none\" doesn't exist", try h.evalError("ztk::tray create -image none"));
     try t.expectEqualStrings("bad option \"-icon\": must be -command, -image, -menu, -template, or -tooltip", try h.evalError("ztk::tray create -icon x"));
     try t.expectEqualStrings("tray \"tray9\" doesn't exist", try h.evalError("ztk::tray destroy tray9"));
-    try t.expectEqualStrings("bad feature \"teleport\": must be native-menus or tray", try h.evalError("ztk::has teleport"));
+    try t.expectEqualStrings("bad feature \"teleport\": must be native-menus, taskbar, or tray", try h.evalError("ztk::has teleport"));
     try t.expectEqualStrings("0", try h.eval("ztk::has native-menus"));
 }
