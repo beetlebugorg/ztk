@@ -32,8 +32,10 @@ const params = new URLSearchParams(location.search);
 const W = 360, H = 240;
 const PRE = `wm geometry . ${W}x${H}\n`;
 let lib = null;
-const load = () => lib ??= import(new URL("ztk.js", base).href)
-  .then(async (m) => ({ m, module: await m.compileModule(new URL("ztk.wasm", base)) }));
+// The landing page has its own live cards, so the compiled module is
+// on globalThis, for one compile on each page.
+const load = () => lib ??= (globalThis.ztkDocsModule ??= import(new URL("ztk.js", base).href)
+  .then(async (m) => ({ m, module: await m.compileModule(new URL("ztk.wasm", base)) })));
 
 // The highlighter. It marks comments, strings, variables, numbers,
 // options, and the first word of each command, with the token classes
@@ -536,7 +538,7 @@ class Demo {
 
 const demos = [...document.querySelectorAll("figure.live-demo")].map((f) => new Demo(f));
 const touch = matchMedia("(pointer: coarse)").matches;
-if (params.has("livetest")) {
+if (params.has("snippettest")) {
   // The test of tests/site.sh: each demo goes live, then the first demo
   // gets an edit and a run with the state of its old window.
   window.ztkLiveDocs = (async () => {

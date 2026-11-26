@@ -42,25 +42,7 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
       </div>
       <p class="meta">Tk compatible: each example on this page also runs in <code>wish</code> 8.6. No third-party library, on the <a href="https://beetlebug.org/ztcl/">ztcl</a> interpreter.</p>
     </div>
-    <div class="codecard" aria-label="A code sample">
-      <div class="bar"><i></i><i></i><i></i><span>demo.tcl</span></div>
-<pre><code><span class="k">label</span> .title -text <span class="s">"Hello from ztk"</span>
-<span class="k">entry</span> .name -textvariable name -width <span class="n">24</span>
-<span class="k">button</span> .greet -text <span class="s">"Greet"</span> \
-    -command {<span class="k">set</span> msg <span class="s">"Hello, <span class="v">$name</span>!"</span>}
-<span class="k">label</span> .msg -textvariable msg
-<span class="k">grid</span> .title -sticky w -padx <span class="n">12</span> -pady <span class="n">6</span>
-<span class="k">grid</span> .name .greet -sticky ew -padx <span class="n">12</span> -pady <span class="n">4</span>
-<span class="k">grid</span> .msg - -sticky w -padx <span class="n">12</span> -pady <span class="n">6</span>
-<span class="k">bind</span> .name &lt;Return&gt; {.greet invoke}</code></pre>
-<pre><code><span class="c">/* demo.css */</span>
-<span class="k">#greet</span> {
-  <span class="v">color</span>: var(--accent-fg);
-  <span class="v">background-color</span>: var(--accent);
-}
-<span class="k">#greet:hover</span> { <span class="v">background-color</span>: var(--accent-hover); }</code></pre>
-<pre class="term"><code><span class="p">$ </span>ztk examples/demo.tcl</code></pre>
-    </div>
+    <!-- live: hero -->
   </div>
 </section>
 
@@ -348,7 +330,8 @@ const cards = [...document.querySelectorAll(".shot[data-example]")];
 const params = new URLSearchParams(location.search);
 const base = new URL("play/", location.href);
 let lib = null;
-const load = () => lib ??= import(new URL("ztk.js", base).href).then(async (m) => ({ m, module: await m.compileModule(new URL("ztk.wasm", base)) }));
+// The live snippet of the hero (assets/live.js) uses the same compiled module.
+const load = () => lib ??= (globalThis.ztkDocsModule ??= import(new URL("ztk.js", base).href).then(async (m) => ({ m, module: await m.compileModule(new URL("ztk.wasm", base)) })));
 const text = async (u) => { const r = await fetch(u); return r.ok ? r.text() : null; };
 const handles = {};
 async function live(card) {
