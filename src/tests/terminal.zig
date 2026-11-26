@@ -83,3 +83,26 @@ test "terminal: a frame with colors, wide characters, and the alternate screen" 
     try t.expectEqualStrings("red rgb \u{4e2d}\u{6587} inv\u{250c}\u{2500}\u{2510}", try h.eval(".t get 0"));
     _ = try h.eval("destroy .t; update");
 }
+
+test "terminal: -command runs cmd.exe on the pseudo console of Windows" {
+    if (@import("builtin").os.tag != .windows or !@import("ztcl").pty.supported) return error.SkipZigTest;
+    const ztcl = @import("ztcl");
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    const env = [_][:0]const u8{ "PATH=C:\\Windows\\System32", "SystemRoot=C:\\Windows" };
+    h.it.exec_host = .{ .env = &env };
+    try h.it.allow(@backingInt(ztcl.interp.Capability.exec) | @backingInt(ztcl.interp.Capability.channels));
+    _ = try h.eval("set ::done {}; ztk::terminal .t -width 40 -height 6 -command {cmd.exe /c echo hi-term} -exitcommand {set ::done}; pack .t; update");
+    try t.expectEqualStrings("running", try h.eval(".t status"));
+    // The widget reads its PTY on a timer of the loop.
+    var i: usize = 0;
+    while (i < 500) : (i += 1) {
+        h.head.advance(10_000);
+        try h.update();
+        if (!std.mem.eql(u8, try h.eval("set ::done"), "")) break;
+        ztcl.proc.sleepMs(10);
+    }
+    try t.expect(std.mem.indexOf(u8, try h.eval(".t get 0 5"), "hi-term") != null);
+    try t.expectEqualStrings("exit 0", try h.eval("set ::done"));
+}

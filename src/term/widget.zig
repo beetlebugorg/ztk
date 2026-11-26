@@ -59,9 +59,10 @@ const Value = ztcl.Value;
 
 /// True on the platforms where `ztcl::pty` starts a program.
 // The widget reads the PTY by its descriptor, and the PTY is a channel of
-// ztcl. The PTY of ztcl on Windows is a pseudo console with handles, so
-// Windows has no -command yet. x86-64 macOS has no channels in ztcl.
-const pty_ok = ztcl.pty.supported and ztcl.sys.supported and builtin.os.tag != .windows;
+// ztcl. On Windows the PTY is a pseudo console: the channel reads its
+// output pipe and writes its input pipe, so the widget keeps both. x86-64
+// macOS has no channels in ztcl.
+const pty_ok = ztcl.pty.supported and ztcl.sys.supported;
 
 pub const specs = [_]Spec{
     .{ .name = "-background", .db_name = "background", .db_class = "Background", .type = .color, .default = "#ffffff", .from_style = true, .style_prop = .background },
@@ -117,6 +118,9 @@ const Data = struct {
     /// The channel of `ztcl::pty`, or empty.
     chan: []u8 = "",
     fd: i32 = -1,
+    /// The descriptor that writes to the program: `fd` on Linux and macOS,
+    /// and the input pipe of the pseudo console on Windows.
+    wfd: i32 = -1,
     timer: ?loop_mod.TimerId = null,
     /// Bytes for the program that the PTY did not take yet.
     pending: std.ArrayList(u8) = .empty,
@@ -222,6 +226,7 @@ fn spawn(w: *Widget) ztcl.Error!void {
     const c = ztcl.chan.lookup(it, name) orelse return it.fail("ztcl::pty gave no channel", .{});
     d.chan = try w.app.gpa.dupe(u8, name);
     d.fd = c.fd;
+    d.wfd = if (c.wfd >= 0) c.wfd else c.fd;
     var cfg: std.ArrayList(u8) = .empty;
     try cfg.appendSlice(a, "fconfigure ");
     try ztcl.value.appendElement(a, &cfg, name, false);
@@ -259,6 +264,7 @@ fn closePty(w: *Widget) void {
     w.app.gpa.free(d.chan);
     d.chan = "";
     d.fd = -1;
+    d.wfd = -1;
     d.pending.clearRetainingCapacity();
 }
 
@@ -300,6 +306,14 @@ fn tick(ctx: ?*anyopaque) void {
         d.quiet = 0;
         afterOutput(w);
     } else d.quiet +|= 1;
+    // The output pipe of a pseudo console stays open after its program
+    // ends, so on Windows a quiet PTY asks the status of its program.
+    if (comptime builtin.os.tag == .windows) {
+        if (!got and !ended) {
+            const st = ptyCall(w, "status", "") catch Value{ .str = "running" };
+            if (!std.mem.eql(u8, w.app.it.str(st) catch "running", "running")) ended = true;
+        }
+    }
     if (ended) return programEnded(w);
     schedule(w, if (d.quiet < 25) 8000 else 32000);
 }
@@ -343,6 +357,14 @@ fn sysIo(comptime write: bool, fd: i32, ptr: [*]u8, len: usize) Io {
             .AGAIN, .INTR => .again,
             else => .fail,
         };
+    } else if (comptime builtin.os.tag == .windows and pty_ok) {
+        // The pipes of the pseudo console, through the I/O of ztcl.
+        const r = if (write) ztcl.sys.write(fd, ptr[0..len]) else ztcl.sys.read(fd, ptr[0..len]);
+        return switch (r) {
+            .n => |n| .{ .n = n },
+            .again => .again,
+            .err => .fail,
+        };
     } else if (comptime pty_ok) {
         const rc = if (write) std.c.write(fd, ptr, len) else std.c.read(fd, ptr, len);
         if (rc >= 0) return .{ .n = @intCast(rc) };
@@ -356,8 +378,8 @@ fn sysIo(comptime write: bool, fd: i32, ptr: [*]u8, len: usize) Io {
 fn flushPending(w: *Widget) void {
     const d = data(w);
     if (comptime !pty_ok) return;
-    while (d.pending.items.len > 0 and d.fd >= 0) {
-        const n = switch (sysIo(true, d.fd, d.pending.items.ptr, d.pending.items.len)) {
+    while (d.pending.items.len > 0 and d.wfd >= 0) {
+        const n = switch (sysIo(true, d.wfd, d.pending.items.ptr, d.pending.items.len)) {
             .n => |x| x,
             else => break,
         };
