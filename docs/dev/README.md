@@ -17,6 +17,7 @@ These files are the plan, the task lists, the reviews, and the reports of ztk. T
 | [widget-pages.md](widget-pages.md) | The shape of a widget page: the fixed size of its screenshot and its live snippet. |
 | [menus.md](menus.md) | The design of the menus: the native menus of macOS and Windows, and the drawn menus of Linux and the web. |
 | [platform-features.md](platform-features.md) | The plan of the platform features in ztk and in ztcl: the rules of the namespaces and of `ztk::has`, the features by priority, and the platform interface for them. |
+| [native-look.md](native-look.md) | The plan of a native look and feel on each platform (ztk#154): the native themes, the text of the system, the window chrome, the behavior, accessibility, and the pixel tests against native reference apps. |
 
 The user page [Differences from Tk](../differences.md) has the short form of the limits.
 
