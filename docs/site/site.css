@@ -427,10 +427,10 @@ figure.chart { margin: 0; }
 .live-demo.toy .ld-view { padding: 20px 16px; }
 .live-demo.toy .ld-frame { width: 480px; position: static; }
 .live-demo.toy .toy-pad { width: 480px; }
-.live-demo.toy .ld-more { border-top: 1px solid var(--line); }
-.live-demo.toy .ld-more > summary { cursor: pointer; padding: 10px 14px; font-size: 14px; color: var(--text-2); }
-.live-demo.toy .ld-more > summary:hover { color: var(--accent); }
-.live-demo.toy .ld-more .ld-code { border-right: 0; border-top: 1px solid var(--line); }
+.live-demo.toy .ld-more, .live-demo.wide .ld-more { border-top: 1px solid var(--line); }
+.live-demo.toy .ld-more > summary, .live-demo.wide .ld-more > summary { cursor: pointer; padding: 10px 14px; font-size: 14px; color: var(--text-2); }
+.live-demo.toy .ld-more > summary:hover, .live-demo.wide .ld-more > summary:hover { color: var(--accent); }
+.live-demo.toy .ld-more .ld-code, .live-demo.wide .ld-more .ld-code { border-right: 0; border-top: 1px solid var(--line); }
 /* The handheld of the Toys page: the device, and the code of the game next to it. */
 /* The code goes under the handheld, so that a line of 80 columns fits with no wrap. */
 .live-demo.toy-console { grid-template-columns: minmax(0, 1fr); }
@@ -498,9 +498,15 @@ details.more > :not(summary) { margin-left: 14px; margin-right: 14px; }
   .stage .st-view { justify-self: center; width: min(400px, 100%); }
 }
 @media (max-width: 640px) {
-  .stage { grid-template-columns: 1fr; grid-template-rows: auto auto 180px 220px; grid-template-areas: "bar" "view" "steps" "code"; padding: 8px; }
+  .stage .st-bar { flex-wrap: wrap; }
+  .stage .st-range { flex: 1 1 120px; min-width: 0; }
+  .stage .st-label { flex-basis: 100%; white-space: normal; }
+  .stage { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto 180px 220px; grid-template-areas: "bar" "view" "steps" "code"; padding: 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .stage .st-steps li, .stage .st-mark { transition: none; }
   .stage .st-new { animation: none; }
 }
+.live-demo.wide { margin: 0 0 24px; }
+.live-demo.wide .ld-more { order: 2; }
+.live-demo.wide .ld-frame { width: 100%; max-width: var(--w); aspect-ratio: var(--ar); }

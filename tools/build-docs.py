@@ -12,7 +12,8 @@ one of these files. The build needs markdown-it-py
 missing page or a missing anchor, and for a missing image, also on the
 landing page.
 
-A line `<!-- live -->` or `<!-- widget: NAME; shot: SCRIPT -->` before a
+A line `<!-- live -->`, `<!-- live wide: WxH -->` (a window of W by H
+logical pixels over the full width, and the code under a toggle), or `<!-- widget: NAME; shot: SCRIPT -->` before a
 `tcl` block makes the block a live snippet (docs/dev/interactive-docs.md).
 The build writes a figure with the code and the shot widget-NAME-light.png
 and widget-NAME-dark.png, and the page loads assets/live.js. An image
@@ -114,7 +115,7 @@ def rel(from_page, to_page):
     return "./" if path == "." else path.rstrip("/") + "/"
 
 
-MARK = re.compile(r"^<!-- (live|widget: ([a-z0-9-]+);.*) -->$")
+MARK = re.compile(r"^<!-- (live(?: wide: \d+x\d+)?|widget: ([a-z0-9-]+);.*) -->$")
 
 
 class Build:
@@ -260,7 +261,8 @@ class Build:
             title = re.search(r"; title: ([^;]+);", m.group(1))
             count += 1
             meta = {"live": True, "name": name, "id": f"live-{name}" if name else f"live-{count}", "alt": "",
-                    "still": m.group(1).endswith("shot: update"), "title": title.group(1).strip() if title else None}
+                    "still": m.group(1).endswith("shot: update"), "title": title.group(1).strip() if title else None,
+                    "wide": m.group(1)[len("live wide: "):] if m.group(1).startswith("live wide: ") else None}
             if meta["title"] is None:
                 heads = [k for k in range(len(out) - 1) if out[k].type == "heading_open"]
                 meta["title"] = inline_text(out[heads[-1] + 1]) if heads else name
@@ -360,6 +362,15 @@ class Build:
                     f'<figcaption class="ld-bar"><span class="ld-tag">Live</span>'
                     f'<a class="toy-page" hidden></a><span class="toy-status" role="status"></span></figcaption>'
                     f'<div class="ld-err" role="status" hidden></div>{Build.toy_games(root)}</figure>\n')
+        if meta.get("wide"):
+            # A wide app: the window over the full width, and its code
+            # under a toggle.
+            w, h = meta["wide"].split("x")
+            return (f'<figure class="live-demo stack wide" id="{meta["id"]}"{data} data-size="{meta["wide"]}" style="--w: {w}px; --ar: {w} / {h}">'
+                    f'<div class="ld-view"><div class="ld-frame">{pic}</div></div>'
+                    f'<details class="ld-more"><summary>Show the code</summary>{code_html}</details>'
+                    f'<figcaption class="ld-bar"><span class="ld-tag">Live</span></figcaption>'
+                    f'<div class="ld-err" role="status" hidden></div></figure>\n')
         if name and name.startswith("toy-"):
             # A toy: the handheld first and large, and its code under a
             # toggle, so that the page next to the game is short.
