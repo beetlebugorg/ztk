@@ -148,7 +148,7 @@ pack .n -fill both -expand 1 -padx 8 -pady 8
 
 ### Play: Lamplighter
 
-Lamplighter is a platform game, and each tab of a `ttk::notebook` is one scene of its world: Forest, Lake, and Tower. Left and Right walk, and Up or Space jumps. On the handheld, B and A walk and Up jumps. At the right edge of a scene, the game calls `.nb select` with the next tab, and at the left edge with the tab before it. A click on a tab sends `<<NotebookTabChanged>>`, and the binding puts the hero in that scene. Light the lamp of each scene: `.nb tab` then adds "(lit)" to the text of its tab. The red spring at the top of the Tower throws the hero up. With "Play on the page" on, the hero flies out of the scene, bounces off the headings and the code, and drops back in.
+Lamplighter is a platform game, and each tab of a `ttk::notebook` is one scene of its world: Forest, Lake, and Tower. Left and Right walk, and Up or Space jumps. On the handheld, B and A walk and Up jumps. At the right edge of a scene, the game calls `.nb select` with the next tab, and at the left edge with the tab before it. A click on a tab sends `<<NotebookTabChanged>>`, and the binding puts the hero in that scene. Light the lamp of each scene: `.nb tab` then adds "(lit)" to the text of its tab. The red spring at the top of the Tower throws the hero up. Light the 3 lamps in 60 seconds. The clock starts at the first move. A fall into the water of the Lake costs one of 3 lives, and the round ends when the lives or the time run out. Up or Space then starts a new round. With "Play on the page" on, the hero flies out of the scene, bounces off the headings and the code, and drops back in.
 
 <!-- widget: toy-lamplighter; shot: update -->
 ```tcl
@@ -182,11 +182,28 @@ foreach {name blocks lamp spring} $scenes {
         incr y 2
     }
     $c itemconfigure hero -state hidden
+    $c create text 6 4 -anchor nw -tags hud -fill [lindex $ink 1] \
+        -font {TkFixedFont 9 bold}
+    $c create text 170 30 -tags msg -fill [lindex $ink 3] \
+        -font {TkFixedFont 11 bold}
     incr i
 }
 array set toy {spill 0 out {} back {} sfx {}}
 array set h {x 10 y 118 vx 0 vy 0 scene 0 out 0 next 10}
 array set hold {left 0 right 0}
+# The round: 60 seconds and 3 lives to light the 3 lamps. The clock
+# starts at the first move, and a fall into the water costs a life.
+array set g {state ready lives 3 frames 3600 lit 0 msg "MOVE TO START"}
+proc over {text} { set ::g(state) over; set ::g(msg) "$text - JUMP TO PLAY AGAIN" }
+proc reset {} {
+    global g scenes ink
+    array set g {state ready lives 3 frames 3600 lit 0 msg "MOVE TO START"}
+    foreach {name blocks lamp spring} $scenes n {0 1 2} {
+        .nb tab $n -text $name
+        .nb.s$n itemconfigure lamp -fill [lindex $ink 4]
+    }
+    if {[.nb index current] == 0} { enter 0 10 } else { .nb select 0 }
+}
 # A click on a tab moves the hero to the left side of that scene.
 bind .nb <<NotebookTabChanged>> { enter [.nb index current] $h(next); set h(next) 10 }
 proc enter {n x} {
@@ -197,7 +214,8 @@ proc enter {n x} {
     focus .nb.s$n
 }
 proc toy_press {key} {
-    global h hold
+    global h hold g
+    if {$g(state) eq "over"} { if {$key eq "up"} reset; return }
     switch $key {
         up { if {$h(vy) == 0} { set h(vy) -7; lappend ::toy(sfx) hit } }
         a { set hold(right) 6 } b { set hold(left) 6 }
@@ -207,9 +225,12 @@ foreach k {Left Right} { set v [string tolower $k]; bind . <KeyPress-$k> "set ho
 bind . <KeyPress-Up> {toy_press up}
 bind . <KeyPress-space> {toy_press up}
 proc tick {} {
-    global h hold scenes toy ink
+    global h hold scenes toy ink g
     set c .nb.s$h(scene)
-    if {!$h(out)} {
+    set moved [expr {$hold(left) || $hold(right) || $h(vy) < 0}]
+    if {$g(state) eq "ready" && $moved} { set g(state) run; set g(msg) "" }
+    if {$g(state) eq "run" && [incr g(frames) -1] <= 0} { over "TIME IS UP" }
+    if {!$h(out) && $g(state) ne "over"} {
         set h(vx) [expr {($hold(right) > 0) * 2 - ($hold(left) > 0) * 2}]
         foreach k {left right} { if {$hold($k) > 0 && $hold($k) < 999} { incr hold($k) -1 } }
         set h(vy) [expr {$h(vy) + 0.4}]
@@ -233,12 +254,18 @@ proc tick {} {
             $c itemconfigure lamp -fill [lindex $ink 3]
             .nb tab $h(scene) -text "[.nb tab $h(scene) -text] (lit)"
             lappend toy(sfx) point
+            if {[incr g(lit)] == 3} {
+                over "ALL LIT, [expr {$g(frames) / 60}] S LEFT"
+            }
         }
         # The edges of a scene go to the next tab and to the last tab.
         if {$h(x) > 334 && $h(scene) < 2} { set h(next) 2; .nb select [expr {$h(scene) + 1}] }
         if {$h(x) < 0} { if {$h(scene) > 0} { set h(next) 332; .nb select [expr {$h(scene) - 1}] } else { set h(x) 0 } }
         if {$h(x) > 334} { set h(x) 334 }
-        if {$h(y) > 150} { set h(x) 10; set h(y) 100; set h(vy) 0; lappend toy(sfx) wall }
+        if {$h(y) > 150} {
+            set h(x) 10; set h(y) 100; set h(vy) 0; lappend toy(sfx) wall
+            if {$g(state) eq "run" && [incr g(lives) -1] == 0} { over "THE LAKE WINS" }
+        }
         if {$h(y) < -12} {
             if {$toy(spill)} {
                 set toy(out) [list [expr {[winfo rootx $c] - [winfo rootx .] + $h(x)}] [expr {[winfo rooty $c] - [winfo rooty .]}] 2 -10 0.35]
@@ -248,6 +275,9 @@ proc tick {} {
     }
     if {$h(out) && $toy(back) ne ""} { set h(x) [expr {min(320, max(10, [lindex $toy(back) 0]))}]; set h(y) -10; set h(vy) 0; set h(out) 0; set toy(back) {} }
     $c moveto hero [expr {$h(out) ? -20 : int($h(x))}] [expr {int($h(y))}]
+    set secs [expr {$g(frames) / 60}]
+    $c itemconfigure hud -text "LAMPS $g(lit)/3  LIVES $g(lives)  $secs S"
+    $c itemconfigure msg -text $g(msg)
     after 16 tick
 }
 enter 0 10
