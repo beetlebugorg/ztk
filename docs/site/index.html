@@ -51,7 +51,7 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
     <div class="stat"><b>0.85 ms</b><span>CPU time of a frame with 1,000 widgets, 99th percentile</span></div>
     <div class="stat"><b>1.52 ms</b><span>CPU time of a scroll frame of a canvas with 10,000 items, 99th percentile</span></div>
     <div class="stat"><b>1.6 ms</b><span>from start to the first frame, headless</span></div>
-    <div class="stat"><b>1.0 MB</b><span>the WebAssembly build with gzip, with the fonts</span></div>
+    <div class="stat"><b>1.9 MB</b><span>the WebAssembly build with gzip, with the fonts</span></div>
   </div>
 </section>
 
@@ -277,9 +277,9 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
 
 <section class="section alt" id="ztcl">
   <div class="wrap">
-    <p class="eyebrow">Built on ztcl</p>
+    <p class="eyebrow">Built on ztcl. No bloat.</p>
     <h2>The sandbox of ztcl, and no third-party library.</h2>
-    <p class="lede">ztk adds the Tk commands to <a href="https://beetlebug.org/ztcl/">ztcl</a> and uses it as a Zig package. It needs only the interfaces of the platform, ztcl, and the Zig standard library.</p>
+    <p class="lede">ztk adds the Tk commands to <a href="https://beetlebug.org/ztcl/">ztcl</a> and uses it as a Zig package. It needs only the interfaces of the platform, ztcl, and the Zig standard library. The build has two dependencies: ztcl, and the <a href="https://github.com/KhronosGroup/Vulkan-Headers">Vulkan headers</a> for the types of Vulkan. Through ztcl it also builds libghostty-vt for <code>ztk::terminal</code>. The font reader and rasterizer, the text shaping, the PNG code, the CSS engine, and the renderers are code of ztk. <code>ztk.wasm</code> on this site is 6,103,995 bytes, and 1,887,009 bytes with gzip -9 (measured 2026-11-26).</p>
     <div class="grid g3">
       <div class="card">
         <h3>No capability by default</h3>
