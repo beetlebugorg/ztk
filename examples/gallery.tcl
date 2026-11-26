@@ -156,6 +156,24 @@ grid $tk.cb $tk.sp $tk.sc -sticky w -padx 4 -pady 3
 grid $tk.pb -columnspan 3 -sticky ew -padx 4 -pady {3 6}
 pack .cols.right.ttk -fill x -pady 4
 
+# Panes: a panedwindow with a list and a vertical ttk::panedwindow. A drag of a sash resizes the panes.
+set pn [card .cols.right.panes "Panes"]
+panedwindow $pn.p -height 116
+listbox $pn.p.l -width 8 -height 3 -activestyle none -exportselection 0
+$pn.p.l insert end Inbox Drafts Sent
+$pn.p.l selection set 0
+cls $pn.p.l sidebar
+ttk::panedwindow $pn.p.r -orient vertical
+label $pn.p.r.top -text "Drag a sash"
+label $pn.p.r.bottom -text "Preview"
+cls $pn.p.r.bottom muted
+$pn.p.r add $pn.p.r.top -weight 1
+$pn.p.r add $pn.p.r.bottom -weight 1
+$pn.p add $pn.p.l -stretch never
+$pn.p add $pn.p.r -stretch always
+pack $pn.p -fill x
+pack .cols.right.panes -fill x -pady 4
+
 # Lists: a sidebar, and a list with a scrollbar and the extended selection mode.
 set ls [card .cols.left.lists "Lists"]
 listbox $ls.side -height 4 -width 12 -activestyle none -exportselection 0

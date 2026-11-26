@@ -184,6 +184,19 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - The drawn menus are not in this PR. Without native menus, `post` and `postcascade` record the state, and the menu does not show until PR 3.
 - `. configure` has the options of `toplevel`. `. cget -class` gives `Toplevel`, where `wish` gives the class of the application.
 
+## panedwindow and ttk::panedwindow (task 13)
+
+- `panedwindow` has the options of `wish` 8.6.16 in its order, with its defaults and messages. `-proxyrelief` has the default `flat`, where `wish` gives `{}` as the default and `flat` as the value. Each pane option of `paneconfigure` gives the five words of `wish`. `-minsize`, `-padx`, and `-pady` show the number in logical pixels, also when the script gave a unit such as `1c`.
+- `panecget` with an unknown option gives `not managed by this window`, as in `wish`.
+- The sizes along the axis, the stretch, `sash coord`, `sash place`, `sash mark`, `sash dragto`, `identify`, and the proxy give the numbers of `wish` for the cases of `src/tests/paned.zig`. One case differs: when no pane can stretch and the widget is smaller than its panes, `wish` moves the last pane to the end of the widget over the pane before it, and ztk cuts the last pane at the end of the widget.
+- A change of `-orient` drops the sizes of the sash moves. `wish` keeps them, and its requested width after the change was not matched.
+- `ttk::panedwindow` gives the sizes, the weights, and the `sashpos` pushes of `wish` for the cases of the tests. The rest of a share goes to the first weighted panes one pixel at a time, or from the last weighted panes for a smaller widget, as `wish` gives it. Its sash is 5 logical pixels, the size of the default theme of `wish`. `identify element` gives `hsash` or `vsash`.
+- The class bindings are in Zig (`::ztk::priv::paned`), so `bind Panedwindow` and `bind TPanedwindow` list their patterns in another order than `wish`. `TPanedwindow` has no `<Enter>` binding.
+- Over a sash the pointer has the shape of `-sashcursor`, else a resize shape, with no change of `-cursor`. `wish` sets `-cursor` of the widget in its binding.
+- `-sashrelief`, `-proxyrelief`, `-proxyborderwidth`, and `-proxybackground` are stored with no effect. The theme draws the sash (`::sash`, `::sash-active`) and the proxy (`::sash-active`).
+- The Tk test file `panedwindow.test` does not run in ztk: the interpreter has no `package` command. Its counts in `wish` were not measured for this task.
+- `zig build bench`, ReleaseFast, 2026-11-25, development machine: `sash-drag` (a drag of the sash of a `panedwindow` with 500 labels in each pane, one motion for each frame) has a median of 0.88 ms and a 99th percentile of 1.00 ms. The gate is 8 ms.
+
 ## Additions
 
 - `ztk::animate`, `ztk::clock`, the timing function `spring()`, and the flag `--time` of the `ztk` program.
@@ -201,3 +214,4 @@ This page lists what a command or a widget of the [widget stage](stage2-tasks/RE
 - `-placeholder` and `-placeholderforeground` for `ttk::entry`.
 - `-placeholder` and `-placeholderforeground` for `ttk::combobox` and `ttk::spinbox`. The parts `::arrow`, `::popdown`, `::item`, and `::item-active` of a combobox, and `::trough` and `::bar` of a progress bar.
 - `-emptytext` and the style class `sidebar` of a listbox, and its parts `::item`, `::selection`, `::active`, and `::empty`.
+- The parts `::sash` and `::sash-active` of `Panedwindow` and `TPanedwindow`. The sash under the pointer fades to `::sash-active` in 120 ms.

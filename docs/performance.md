@@ -25,6 +25,7 @@ CPU milliseconds for one frame. Lower is faster.
 | `anim-1000`: 1,000 `ztk::animate` moves at once | 4.06 | 7.20 | 2026-11-24 |
 | `type-entry`: one key in an entry | 0.028 | 0.036 | 2026-11-25 |
 | `menu-open`: `tk_popup` of a menu of 20 entries beside 1,000 widgets, with the open move | 1.01 | 1.61 | 2026-11-25 |
+| `sash-drag`: a drag of the sash of a `panedwindow` with 500 widgets in each pane, one motion for each frame | 0.88 | 1.00 | 2026-11-25 |
 
 ## Start, memory, and idle
 

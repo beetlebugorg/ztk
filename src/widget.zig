@@ -287,6 +287,9 @@ pub const Class = struct {
     bad_option_list: []const u8 = "",
     /// Runs for each event of the widget before its bindings: the items of a canvas.
     event: ?*const fn (w: *Widget, ev: *const bind.WidgetEvent) void = null,
+    /// The pointer shape of a part under the pointer, such as a sash, or
+    /// null. It comes before the `-cursor` option.
+    cursor: ?*const fn (w: *const Widget) ?@import("platform/platform.zig").Cursor = null,
 };
 
 /// The name of a variable in the global namespace, as `-textvariable` reads it.

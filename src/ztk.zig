@@ -139,6 +139,7 @@ test {
     _ = @import("tests/check.zig");
     _ = @import("tests/toplevel.zig");
     _ = @import("tests/scale.zig");
+    _ = @import("tests/paned.zig");
     _ = @import("tests/scrollbar.zig");
     _ = @import("tests/listbox.zig");
     _ = @import("term/screen.zig");
