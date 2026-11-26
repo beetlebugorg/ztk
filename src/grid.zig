@@ -487,7 +487,7 @@ fn arrange(w: *Widget) void {
             layout.setMapped(s, false);
             continue;
         }
-        _ = layout.setGeom(s, .{ .x = num.px(x), .y = num.px(y), .w = num.px(width), .h = num.px(height) }, w.mapped);
+        _ = layout.setGeomIn(w, s, .{ .x = num.px(x), .y = num.px(y), .w = num.px(width), .h = num.px(height) }, w.mapped);
     }
 }
 

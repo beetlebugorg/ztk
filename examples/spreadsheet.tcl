@@ -342,13 +342,21 @@ label .status -textvariable ss::status -anchor w -padx 10 -pady 4
 pack .status -side bottom -fill x
 cls .status muted
 
+# The sheet is the page of a notebook tab. The notebook and its page come
+# first, so the canvas and the scrollbars that pack into the page are
+# above them.
+ttk::notebook .book
+frame .sheet
+.book add .sheet -text "Sheet 1"
+pack .book -side top -fill both -expand 1 -padx 10 -pady {0 4}
+
 canvas .c -width 640 -height 300 -highlightthickness 0 -borderwidth 0 -takefocus 1 \
     -background $ss::P(bg) -xscrollcommand ss::xscrolled -yscrollcommand ss::yscrolled
 scrollbar .vs -orient vertical -command {.c yview}
 scrollbar .hs -orient horizontal -command {.c xview}
-pack .hs -side bottom -fill x
-pack .vs -side right -fill y
-pack .c -side top -fill both -expand 1
+pack .hs -in .sheet -side bottom -fill x
+pack .vs -in .sheet -side right -fill y
+pack .c -in .sheet -side top -fill both -expand 1
 entry .c.ed -borderwidth 0
 cls .c.ed celledit
 

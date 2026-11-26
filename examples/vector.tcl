@@ -303,8 +303,11 @@ pack .tools.layers -fill both -expand 1
 cls .tools.ll heading
 bind .tools.layers <<ListboxSelect>> vec::picklayers
 
+# A paned window holds the canvas and the properties panel, so a drag of
+# its sash gives the canvas more room. It comes first, so its panes are
+# above it.
+panedwindow .main -sashwidth 6
 frame .props -padx 10 -pady 8
-pack .props -side right -fill y
 cls .props panel
 label .props.h -text Properties -anchor w
 pack .props.h -fill x
@@ -374,7 +377,9 @@ cls .con.out conout
 cls .con.line.p muted
 
 canvas .c -width 560 -height 380 -highlightthickness 0 -borderwidth 0 -background $vec::P(desk) -takefocus 1
-pack .c -side top -fill both -expand 1
+.main add .c -stretch always -minsize 240
+.main add .props -stretch never -minsize 160
+pack .main -side top -fill both -expand 1
 
 # The page and its grid. The grid lines are thin rectangles, which draw
 # as one box each.

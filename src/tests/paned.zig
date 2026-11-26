@@ -293,3 +293,13 @@ test "paned: the render thread moves a sash with the pointer while the script is
     h.head.pointerButton(h.win, 1, false);
     try h.update();
 }
+
+test "paned: pack -in a sibling container places the widget in the coordinates of its parent" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval("frame .top -height 30; pack .top -fill x; frame .box -width 100 -height 50; pack .box; frame .in -width 20 -height 10; pack .in -in .box; update");
+    // The widget is a child of `.`, so its place includes the place of the box.
+    try t.expectEqualStrings("1", try h.eval("expr {[winfo y .in] >= [winfo y .box]}"));
+    try t.expectEqualStrings("1", try h.eval("expr {[winfo rooty .in] - [winfo rooty .box] < 50}"));
+}
