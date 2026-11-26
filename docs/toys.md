@@ -1,8 +1,8 @@
 # Toys
 
-Each toy is a small arcade game in ztk, and the widget of its page drives it. Pick a game in the handheld below: Up and Down or the arrow keys move the cursor, and A, Return, or a click starts the game. Its Tcl code shows next to the handheld, and an edit runs it again. Menu or Escape goes back to the list. The address of the page keeps the game, so a link opens that game.
+Each toy is a small arcade game in ztk, and the widget of its page drives it. Pick a game in the handheld below: Up and Down or the arrow keys move the cursor, and A, Return, or a click starts the game. Its Tcl code shows under the handheld, and an edit runs it again. Menu or Escape goes back to the list. The address of the page keeps the game, so a link opens that game.
 
-A click on the handheld gives it the keys: the arrow keys or W and S for the pad, Z or J for A, X or K for B, P to pause, and Escape to leave. A toy runs in the page as WebAssembly. It starts only on a key or a click, its sound is off until you turn it on, and it stops when it is off the screen.
+A click on the handheld gives it the keys: the arrow keys or W, A, S, and D for the pad and the sides, Z or J for A, X or K for B, P to pause, and Escape to leave. A toy runs in the page as WebAssembly. It starts only on a key or a click, its sound is off until you turn it on, and it stops when it is off the screen.
 
 <!-- widget: toy-console; shot: update -->
 ```tcl

@@ -37,7 +37,7 @@ const send = (method, params = {}) => new Promise((res) => {
 });
 const value = async (expression) => (await send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true })).result?.result?.value;
 const wait = (ms) => new Promise((res) => setTimeout(res, ms));
-const KEY = { w: ["w", "KeyW", 87], s: ["s", "KeyS", 83], p: ["p", "KeyP", 80], z: ["z", "KeyZ", 90], ArrowDown: ["ArrowDown", "ArrowDown", 40], Escape: ["Escape", "Escape", 27] };
+const KEY = { w: ["w", "KeyW", 87], s: ["s", "KeyS", 83], p: ["p", "KeyP", 80], z: ["z", "KeyZ", 90], a: ["a", "KeyA", 65], d: ["d", "KeyD", 68], ArrowDown: ["ArrowDown", "ArrowDown", 40], Escape: ["Escape", "Escape", 27] };
 const press = async (k) => {
   const [key, code, kc] = KEY[k];
   const text = key.length === 1 ? key : undefined;
@@ -79,6 +79,13 @@ check(!(await value(`${fig}.classList.contains("toy-paused")`)), "P again runs t
 await press("z");
 await wait(1500);
 check(await value("location.search") === "?game=backspin", `Z presses A and starts the selected game (${await value("location.search")})`);
+check(await value(`document.activeElement === ${fig}.querySelector(".ld-frame textarea")`), "the game keeps the keys after it starts");
+check((await value(`${fig}.querySelector(".toy-keys").textContent`)).includes("W A S D"), "the key line shows W A S D");
+await value(`${fig}.ztkDemo.h.eval("set ::side {}; bind all <KeyPress-Left> {+lappend ::side L}; bind all <KeyPress-Right> {+lappend ::side R}")`);
+await press("a");
+await press("d");
+const side = await value(`${fig}.ztkDemo.h.eval("set ::side").result`);
+check(side === "L R", `A and D press Left and Right (${side})`);
 await press("Escape");
 check(await value(`document.activeElement !== ${fig}.querySelector(".ld-frame textarea")`), "Escape gives the focus back to the page");
 clearTimeout(timer);
