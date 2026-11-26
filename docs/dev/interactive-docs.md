@@ -35,7 +35,7 @@ A recording is a JSON file: `{"version": 1, "title": "...", "steps": [...]}`. Ea
 
 ## Later: dockyard in the browser
 
-The page connects the reader's own agent: Claude Code on the reader's computer through an MCP bridge, or the reader's API key in the page. The agent gets the tools of a live snippet: run a script, `ztk::snapshot`, `ztk::tree`, and `ztk::inject`. This is a design only. It needs a review of the keys and the permissions first.
+The page connects the reader's own agent: a coding agent on the reader's computer through an MCP bridge, or the reader's API key in the page. The agent gets the tools of a live snippet: run a script, `ztk::snapshot`, `ztk::tree`, and `ztk::inject`. This is a design only. It needs a review of the keys and the permissions first.
 
 ## Download your app
 
