@@ -59,6 +59,7 @@ pub fn register(app: *App) !void {
     try @import("widgets/scale.zig").register(app);
     try @import("widgets/scrollbar.zig").register(app);
     try @import("widgets/listbox.zig").register(app);
+    try @import("widgets/text.zig").register(app);
     try @import("widgets/paned.zig").register(app);
     try @import("term/widget.zig").register(app);
     try @import("widgets/menu.zig").register(app);

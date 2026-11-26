@@ -402,6 +402,27 @@ TNotebook::indicator {
   border-radius: 1px;
 }
 
+/* The text area: a field with the fixed font of the system. */
+Text {
+  color: var(--fg);
+  background-color: var(--field-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px;
+  caret-color: var(--fg);
+  cursor: text;
+}
+
+Text:focus {
+  border-color: var(--accent);
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 0px;
+}
+
+Text:disabled {
+  color: var(--muted);
+}
+
 /* A list of rows in a field. The selection background eases from row to
    row. The sidebar style has no field, and its selection is a round
    accent row. */
