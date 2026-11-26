@@ -48,7 +48,9 @@ const W = 360;
 // game uses does not scroll the page. A letter goes to the game as text
 // when its focus widget is an entry or a text widget. Tab moves the
 // focus as on any page.
-const PAD_KEYS = { w: "up", s: "down", a: "b", d: "a", z: "a", j: "a", x: "b", k: "b" };
+const PAD_KEYS = { w: "up", s: "down", z: "a", j: "a", x: "b", k: "b" };
+// A and D are the Left and Right arrows, for the games that use them.
+const SIDE_KEYS = { a: "Left", d: "Right" };
 const GAME_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " ", "Enter"]);
 
 // The palette of the toys and a pixel square: the shared helper.
@@ -136,7 +138,7 @@ class Toy {
     });
     const map = document.createElement("p");
     map.className = "toy-keys";
-    map.textContent = "Keys: arrows or W S, Z or J for A, X or K for B, P pauses, Escape leaves.";
+    map.textContent = "Keys: arrows or W A S D, Z or J for A, X or K for B, P pauses, Escape leaves.";
     view.querySelector(".toy-pad").appendChild(map);
     view.addEventListener("keydown", (e) => {
       if (!this.input || e.target !== this.input || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -145,7 +147,7 @@ class Toy {
         this.input.blur();
         return;
       }
-      if (!GAME_KEYS.has(key) && key !== "p" && !PAD_KEYS[key]) return;
+      if (!GAME_KEYS.has(key) && key !== "p" && !PAD_KEYS[key] && !SIDE_KEYS[key]) return;
       const cls = this.eval("winfo class [focus]")?.result;
       if (cls === "Entry" || cls === "Text" || cls === "TEntry") return;
       if (GAME_KEYS.has(key)) {
@@ -156,7 +158,8 @@ class Toy {
       e.stopImmediatePropagation();
       if (key === "p") return this.pause();
       if (this.paused) this.pause();
-      this.eval(`toy_press ${PAD_KEYS[key]}`);
+      if (SIDE_KEYS[key]) this.eval(`ztk::inject . key ${SIDE_KEYS[key]}`);
+      else this.eval(`toy_press ${PAD_KEYS[key]}`);
       this.poll();
     }, true);
   }
@@ -367,7 +370,11 @@ class Console extends Toy {
     d.ta.value = code;
     d.paint();
     d.first = null;
-    if (live) d.run(true);
+    if (!live) return;
+    // A run makes a new canvas and a new input. The keys stay with the
+    // handheld when it had them.
+    const keep = this.fig.querySelector(".ld-view").contains(document.activeElement);
+    Promise.resolve(d.run(true)).then(() => { if (keep) this.focus(); });
   }
 
   show(game, live) {
