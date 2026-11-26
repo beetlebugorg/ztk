@@ -110,6 +110,13 @@ pub const MenuHandler = struct {
     call: *const fn (ctx: ?*anyopaque, id: MenuId, entry: i32, action: event.MenuAction) void,
 };
 
+/// The id of one tray icon. 0 is no tray.
+pub const TrayId = u32;
+
+/// The icon of a tray: RGBA, 8 bits, straight alpha, rows from the top.
+/// The pixels are valid only during the call that gives them.
+pub const TrayIcon = struct { width: u32, height: u32, pixels: []const u8 };
+
 /// The appearance of the system.
 pub const Appearance = struct {
     dark: bool,
@@ -264,6 +271,19 @@ pub const Platform = struct {
         /// core calls it one time, before the first menu call. A backend
         /// without it queues `opening` and `select` as `menu` events.
         setMenuHandler: ?*const fn (ptr: *anyopaque, h: MenuHandler) void = null,
+
+        // The tray or status icons. `docs/dev/platform-features.md` has the design.
+
+        /// Shows an icon in the tray (the notification area of Windows, the
+        /// menu bar of macOS). `w` is the window that gets its events.
+        /// `template` is for macOS, which draws a template icon in the colors
+        /// of the menu bar. Gives 0 when the system has no tray.
+        trayCreate: ?*const fn (ptr: *anyopaque, w: *Window, icon: TrayIcon, template: bool, tooltip: []const u8) TrayId = null,
+        /// Changes the icon, the tooltip, and the menu of a tray. A menu of 0
+        /// is no menu. A tray with a menu shows it in the backend.
+        traySet: ?*const fn (ptr: *anyopaque, id: TrayId, icon: TrayIcon, template: bool, tooltip: []const u8, menu: MenuId) void = null,
+        /// Removes a tray icon.
+        trayDrop: ?*const fn (ptr: *anyopaque, id: TrayId) void = null,
     };
 
     pub fn hasNativeMenus(p: Platform) bool {
@@ -286,6 +306,19 @@ pub const Platform = struct {
     }
     pub fn unpostMenu(p: Platform, id: MenuId) void {
         if (p.vtable.unpostMenu) |f| f(p.ptr, id);
+    }
+    pub fn hasTray(p: Platform) bool {
+        return p.vtable.trayCreate != null and p.vtable.traySet != null and p.vtable.trayDrop != null;
+    }
+    pub fn trayCreate(p: Platform, w: *Window, icon: TrayIcon, template: bool, tooltip: []const u8) TrayId {
+        const f = p.vtable.trayCreate orelse return 0;
+        return f(p.ptr, w, icon, template, tooltip);
+    }
+    pub fn traySet(p: Platform, id: TrayId, icon: TrayIcon, template: bool, tooltip: []const u8, menu: MenuId) void {
+        if (p.vtable.traySet) |f| f(p.ptr, id, icon, template, tooltip, menu);
+    }
+    pub fn trayDrop(p: Platform, id: TrayId) void {
+        if (p.vtable.trayDrop) |f| f(p.ptr, id);
     }
     pub fn setMenuHandler(p: Platform, h: MenuHandler) void {
         if (p.vtable.setMenuHandler) |f| f(p.ptr, h);

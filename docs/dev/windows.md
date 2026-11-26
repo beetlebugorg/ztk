@@ -76,6 +76,16 @@ The backend fills the native menus of [menus.md](menus.md) with `src/platform/wi
 - With a bar, Alt, F10, and the `WM_SYSCHAR` of an Alt key go on to `DefWindowProc`, which opens the bar or the menu of a mnemonic. The core still gets the key event of the press.
 - The system draws the menus with the light look, also in the dark scheme.
 
+## Tray
+
+`ztk::tray` (ztk#54, `docs/dev/platform-features.md`) shows an icon in the notification area with `src/platform/wintray.zig`:
+
+- `Shell_NotifyIconW` with `NOTIFYICON_VERSION_4`, and the window of `.` as the owner. The icon is an `HICON` from the RGBA pixels of the photo, made with a DIB section and `CreateIconIndirect`. A tray with no photo has the icon of an application of the system. The tooltip has 127 UTF-16 units at most.
+- The shell sends the actions to the owner window: `NIN_SELECT` and `NIN_KEYSELECT` give `click`, `WM_LBUTTONDBLCLK` gives `double`, and `WM_CONTEXTMENU` gives `menu`. For `menu`, a tray with a menu shows it with `TrackPopupMenuEx` at the point of the pointer, after `SetForegroundWindow`, and posts `WM_NULL` after it, as the documentation of `TrackPopupMenu` asks.
+- Explorer sends "TaskbarCreated" after it starts again, and the backend adds each icon again.
+- The flag `template` is for macOS and has no effect on Windows.
+- The tray test shows a real icon in the notification area, so it runs only with `ZTK_TEST_TRAY=1`, which the Windows job of CI sets.
+
 ## CI
 
 A `test-windows` job on `windows-latest` runs `zig build`, `zig build test`, and the headless script of the Linux job. From PR 3 on, the Direct3D 12 tests run on the WARP adapter of the runner, or print `SKIP:` with the reason.
