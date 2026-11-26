@@ -106,3 +106,21 @@ test "terminal: -command runs cmd.exe on the pseudo console of Windows" {
     try t.expect(std.mem.indexOf(u8, try h.eval(".t get 0 5"), "hi-term") != null);
     try t.expectEqualStrings("exit 0", try h.eval("set ::done"));
 }
+
+test "terminal: -shell runs the shell of ztcl" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval("ztk::terminal .t -shell 1 -width 40 -height 6; pack .t; update");
+    _ = try h.eval(".t send \"set x 4\\r\"");
+    try t.expectEqualStrings("% set x 4\n4\n%", try h.eval(".t get 0 2"));
+    // Tab completes a command and a subcommand.
+    _ = try h.eval(".t send \"pu\\t\\$x\\r\"");
+    try t.expectEqualStrings("% puts $x\n4", try h.eval(".t get 2 3"));
+    _ = try h.eval(".t send \"string tou\\t\"");
+    try t.expectEqualStrings("% string toupper", try h.eval(".t get 4 4"));
+    // A command of the shell can destroy the widget.
+    _ = try h.eval(".t send \"\\x15destroy .t\\r\"");
+    try t.expectEqualStrings("0", try h.eval("winfo exists .t"));
+    _ = try h.eval("ztk::terminal .u -shell 1; .u configure -shell 0; destroy .u");
+}
