@@ -17,6 +17,9 @@ A line `<!-- live -->` or `<!-- widget: NAME; shot: SCRIPT -->` before a
 The build writes a figure with the code and the shot widget-NAME-light.png
 and widget-NAME-dark.png, and the page loads assets/live.js. An image
 paragraph of the same shot just before the marker goes into the figure.
+A marker can have `title: TEXT;` before `shot:`, for the overview grid.
+The line `<!-- widget-grid -->` in docs/widgets/README.md becomes a grid
+with a card for each widget snippet of the widget pages.
 """
 
 import html
@@ -117,8 +120,41 @@ class Build:
         self.anchors = {}
         self.links = []
 
+    def widgets(self):
+        """The widget snippets of the widget pages, for the overview grid:
+        (name, title, kind, page, anchor) in the order of PAGES."""
+        found = []
+        for src, page, _, _ in PAGES:
+            if not src.startswith("docs/widgets/") or src.endswith("README.md"):
+                continue
+            for t in self.live_blocks(src, self.md.parse((ROOT / src).read_text(encoding="utf-8"))):
+                if t.type == "fence" and t.meta.get("live") and t.meta["name"] and t.meta.get("shot"):
+                    words = [line.split()[0] for line in t.content.splitlines() if line.strip() and not line.startswith("#")]
+                    words = [w for w in words if w not in ("set", "proc", "bind", "after", "foreach", "wm")]
+                    kind = "ztk" if any(w in ("ztk::terminal", "ztk::tooltip") for w in words) else "ttk" if words and words[0].startswith("ttk::") else "Tk"
+                    found.append((t.meta["name"], t.meta["title"], kind, page, t.meta["id"]))
+        return found
+
+    def grid(self, page):
+        """The overview grid: one card for each widget snippet."""
+        root = rel(page, "")
+        cards = []
+        for name, title, kind, other, anchor in self.widgets():
+            self.links.append(("docs/widgets/README.md", other, anchor))
+            cards.append(
+                f'<a class="wcard" href="{rel(page, other)}#{anchor}">'
+                f'<picture><source srcset="{root}assets/shots/widget-{name}-dark.png" media="(prefers-color-scheme: dark)">'
+                f'<img src="{root}assets/shots/widget-{name}-light.png" width="360" height="240" alt="" loading="lazy"></picture>'
+                f'<span class="wname">{html.escape(title)}</span><span class="wkind">{kind}</span></a>')
+        return f'<div class="wgrid">{"".join(cards)}</div>\n'
+
     def render(self, src, page):
         tokens = self.live_blocks(src, self.md.parse((ROOT / src).read_text(encoding="utf-8")))
+        for i, t in enumerate(tokens):
+            if t.type == "inline" and t.content.strip() == "<!-- widget-grid -->":
+                tokens[i - 1].type = tokens[i + 1].type = "html_block"
+                tokens[i - 1].content, tokens[i + 1].content = "", ""
+                t.type, t.content, t.children = "html_block", self.grid(page), None
         ids, seen, title = set(), {}, None
         for i, token in enumerate(tokens):
             if token.type == "heading_open":
@@ -162,9 +198,13 @@ class Build:
             if fence is None or fence.type != "fence" or fence.info.strip() != "tcl":
                 raise SystemExit(f"{src}: a live marker is not just before a tcl block")
             name = m.group(2)
+            title = re.search(r"; title: ([^;]+);", m.group(1))
             count += 1
             meta = {"live": True, "name": name, "id": f"live-{name}" if name else f"live-{count}", "alt": "",
-                    "still": m.group(1).endswith("shot: update")}
+                    "still": m.group(1).endswith("shot: update"), "title": title.group(1).strip() if title else None}
+            if meta["title"] is None:
+                heads = [k for k in range(len(out) - 1) if out[k].type == "heading_open"]
+                meta["title"] = inline_text(out[heads[-1] + 1]) if heads else name
             if name:
                 shot = f"widget-{name}-light.png"
                 if len(out) >= 3 and out[-3].type == "paragraph_open" and out[-2].children and len(out[-2].children) == 1 \
@@ -283,7 +323,7 @@ class Build:
 <link rel="stylesheet" href="{root}assets/site.css">{script}</head>
 <body><a class="skip" href="#content">Skip to the content</a>
 <header class="top"><div class="wrap"><a class="logo" href="{root}"><span class="glyph" aria-hidden="true">tk</span>ztk</a>
-<nav class="toplinks" aria-label="Site"><a href="{root}overview/" aria-current="page">Docs</a><a class="sib" href="https://beetlebug.org/ztcl/">ztcl</a><a href="{REPO}">GitHub</a></nav></div></header>
+<nav class="toplinks" aria-label="Site"><a href="{root}overview/" aria-current="page">Docs</a><a href="{root}widgets/">Widgets</a><a class="sib" href="https://beetlebug.org/ztcl/">ztcl</a><a href="{REPO}">GitHub</a></nav></div></header>
 <div class="docs"><input class="toc-toggle" type="checkbox" id="toc"><label class="toc-button" for="toc">Contents</label>
 <aside class="sidebar"><nav aria-label="Documentation">{self.nav(page)}</nav></aside>
 <main class="prose" id="content">{body}{self.pager(page)}</main></div>

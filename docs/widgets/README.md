@@ -1,8 +1,8 @@
 # Widgets
 
-ztk has the widgets below today. Each one has the commands and the options of Tk 8.6, and the modern theme gives it its look. Each page has a runnable example and a link to a live demo in the playground. [Differences from Tk](../differences.md) lists what each widget lacks.
+ztk has the widgets below today. Each one has the commands and the options of Tk 8.6, and the modern theme gives it its look. Each card below opens the live snippet of the widget: edit its code, and the window next to it runs the code as you type. [Differences from Tk](../differences.md) lists what each widget lacks.
 
-![The widget gallery: buttons, check buttons, switches, radio buttons, a segmented control, entries, spinboxes, a scale, a scrollbar, lists, ttk widgets, a labelframe, a canvas, and menu buttons](../site/shots/gallery-light.png)
+<!-- widget-grid -->
 
 | Page | Widgets and commands |
 |---|---|
