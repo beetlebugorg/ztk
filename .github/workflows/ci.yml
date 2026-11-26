@@ -23,6 +23,30 @@ env:
   ZIG_VERSION: "0.17.0"
 
 jobs:
+  # Which parts of the repository changed: a pull request that touches
+  # only docs and site files skips the build and test jobs of the code.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.f.outputs.code }}
+      docs: ${{ steps.f.outputs.docs }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+      - id: f
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" != pull_request ]; then
+            echo code=true >> "$GITHUB_OUTPUT"; echo docs=true >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          files=$(git diff --name-only "${{ github.event.pull_request.base.sha }}" HEAD)
+          printf '%s\n' "$files"
+          docs_re='^(docs/|README\.md|CHANGELOG\.md|WRITING\.md|AGENTS\.md|tools/build-docs\.py|tools/shots\.sh|licenses/)'
+          if printf '%s\n' "$files" | grep -qvE "$docs_re"; then code=true; else code=false; fi
+          if printf '%s\n' "$files" | grep -qE "$docs_re"; then docs=true; else docs=false; fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"; echo "docs=$docs" >> "$GITHUB_OUTPUT"
+
   check:
     name: Repository check
     runs-on: ubuntu-latest
@@ -42,6 +66,8 @@ jobs:
       - run: python tools/build-docs.py site
 
   test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     # The tests use Linux interfaces. The cross job builds the other systems.
     name: Test (Linux)
     runs-on: ubuntu-latest
@@ -157,6 +183,8 @@ jobs:
 
   cross:
     name: Build (${{ matrix.target }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -180,6 +208,8 @@ jobs:
 
   wasm:
     name: WebAssembly
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
