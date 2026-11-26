@@ -65,7 +65,7 @@ pub const Kind = enum { cascade, checkbutton, command, radiobutton, separator, t
 
 /// The entry options of all types.
 pub const Opt = enum { activebackground, activeforeground, accelerator, background, bitmap, columnbreak, command, compound, font, foreground, hidemargin, image, label, state, underline, indicatoron, offvalue, onvalue, selectcolor, selectimage, variable, value, menu };
-const n_opts = @typeInfo(Opt).@"enum".fields.len;
+const n_opts = @typeInfo(Opt).@"enum".field_names.len;
 
 const state_words = [_][]const u8{ "active", "normal", "disabled" };
 const compound_words = [_][]const u8{ "bottom", "center", "left", "none", "right", "top" };

@@ -479,8 +479,9 @@ test "console: an old handler that returns ends the program in text mode" {
         _ = linux.tkill(linux.gettid(), .USR1);
         linux.exit_group(4);
     }
-    var status: u32 = 0;
-    _ = linux.waitpid(pid, &status, 0);
+    var raw: i32 = 0;
+    _ = linux.waitpid(pid, &raw, 0);
+    const status: u32 = @bitCast(raw);
     try t.expect(linux.W.IFEXITED(status));
     try t.expectEqual(@as(u8, 128 + 10), linux.W.EXITSTATUS(status));
 }

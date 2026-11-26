@@ -12,7 +12,7 @@ npm install @beetlebug/ztk
 
 ## Build from source
 
-Use the build from source to get a window on the Linux desktop. Install [Zig 0.16.0](https://ziglang.org/download/). On Linux the default build also needs `glslc`, the Wayland client library, `wayland-protocols`, and `libxkbcommon`.
+Use the build from source to get a window on the Linux desktop. Install [Zig 0.17.0](https://ziglang.org/download/). On Linux the default build also needs `glslc`, the Wayland client library, `wayland-protocols`, and `libxkbcommon`.
 
 ```sh
 git clone https://github.com/beetlebugorg/ztk

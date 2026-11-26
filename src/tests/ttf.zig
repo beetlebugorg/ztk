@@ -298,7 +298,7 @@ test "ttf build: cmap format 4 with a delta, a range, and an empty slot" {
         .{ 0xffff, 0xffff, 1, 0 },
     }, &.{ 5, 0 });
     defer gpa.free(cm);
-    const glyphs = [_][]const u8{&.{}} ** 8;
+    const glyphs: [8][]const u8 = @splat(&.{});
     const data = try buildFont(&glyphs, plain_metrics[0..1], cm);
     defer gpa.free(data);
     const f = try ttf.Face.init(data);
@@ -317,7 +317,7 @@ test "ttf build: cmap format 12 ids above 65535 give glyph 0" {
         .{ 0x30000, 0x30000, 0x10003 },
     });
     defer gpa.free(cm);
-    const glyphs = [_][]const u8{&.{}} ** 8;
+    const glyphs: [8][]const u8 = @splat(&.{});
     const data = try buildFont(&glyphs, plain_metrics[0..1], cm);
     defer gpa.free(data);
     const f = try ttf.Face.init(data);

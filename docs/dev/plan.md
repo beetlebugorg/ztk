@@ -592,7 +592,7 @@ Each stage after Stage 1 gets its own task list when it starts. The task list of
 | Two threads share a frame | A race draws a wrong frame or crashes | One mutex and three frames, no other shared state, a stress test in a loop, and a review of each shared field |
 | The `text` widget and the canvas are large | Stages 4 and 5 are late | They come after the platform work, so the base is stable |
 | A person must check each platform | The review of an agent cannot find a wrong look | The manual checklists, with the date and the machine in each report |
-| Zig changes between releases | The build breaks | Pin Zig 0.16.0 in `build.zig.zon` and move in one commit |
+| Zig changes between releases | The build breaks | Pin Zig 0.17.0 in `build.zig.zon` and move in one commit |
 
 ## 13. Decisions for the user
 

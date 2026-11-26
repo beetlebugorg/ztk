@@ -120,7 +120,7 @@ pub fn mixEach(from: *const Style, to: *const Style, t: [n_props]f32) Style {
 
 /// The style between two styles with one progress for all properties.
 pub fn mix(from: *const Style, to: *const Style, t: f32) Style {
-    return mixEach(from, to, [_]f32{t} ** n_props);
+    return mixEach(from, to, @as([n_props]f32, @splat(t)));
 }
 
 /// True when a property that no transition moves changes the layout.

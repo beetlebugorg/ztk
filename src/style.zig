@@ -33,7 +33,7 @@ const easing = @import("easing.zig");
 
 /// The properties that a transition or an animation moves.
 pub const AnimProp = enum(u4) { color, background, border_color, outline_color, caret_color, opacity, radius, shadow, outline, padding, min_size };
-pub const n_anim_props = @typeInfo(AnimProp).@"enum".fields.len;
+pub const n_anim_props = @typeInfo(AnimProp).@"enum".field_names.len;
 
 /// The timing of one property.
 pub const TransSpec = struct {
@@ -66,7 +66,7 @@ pub const TransSpec = struct {
 
 /// The `transition` of a style: one timing for each property.
 pub const Transition = struct {
-    props: [n_anim_props]TransSpec = [_]TransSpec{.{}} ** n_anim_props,
+    props: [n_anim_props]TransSpec = @splat(.{}),
 
     pub fn any(t: *const Transition) bool {
         for (t.props) |p| if (p.active()) return true;

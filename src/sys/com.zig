@@ -40,10 +40,10 @@ fn method(comptime F: type, obj: anytype, comptime index: usize) F {
 /// The pointer type of a method: the object, then the types of `Args`.
 fn Fn(comptime Args: type, comptime R: type) type {
     const info = @typeInfo(Args).@"struct";
-    var types: [info.fields.len + 1]type = undefined;
+    var types: [info.field_types.len + 1]type = undefined;
     types[0] = *anyopaque;
-    for (info.fields, 0..) |f, i| types[i + 1] = f.type;
-    const attrs: [types.len]std.builtin.Type.Fn.Param.Attributes = @splat(.{});
+    for (info.field_types, 0..) |t, i| types[i + 1] = t;
+    const attrs: [types.len]std.builtin.Type.Fn.ParamAttributes = @splat(.{});
     return *const @Fn(&types, &attrs, R, .{ .@"callconv" = .winapi });
 }
 

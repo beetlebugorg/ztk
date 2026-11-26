@@ -402,10 +402,10 @@ fn makePipeline(device: Id, vfn: Id, ffn: Id, format: usize) !Id {
 
 fn call(comptime Ret: type, target: Id, selector: [*:0]const u8, args: anytype) Ret {
     const Args = @TypeOf(args);
-    const fields = @typeInfo(Args).@"struct".fields;
+    const fields = @typeInfo(Args).@"struct".field_types;
     return switch (fields.len) {
         0 => objc.call(fn (Id, Sel) callconv(.c) Ret, target, selector, args),
-        1 => objc.call(fn (Id, Sel, fields[0].type) callconv(.c) Ret, target, selector, args),
+        1 => objc.call(fn (Id, Sel, fields[0]) callconv(.c) Ret, target, selector, args),
         else => @compileError("call has at most one argument; use objc.call for more"),
     };
 }

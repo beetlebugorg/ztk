@@ -13,7 +13,7 @@ Put plans, task lists, reports, and limits in `docs/dev/`. The docs site publish
 
 ## Commands
 
-Use Zig 0.16.0. Run each build, test, benchmark, and suite command under a memory cap:
+Use Zig 0.17.0. Run each build, test, benchmark, and suite command under a memory cap:
 
 ```sh
 systemd-run --user --scope -q -p MemoryMax=4G -p MemorySwapMax=0 -- <command>

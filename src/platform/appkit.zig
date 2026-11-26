@@ -1081,10 +1081,10 @@ pub const AppKit = struct {
 
 /// Sends a message with no result and at most one argument.
 fn send(target: Id, selector: [*:0]const u8, args: anytype) void {
-    const fields = @typeInfo(@TypeOf(args)).@"struct".fields;
+    const fields = @typeInfo(@TypeOf(args)).@"struct".field_types;
     switch (fields.len) {
         0 => objc.call(fn (Id, Sel) callconv(.c) void, target, selector, args),
-        1 => objc.call(fn (Id, Sel, fields[0].type) callconv(.c) void, target, selector, args),
+        1 => objc.call(fn (Id, Sel, fields[0]) callconv(.c) void, target, selector, args),
         else => @compileError("send has at most one argument; use objc.call for more"),
     }
 }

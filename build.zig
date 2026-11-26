@@ -23,11 +23,15 @@ const protocols = [_]Protocol{
 };
 
 /// Links the Wayland client library and `xkbcommon`, and compiles the C code that
-/// `wayland-scanner` makes from the protocol files of the system.
-fn addWayland(b: *std.Build, m: *std.Build.Module) void {
+/// `wayland-scanner` makes from the protocol files of the system. The module
+/// `wayland_c` is the translation of `src/platform/wayland_c.h`.
+fn addWayland(b: *std.Build, m: *std.Build.Module, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) void {
     m.link_libc = true;
     m.linkSystemLibrary("wayland-client", .{});
     m.linkSystemLibrary("xkbcommon", .{});
+    const tc = b.addTranslateC(.{ .root_source_file = b.path("src/platform/wayland_c.h"), .target = target, .optimize = optimize });
+    tc.linkSystemLibrary("wayland-client", .{});
+    tc.linkSystemLibrary("xkbcommon", .{});
     var code: u8 = 0;
     const dir_raw = b.runAllowFail(&.{ "pkg-config", "--variable=pkgdatadir", "wayland-protocols" }, &code, .ignore) catch "/usr/share/wayland-protocols";
     const dir = std.mem.trim(u8, dir_raw, " \n");
@@ -36,10 +40,20 @@ fn addWayland(b: *std.Build, m: *std.Build.Module) void {
         const hdr = b.addSystemCommand(&.{ "wayland-scanner", "client-header", xml });
         const hdr_out = hdr.addOutputFileArg(b.fmt("{s}-client-protocol.h", .{p.name}));
         m.addIncludePath(hdr_out.dirname());
+        tc.addIncludePath(hdr_out.dirname());
         const src = b.addSystemCommand(&.{ "wayland-scanner", "private-code", xml });
         const src_out = src.addOutputFileArg(b.fmt("{s}-protocol.c", .{p.name}));
         m.addCSourceFile(.{ .file = src_out, .flags = &.{} });
     }
+    m.addImport("wayland_c", tc.createModule());
+}
+
+/// The module `vulkan_c`: the translation of `src/render/vulkan_c.h` with the
+/// pinned Vulkan headers.
+fn vulkanC(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Module {
+    const tc = b.addTranslateC(.{ .root_source_file = b.path("src/render/vulkan_c.h"), .target = target, .optimize = optimize });
+    tc.addIncludePath(b.dependency("vulkan_headers", .{}).path("include"));
+    return tc.createModule();
 }
 
 pub fn build(b: *std.Build) void {
@@ -62,7 +76,7 @@ pub fn build(b: *std.Build) void {
     const vulkan_on = b.option(bool, "vulkan", "Build the Vulkan renderer (default: true on Linux)") orelse is_linux;
     const strip = b.option(bool, "strip", "Remove the debug sections from the program");
     const opts = b.addOptions();
-    opts.addOption([]const u8, "repo_root", b.build_root.path orelse ".");
+    opts.addOptionPathUntracked("repo_root", b.path("."));
     opts.addOption(bool, "vulkan", vulkan_on);
     opts.addOption(bool, "wayland", wayland_on);
     opts.addOption(bool, "appkit", appkit_on);
@@ -80,6 +94,7 @@ pub fn build(b: *std.Build) void {
         // shaders compile with glslc (package shaderc).
         ztk.link_libc = true;
         ztk.addIncludePath(b.dependency("vulkan_headers", .{}).path("include"));
+        ztk.addImport("vulkan_c", vulkanC(b, target, optimize));
         ztk.addAnonymousImport("quad_vert_spv", .{ .root_source_file = shader(b, "vertex", "src/render/shaders/quad.vert", "quad.vert.spv") });
         ztk.addAnonymousImport("quad_frag_spv", .{ .root_source_file = shader(b, "fragment", "src/render/shaders/quad.frag", "quad.frag.spv") });
     }
@@ -100,7 +115,7 @@ pub fn build(b: *std.Build) void {
     const use_llvm = libc_on or !is_linux or target.result.cpu.arch != .x86_64;
     // Zig links Mach-O files with its own linker.
     const use_lld = use_llvm and target.result.ofmt != .macho;
-    if (wayland_on) addWayland(b, ztk);
+    if (wayland_on) addWayland(b, ztk, target, optimize);
 
     const exe = b.addExecutable(.{ .name = "ztk", .use_llvm = use_llvm, .use_lld = use_lld, .root_module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
@@ -122,11 +137,11 @@ pub fn build(b: *std.Build) void {
         wasm_opts.addOption([]const u8, "repo_root", ".");
         wasm_opts.addOption(bool, "vulkan", false);
         wasm_opts.addOption(bool, "wayland", false);
-        const wasm_ztcl = b.dependency("ztcl", .{ .target = wasm_target, .optimize = .ReleaseFast }).module("ztcl");
+        const wasm_ztcl = b.dependency("ztcl", .{ .target = wasm_target, .optimize = .fast }).module("ztcl");
         const wasm_mod = b.createModule(.{
             .root_source_file = b.path("src/web.zig"),
             .target = wasm_target,
-            .optimize = .ReleaseFast,
+            .optimize = .fast,
             .strip = true,
             .imports = &.{.{ .name = "ztcl", .module = wasm_ztcl }},
         });
@@ -143,15 +158,15 @@ pub fn build(b: *std.Build) void {
     }
 
     const run = b.addRunArtifact(exe);
-    if (b.args) |args| run.addArgs(args);
+    run.addPassthruArgs();
     b.step("run", "Run a script: zig build run -- script.tcl").dependOn(&run.step);
 
     // The benchmark builds in ReleaseFast, whatever the optimize option is.
-    const bench_ztcl = b.dependency("ztcl", .{ .target = target, .optimize = .ReleaseFast }).module("ztcl");
+    const bench_ztcl = b.dependency("ztcl", .{ .target = target, .optimize = .fast }).module("ztcl");
     const bench_ztk = b.createModule(.{
         .root_source_file = b.path("src/ztk.zig"),
         .target = target,
-        .optimize = .ReleaseFast,
+        .optimize = .fast,
         .imports = &.{.{ .name = "ztcl", .module = bench_ztcl }},
     });
     bench_ztk.addOptions("build_options", opts);
@@ -160,14 +175,15 @@ pub fn build(b: *std.Build) void {
     if (vulkan_on) {
         bench_ztk.link_libc = true;
         bench_ztk.addIncludePath(b.dependency("vulkan_headers", .{}).path("include"));
+        bench_ztk.addImport("vulkan_c", vulkanC(b, target, .fast));
         bench_ztk.addAnonymousImport("quad_vert_spv", .{ .root_source_file = shader(b, "vertex", "src/render/shaders/quad.vert", "quad.vert.spv") });
         bench_ztk.addAnonymousImport("quad_frag_spv", .{ .root_source_file = shader(b, "fragment", "src/render/shaders/quad.frag", "quad.frag.spv") });
     }
-    if (wayland_on) addWayland(b, bench_ztk);
+    if (wayland_on) addWayland(b, bench_ztk, target, .fast);
     const bench = b.addExecutable(.{ .name = "ztk-bench", .use_llvm = use_llvm, .use_lld = use_lld, .root_module = b.createModule(.{
         .root_source_file = b.path("bench/bench.zig"),
         .target = target,
-        .optimize = .ReleaseFast,
+        .optimize = .fast,
         .link_libc = libc_on,
         .imports = &.{
             .{ .name = "ztcl", .module = bench_ztcl },
