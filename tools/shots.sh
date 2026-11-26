@@ -56,13 +56,13 @@ for scheme in light dark; do
 done
 
 # The shots of the widget pages (docs/dev/widget-pages.md). A line
-# `<!-- widget: NAME; shot: SCRIPT -->` in a page of docs/widgets marks
-# the next `tcl` block. The shot runs that block in a window of 360 by
-# 240 logical pixels, runs SCRIPT, and writes widget-NAME-light.png and
+# `<!-- widget: NAME; shot: SCRIPT -->` in a page of docs/widgets or in
+# docs/toys.md marks the next `tcl` block. The shot runs that block in a
+# window of 360 by 240 logical pixels, runs SCRIPT, and writes widget-NAME-light.png and
 # widget-NAME-dark.png.
 snippet="$(mktemp)"
 trap 'rm -f "$log" "$hero" "$snippet"' EXIT
-for page in "$root"/docs/widgets/*.md; do
+for page in "$root"/docs/widgets/*.md "$root"/docs/toys.md; do
     grep -o '<!-- widget: [a-z0-9-]*' "$page" | sed 's/<!-- widget: //' | while read -r name; do
         {
             echo 'wm geometry . 360x240'

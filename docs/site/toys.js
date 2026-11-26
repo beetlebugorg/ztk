@@ -33,6 +33,12 @@
 const reduced = matchMedia("(prefers-reduced-motion: reduce)");
 const W = 360;
 
+// The handheld of the Toys page (figure.toy-console) starts with a game
+// list, a Tcl script that sets toy(pick) to the name of a game. The page
+// then puts the code of that game, from a hidden pre of the figure, into
+// the editor and runs it in the same handheld. Menu or Escape puts the
+// list back. The query `?game=SLUG` of the address keeps the game.
+
 // The palette of the toys and a pixel square: the shared helper.
 export const INK = { night: "#1d1a33", paper: "#f2e6c4", red: "#ef5b5b", gold: "#ffcf5c", dusk: "#3a3560" };
 export function pixel(g, x, y, size, color) {
@@ -104,9 +110,11 @@ class Toy {
   device() {
     const pad = document.createElement("div");
     pad.className = "toy-pad";
+    const menu = this.fig.classList.contains("toy-console")
+      ? `<button type="button" class="toy-menu" aria-label="Menu: the game list">MENU</button>` : "";
     pad.innerHTML = `<span class="toy-led" aria-hidden="true"></span>
 <span class="toy-dpad"><button type="button" data-key="up" aria-label="Up">▲</button><button type="button" data-key="down" aria-label="Down">▼</button></span>
-<span class="toy-brand" aria-hidden="true">ZTK·PLAY</span>
+<span class="toy-brand"><span aria-hidden="true">ZTK·PLAY</span>${menu}</span>
 <span class="toy-ab"><button type="button" data-key="b" aria-label="Button B">B</button><button type="button" data-key="a" aria-label="Button A">A</button></span>
 <span class="toy-switches"><label><input type="checkbox" class="toy-spill"> Play on the page</label><label><input type="checkbox" class="toy-sound"> Sound</label></span>`;
     this.fig.querySelector(".ld-view").appendChild(pad);
@@ -120,7 +128,7 @@ class Toy {
     });
     pad.querySelector(".toy-sound").addEventListener("change", (e) => { this.sound = e.target.checked; });
     const press = Object.fromEntries(["up", "down", "a", "b"].map((k) => [k, `toy_press ${k}`]));
-    for (const b of pad.querySelectorAll("button")) {
+    for (const b of pad.querySelectorAll("button[data-key]")) {
       let rep = 0;
       const stop = () => clearInterval(rep);
       b.addEventListener("pointerdown", (e) => {
@@ -140,9 +148,10 @@ class Toy {
     this.polling = true;
     const step = () => {
       if (!this.visible) { this.polling = false; return; }
-      const r = this.eval(`set ::toy(spill) ${this.spill.checked ? 1 : 0}; apply {{} {set r "$::toy(out)|$::toy(sfx)"; set ::toy(out) {}; set ::toy(sfx) {}; return $r}}`);
+      const r = this.eval(`set ::toy(spill) ${this.spill.checked ? 1 : 0}; apply {{} {set r "$::toy(out)|$::toy(sfx)|[expr {[info exists ::toy(pick)] ? $::toy(pick) : {}}]"; set ::toy(out) {}; set ::toy(sfx) {}; set ::toy(pick) {}; return $r}}`);
       const m = r?.result?.split("|");
-      if (m?.length === 2) {
+      if (m?.length === 3) {
+        if (m[2]) this.picked?.(m[2]);
         if (this.sound) for (const s of m[1].split(/\s+/).filter(Boolean)) sound(s);
         const out = parse(m[0]);
         if (out.length >= 4 && !this.ball) this.launch(out);
@@ -250,4 +259,85 @@ class Toy {
   }
 }
 
-for (const fig of document.querySelectorAll('figure.live-demo[data-name^="toy-"]')) new Toy(fig);
+// The handheld of the Toys page: the game list, and then a game.
+class Console extends Toy {
+  constructor(fig) {
+    super(fig);
+    this.games = new Map([...fig.querySelectorAll("pre.toy-game")].map((p) => [p.dataset.name.slice(4), p]));
+    this.status = fig.querySelector(".toy-status");
+    this.link = fig.querySelector(".toy-page");
+    this.img = fig.querySelector(".ld-frame img");
+    this.source = fig.querySelector(".ld-frame source");
+    this.menuShot = [this.img?.src, this.source?.srcset];
+    // assets/live.js can run before or after this file.
+    this.list = this.demo?.original ?? fig.querySelector(".ld-code code").textContent;
+    fig.querySelector(".toy-menu").addEventListener("click", () => this.home());
+    addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && this.game && !fig.querySelector(".ld-code").contains(e.target)) this.home();
+    });
+    const slug = new URLSearchParams(location.search).get("game");
+    const game = [...this.games.values()].find((p) => p.dataset.slug === slug);
+    if (game) this.show(game, false);
+  }
+
+  get demo() {
+    return this.fig.ztkDemo;
+  }
+
+  // toy(pick) of the list: the name of a game without "toy-".
+  picked(name) {
+    const game = this.games.get(name);
+    if (game) this.show(game, true);
+  }
+
+  // Puts the code of a game, or the list when `game` is null, in the
+  // editor, and runs it when the handheld is live.
+  load(code, live) {
+    const d = this.demo;
+    if (!d) {
+      this.fig.querySelector(".ld-code code").textContent = code;
+      return;
+    }
+    d.original = code;
+    d.ta.value = code;
+    d.paint();
+    d.first = null;
+    if (live) d.run(true);
+  }
+
+  show(game, live) {
+    this.game = game;
+    this.load(game.textContent, live);
+    if (this.img) {
+      this.img.src = `${game.dataset.shot}-light.png`;
+      this.img.alt = `The game ${game.dataset.title} before it runs`;
+    }
+    if (this.source) this.source.srcset = `${game.dataset.shot}-dark.png`;
+    this.link.href = game.dataset.page;
+    this.link.textContent = `Play ${game.dataset.title} on its widget page`;
+    this.link.hidden = false;
+    this.status.textContent = `${game.dataset.title}. Menu or Escape goes back to the game list.`;
+    const url = new URL(location.href);
+    url.searchParams.set("game", game.dataset.slug);
+    history.replaceState(null, "", url);
+  }
+
+  home() {
+    if (!this.game) return;
+    this.game = null;
+    this.end();
+    this.load(this.list, true);
+    if (this.img) [this.img.src, this.img.alt] = [this.menuShot[0], "The game list of the handheld"];
+    if (this.source) this.source.srcset = this.menuShot[1];
+    this.link.hidden = true;
+    this.status.textContent = "The game list.";
+    const url = new URL(location.href);
+    url.searchParams.delete("game");
+    history.replaceState(null, "", url);
+  }
+}
+
+for (const fig of document.querySelectorAll('figure.live-demo[data-name^="toy-"]')) {
+  if (fig.classList.contains("toy-console")) new Console(fig);
+  else new Toy(fig);
+}

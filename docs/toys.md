@@ -1,14 +1,71 @@
 # Toys
 
-Each toy is a small arcade game in ztk, and the widget of its page drives it. A toy runs in the page as WebAssembly, in a handheld with a pad and two buttons. Its code is next to it, so you can edit it as it runs. With "Play on the page" on, a ball or a ship can leave the screen and bounce off the headings and the code of the page. Escape or a scroll brings it back. A toy starts only on a key or a click, its sound is off until you turn it on, and it stops when it is off the screen.
+Each toy is a small arcade game in ztk, and the widget of its page drives it. Pick a game in the handheld below: Up and Down or the arrow keys move the cursor, and A, Return, or a click starts the game. Its Tcl code shows next to the handheld, and an edit runs it again. Menu or Escape goes back to the list. The address of the page keeps the game, so a link opens that game.
 
-| Toy | Widget | What the widget does |
-|---|---|---|
-| [![Moth Lamp: a pinball table on its side with three lamps](site/shots/widget-toy-mothlamp-light.png)](widgets/toggles.md#play-moth-lamp)<br>[Moth Lamp](widgets/toggles.md#play-moth-lamp) | `checkbutton` | Two check buttons are the flippers of a pinball table, and three show its lamps. |
-| [![Backspin: a paddle match, with a vertical scale as the paddle](site/shots/widget-toy-backspin-light.png)](widgets/range.md#play-backspin)<br>[Backspin](widgets/range.md#play-backspin) | `scale` | The scale is your paddle in a match to 7 points. |
-| [![Tin Moon: a lander over a rough ground with a gold pad](site/shots/widget-toy-tinmoon-light.png)](widgets/ttk.md#play-tin-moon)<br>[Tin Moon](widgets/ttk.md#play-tin-moon) | `ttk::scale`, `ttk::progressbar` | The scale is the throttle of the lander, and the progress bar is its fuel gauge. |
-| [![Skate Pond: an ice puzzle and a bag of items](site/shots/widget-toy-skatepond-light.png)](widgets/listbox.md#play-skate-pond)<br>[Skate Pond](widgets/listbox.md#play-skate-pond) | `listbox` | The listbox is the bag of a puzzle on ice: select items and use them to cross 5 ponds. |
-| [![Cellar Door: a map of four rooms and a prompt](site/shots/widget-toy-cellardoor-light.png)](widgets/entry.md#play-cellar-door)<br>[Cellar Door](widgets/entry.md#play-cellar-door) | `entry` | The entry is the prompt of a text adventure. |
-| [![Puffshot: a shooter with a menu bar](site/shots/widget-toy-puffshot-light.png)](widgets/menus.md#play-puffshot)<br>[Puffshot](widgets/menus.md#play-puffshot) | `menu` | The menu bar and a context menu run the game. |
-| [![Lamplighter: a platform scene under three tabs](site/shots/widget-toy-lamplighter-light.png)](widgets/panes.md#play-lamplighter)<br>[Lamplighter](widgets/panes.md#play-lamplighter) | `ttk::notebook` | Each tab is a scene of one world. |
-| [![Twin Lanes: two roads side by side](site/shots/widget-toy-twinlanes-light.png)](widgets/panes.md#play-twin-lanes)<br>[Twin Lanes](widgets/panes.md#play-twin-lanes) | `panedwindow` | The sash sets the width of each road of a race. |
+A toy runs in the page as WebAssembly. It starts only on a key or a click, its sound is off until you turn it on, and it stops when it is off the screen.
+
+<!-- widget: toy-console; shot: update -->
+```tcl
+# The game list of the handheld. A pick sets toy(pick), and the page
+# then runs the code of that game in the same handheld.
+array set toy {out {} sfx {} spill 0 pick {}}
+set games {
+    mothlamp   "MOTH LAMP"   checkbutton
+    backspin   "BACKSPIN"    scale
+    tinmoon    "TIN MOON"    ttk::scale
+    skatepond  "SKATE POND"  listbox
+    cellardoor "CELLAR DOOR" entry
+    puffshot   "PUFFSHOT"    menu
+    lamplighter "LAMPLIGHTER" ttk::notebook
+    twinlanes  "TWIN LANES"  panedwindow
+}
+. configure -background #1d1a33
+canvas .sky -width 360 -height 32 -background #1d1a33 -highlightthickness 0
+# A moth of pixel squares, and the name of the handheld.
+foreach {x y} {0 0 4 0 2 2 0 4 2 4 4 4 2 6} {
+    .sky create rectangle [expr {14 + $x * 3}] [expr {3 + $y * 3}] \
+        [expr {20 + $x * 3}] [expr {9 + $y * 3}] -fill #ffcf5c -outline {}
+}
+.sky create text 44 16 -anchor w -text "ZTK PLAY" -fill #f2e6c4 -font {TkFixedFont 15 bold}
+.sky create text 344 16 -anchor e -text "SELECT A GAME" -fill #ef5b5b -font {TkFixedFont 10 bold}
+listbox .games -height 8 -font {TkFixedFont 10 bold} -activestyle none \
+    -background #1d1a33 -foreground #f2e6c4 -selectbackground #ffcf5c \
+    -selectforeground #1d1a33 -borderwidth 0 -highlightthickness 0
+foreach {id name widget} $games {
+    .games insert end $name
+}
+.games selection set 0
+.games activate 0
+label .hint -font {TkFixedFont 9 bold} -background #1d1a33 -foreground #8b86b8
+pack .sky -fill x
+pack .hint -side bottom -fill x
+pack .games -fill both -expand 1 -padx 12
+focus .games
+# The hint names the widget that drives the selected game.
+proc hint {} {
+    set i [lindex [.games curselection] 0]
+    .hint configure -text "[string toupper [lindex $::games [expr {$i * 3 + 2}]]]   A: PLAY"
+}
+hint
+bind .games <<ListboxSelect>> hint
+proc pick {} {
+    set i [lindex [.games curselection] 0]
+    if {$i ne ""} { set ::toy(pick) [lindex $::games [expr {$i * 3}]] }
+}
+proc move {d} {
+    set i [lindex [.games curselection] 0]
+    set i [expr {max(0, min(7, $i + $d))}]
+    .games selection clear 0 end
+    .games selection set $i
+    .games activate $i
+    .games see $i
+    hint
+    lappend ::toy(sfx) hit
+}
+proc toy_press {key} {
+    switch $key { up { move -1 } down { move 1 } default pick }
+}
+bind .games <Return> pick
+bind .games <space> pick
+bind .games <ButtonRelease-1> pick
+```
