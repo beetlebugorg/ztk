@@ -16,22 +16,6 @@ ztk::class .search add search
 pack .name .pw .search -padx 12 -pady 4
 ```
 
-- `-placeholder` and `-placeholderforeground` show a hint in an empty entry. They are the names of Tk 8.7.
-- The style class `search` adds a search icon and a clear button.
-- Undo and redo: Control-z, Control-Shift-z, and Control-y, or `event generate .name <<Undo>>`. A run of typed text is one step.
-- Cut, copy, and paste use the `clipboard` command. In this version the clipboard is local to the app.
-- `xview` and `-xscrollcommand` connect an entry to a [scrollbar](range.md).
-
-## Validation
-
-Validation follows Tk: the modes, the `%` fields, and `-invalidcommand`.
-
-<!-- live -->
-```tcl
-entry .qty -validate key -validatecommand {string is integer %P} -invalidcommand bell
-pack .qty -padx 12 -pady 4
-```
-
 ### Play: Cellar Door
 
 Cellar Door is a text adventure, and an entry is its prompt. Type a line and press Return: the `<Return>` binding reads `-textvariable cmd` and runs the line. The Up and Down keys of the entry step through the lines that ran, and `-validatecommand` keeps a line to 32 characters. The canvas is the map, and the hero walks from room to room. Try `help`, `look`, `go east`, `take key`, and `open gate`. On the handheld, Up and Down step through the lines, A runs the line, and B clears it. With "Play on the page" on, `throw stone` sends the stone out of the map, and it bounces off the headings and the code before it comes back.
@@ -158,6 +142,22 @@ new
 array set g [list hx $g(tx) hy $g(ty)]
 .c move hero $g(hx) $g(hy)
 tick
+```
+
+- `-placeholder` and `-placeholderforeground` show a hint in an empty entry. They are the names of Tk 8.7.
+- The style class `search` adds a search icon and a clear button.
+- Undo and redo: Control-z, Control-Shift-z, and Control-y, or `event generate .name <<Undo>>`. A run of typed text is one step.
+- Cut, copy, and paste use the `clipboard` command. In this version the clipboard is local to the app.
+- `xview` and `-xscrollcommand` connect an entry to a [scrollbar](range.md).
+
+## Validation
+
+Validation follows Tk: the modes, the `%` fields, and `-invalidcommand`.
+
+<!-- live -->
+```tcl
+entry .qty -validate key -validatecommand {string is integer %P} -invalidcommand bell
+pack .qty -padx 12 -pady 4
 ```
 
 ## spinbox

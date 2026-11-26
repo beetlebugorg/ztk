@@ -13,9 +13,6 @@ scale .vol -orient horizontal -from 0 -to 100 -variable vol -tickinterval 25 -le
 pack .vol -fill x -padx 12 -pady 8
 ```
 
-- The slider follows the pointer on the render thread, so a drag stays smooth while the script is busy.
-- The parts `::trough`, `::fill`, `::slider`, and `::value` accept CSS rules.
-
 ### Play: Backspin
 
 Backspin is a paddle game, and the scale sets the size of your paddle. Click the screen or press Space to serve. Up and Down, the mouse, or the pad of the handheld move the paddle. A hit while the paddle moves fast is a smash: with "Play on the page" on, the ball leaves the screen, bounces off the headings and the code of this page, and comes back. Escape or a scroll brings it back at once. The page sets `toy(spill)`, reads `toy(out)` and `toy(sfx)`, and gives the ball back in `toy(back)`. In `ztk` with no page, a smash makes the ball faster.
@@ -89,6 +86,9 @@ proc tick {} {
 }
 tick
 ```
+
+- The slider follows the pointer on the render thread, so a drag stays smooth while the script is busy.
+- The parts `::trough`, `::fill`, `::slider`, and `::value` accept CSS rules.
 
 ## scrollbar
 

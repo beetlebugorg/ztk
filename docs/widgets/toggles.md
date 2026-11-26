@@ -17,10 +17,6 @@ ztk::class .wifi add switch
 pack .sync .mixed .wifi -anchor w -padx 12 -pady 2
 ```
 
-- The style class `switch` draws a check button as a switch. Its knob slides with a spring.
-- A variable with the value of `-tristatevalue` shows the mixed state.
-- `select`, `deselect`, `toggle`, and `invoke` work as in Tk. `flash` has no effect.
-
 ### Play: Moth Lamp
 
 Moth Lamp is a pinball table on its side, and two check buttons switch the table: "Lamp bumpers" puts the three lamps in, and "Drain gate" closes the drain. Click the table or press Space to launch. Up and Down, or the pad, flip the top and the low flipper. A flip with the middle of a flipper is a strong flip: with "Play on the page" on, the ball leaves the table, falls across the page, and bounces off the headings and the code. Each one that it hits lights up and gives 500 points when the ball comes back. Escape or a scroll brings the ball back at once.
@@ -103,6 +99,10 @@ proc tick {} {
 }
 tick
 ```
+
+- The style class `switch` draws a check button as a switch. Its knob slides with a spring.
+- A variable with the value of `-tristatevalue` shows the mixed state.
+- `select`, `deselect`, `toggle`, and `invoke` work as in Tk. `flash` has no effect.
 
 ## radiobutton
 
