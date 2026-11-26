@@ -344,7 +344,26 @@ pub const Platform = struct {
         /// Asks for the attention of the user with the button of `w`.
         /// `critical` keeps the request until the window has the focus.
         attention: ?*const fn (ptr: *anyopaque, w: *Window, critical: bool) void = null,
+        // The recent documents of the app (ztk#64).
+
+        /// Adds a file to the recent documents of the app. `path` is a
+        /// full host path in UTF-8 with `/` between the parts. Gives false
+        /// when the system refuses it.
+        recentAdd: ?*const fn (ptr: *anyopaque, path: []const u8) bool = null,
+        /// Empties the recent documents of the app, and only of the app.
+        recentClear: ?*const fn (ptr: *anyopaque) void = null,
     };
+
+    pub fn hasRecent(p: Platform) bool {
+        return p.vtable.recentAdd != null and p.vtable.recentClear != null;
+    }
+    pub fn recentAdd(p: Platform, path: []const u8) bool {
+        const f = p.vtable.recentAdd orelse return false;
+        return f(p.ptr, path);
+    }
+    pub fn recentClear(p: Platform) void {
+        if (p.vtable.recentClear) |f| f(p.ptr);
+    }
 
     pub fn hasNativeMenus(p: Platform) bool {
         return p.native_menus and p.vtable.menuSet != null and p.vtable.postMenu != null;

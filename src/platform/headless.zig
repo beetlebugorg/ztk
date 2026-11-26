@@ -80,6 +80,10 @@ pub const Headless = struct {
     system: ?plat.Appearance = null,
     /// The trays: the last call of `traySet` for each, and the count of the ids.
     trays: std.ArrayListUnmanaged(TrayRec) = .empty,
+    /// The recent documents: the paths of `recentAdd` since the last
+    /// `recentClear`, and the count of the clears.
+    recent: std.ArrayListUnmanaged([]u8) = .empty,
+    recent_clears: u32 = 0,
     tray_next: u32 = 1,
     /// The file dialog: the paths that the next dialog gives (null: a cancel),
     /// the filter that it gives, and the options of the last call.
@@ -132,6 +136,8 @@ pub const Headless = struct {
         for (h.trays.items) |*r| r.tooltip.deinit(h.gpa);
         h.trays.deinit(h.gpa);
         h.dialog_title.deinit(h.gpa);
+        for (h.recent.items) |p| h.gpa.free(p);
+        h.recent.deinit(h.gpa);
         h.freeTexts(&h.ime_texts);
         h.freeTexts(&h.ime_texts_old);
         h.ime_texts.deinit(h.gpa);
@@ -171,6 +177,8 @@ pub const Headless = struct {
         .trayDrop = vTrayDrop,
         .taskbarSet = vTaskbarSet,
         .attention = vAttention,
+        .recentAdd = vRecentAdd,
+        .recentClear = vRecentClear,
     };
 
     pub const TrayRec = struct { id: plat.TrayId, width: u32 = 0, template: bool = false, tooltip: std.ArrayListUnmanaged(u8) = .empty, menu: plat.MenuId = 0 };
@@ -211,6 +219,23 @@ pub const Headless = struct {
         const h = self(ptr);
         h.attentions += 1;
         h.attention_critical = critical;
+    }
+
+    fn vRecentAdd(ptr: *anyopaque, path: []const u8) bool {
+        const h = self(ptr);
+        const copy = h.gpa.dupe(u8, path) catch return false;
+        h.recent.append(h.gpa, copy) catch {
+            h.gpa.free(copy);
+            return false;
+        };
+        return true;
+    }
+
+    fn vRecentClear(ptr: *anyopaque) void {
+        const h = self(ptr);
+        for (h.recent.items) |p| h.gpa.free(p);
+        h.recent.clearRetainingCapacity();
+        h.recent_clears += 1;
     }
 
     pub fn tray(h: *Headless, id: plat.TrayId) ?*TrayRec {
