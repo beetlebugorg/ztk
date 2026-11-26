@@ -33,15 +33,6 @@ pack .status
 bind . <Button-3> {tk_popup .bar.edit %X %Y}
 ```
 
-- `menu` has the five entry types of Tk 8.6 (`command`, `cascade`, `checkbutton`, `radiobutton`, and `separator`), the tearoff entry, and the subcommands and the messages of `wish` 8.6.16. `invoke` sets the variable of a check or radio entry and then runs `-command`. A change of the active entry sends `<<MenuSelect>>`.
-- `toplevel -menu` gives the window a menu bar. On Linux and the web, ztk draws the bar as a row at the top of the window, as Tk on X11 does. The content of the window goes below the row. macOS and Windows show their own menus.
-- `tk_popup` and `post` show a menu at a point of the window. A cascade opens on the right of its entry. On Wayland, each posted menu and each cascade is a popup surface (`xdg_popup`) that can extend past the window: the compositor flips a cascade to the left and slides a menu when the screen has no room. On the web, each one is a canvas in a layer above the page, and the viewport is the screen.
-- `menubutton` and `ttk::menubutton` post their `-menu` on the side of `-direction`. A drag from the button to an entry and a release there invokes the entry.
-- The pointer: motion activates an entry and opens a cascade, a release invokes the entry, and a press outside the menus closes them.
-- The keys: `Up` and `Down` move the active entry, `Right` opens a cascade, `Left` closes it, and `Return` or `space` invokes the entry. `Escape` closes the menu. The letter of `-underline` invokes its entry. On the menu bar, `F10` opens the first menu, `Alt` with a letter opens the menu with that `-underline` letter, and `Left` and `Right` move along the bar.
-- A menu opens with a fade and a slide of 6 logical pixels in 150 ms, and fades out in 150 ms after it closes. The moves run on the render thread. The highlight of the active entry eases from one entry to the next in 120 ms.
-- The parts `::item`, `::item-active`, `::separator`, `::accelerator`, and `::indicator` of the class `Menu` accept CSS rules, and so do `::bar`, `::bar-item`, and `::bar-item-active` for the menu bar row. `Menubutton::indicator` is the chevron of a menu button.
-
 ### Play: Puffshot
 
 Puffshot is a shooter, and its menus run the game. The Game menu has New game, a Pause `checkbutton` entry with `-variable paused`, and Fire a comet. The Speed menu has three `radiobutton` entries on `-variable speed`, and the puffs fall at that speed. A right-click on the sky runs `tk_popup` with a second menu: a comet, three shots at once, and Pause. Press Space or click the canvas, then use Left and Right to move and Space to shoot, or B, A, and Up on the handheld. A comet clears the sky. With "Play on the page" on, the comet flies out over the page first and bounces off the headings and the code, and each one that it hits gives 100 points when it comes back.
@@ -176,3 +167,12 @@ set score 0
 set puffs {}
 tick
 ```
+
+- `menu` has the five entry types of Tk 8.6 (`command`, `cascade`, `checkbutton`, `radiobutton`, and `separator`), the tearoff entry, and the subcommands and the messages of `wish` 8.6.16. `invoke` sets the variable of a check or radio entry and then runs `-command`. A change of the active entry sends `<<MenuSelect>>`.
+- `toplevel -menu` gives the window a menu bar. On Linux and the web, ztk draws the bar as a row at the top of the window, as Tk on X11 does. The content of the window goes below the row. macOS and Windows show their own menus.
+- `tk_popup` and `post` show a menu at a point of the window. A cascade opens on the right of its entry. On Wayland, each posted menu and each cascade is a popup surface (`xdg_popup`) that can extend past the window: the compositor flips a cascade to the left and slides a menu when the screen has no room. On the web, each one is a canvas in a layer above the page, and the viewport is the screen.
+- `menubutton` and `ttk::menubutton` post their `-menu` on the side of `-direction`. A drag from the button to an entry and a release there invokes the entry.
+- The pointer: motion activates an entry and opens a cascade, a release invokes the entry, and a press outside the menus closes them.
+- The keys: `Up` and `Down` move the active entry, `Right` opens a cascade, `Left` closes it, and `Return` or `space` invokes the entry. `Escape` closes the menu. The letter of `-underline` invokes its entry. On the menu bar, `F10` opens the first menu, `Alt` with a letter opens the menu with that `-underline` letter, and `Left` and `Right` move along the bar.
+- A menu opens with a fade and a slide of 6 logical pixels in 150 ms, and fades out in 150 ms after it closes. The moves run on the render thread. The highlight of the active entry eases from one entry to the next in 120 ms.
+- The parts `::item`, `::item-active`, `::separator`, `::accelerator`, and `::indicator` of the class `Menu` accept CSS rules, and so do `::bar`, `::bar-item`, and `::bar-item-active` for the menu bar row. `Menubutton::indicator` is the chevron of a menu button.

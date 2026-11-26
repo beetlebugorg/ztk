@@ -20,13 +20,6 @@ listbox .side -height 4 -activestyle none
 ztk::class .side add sidebar
 ```
 
-- The listbox has the options, the subcommands, and the four selection modes of Tk 8.6: `single`, `browse`, `multiple`, and `extended`. The pointer and the keys select rows as in `wish`, and a change by the user sends `<<ListboxSelect>>`.
-- `-listvariable` links the rows to a list variable in both directions.
-- When the selection moves from one row to another row, its background eases between the rows in 180 ms.
-- A scroll eases, and a touchpad scrolls by pixels with momentum. A whole step of `yview scroll` or `yview moveto` puts a row at the top, as in Tk.
-- The additions: `-emptytext` shows a text in an empty listbox, and the style class `sidebar` gives a list with no field and round accent rows.
-- The parts `::item`, `::selection`, `::active`, and `::empty` accept CSS rules.
-
 ### Play: Skate Pond
 
 Skate Pond is a puzzle on ice, and the listbox picks the level. A selection sends `<<ListboxSelect>>`, and the binding builds the board: its rows drop in one after the other. The arrow keys, or the pad with B for left and A for right, push the skater, and the skater slides until a rock stops it. Reach the gold flag. The game then gives the row of the level a gold `-foreground` with `itemconfigure` and selects the next row with `selection set` and `see`. A gap in the wall is a way off the ice. With "Play on the page" on, the skater slides out across the page and bounces off the headings and the code, and then comes back to the start. Escape or a scroll brings the skater back at once.
@@ -155,3 +148,10 @@ proc tick {} {
 load 0
 tick
 ```
+
+- The listbox has the options, the subcommands, and the four selection modes of Tk 8.6: `single`, `browse`, `multiple`, and `extended`. The pointer and the keys select rows as in `wish`, and a change by the user sends `<<ListboxSelect>>`.
+- `-listvariable` links the rows to a list variable in both directions.
+- When the selection moves from one row to another row, its background eases between the rows in 180 ms.
+- A scroll eases, and a touchpad scrolls by pixels with momentum. A whole step of `yview scroll` or `yview moveto` puts a row at the top, as in Tk.
+- The additions: `-emptytext` shows a text in an empty listbox, and the style class `sidebar` gives a list with no field and round accent rows.
+- The parts `::item`, `::selection`, `::active`, and `::empty` accept CSS rules.

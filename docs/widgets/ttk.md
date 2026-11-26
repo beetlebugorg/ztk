@@ -73,18 +73,6 @@ after 500 {.busy start}
 pack .size .copies .volume .meter .busy -fill x -padx 12 -pady 4
 ```
 
-| Widget | Notes |
-|---|---|
-| `ttk::combobox` | An entry with a list of `-values`. A press on the arrow, or the Down key, opens the list. A readonly combobox opens it on a press anywhere. `-postcommand` runs before the list opens. A choice from the list sends `<<ComboboxSelected>>`. `current` gives or sets the index of the text in `-values`, and `set` sets the text. `-placeholder` shows a hint in an empty field. |
-| `ttk::spinbox` | An entry with up and down buttons. It steps through `-values`, or from `-from` to `-to` by `-increment`, with `-format` and `-wrap`. The Up and Down keys send `<<Increment>>` and `<<Decrement>>`. |
-| `ttk::scale` | A slider from `-from` to `-to` (0 to 1.0 by default) with no resolution. `get` gives `-value`, and `set` runs `-command` with the new value. A `-variable` that does not exist stays unset until the value changes. |
-| `ttk::scrollbar` | The overlay scrollbar of the modern theme, with `set first last`, `get`, `delta`, and `fraction`. `identify` gives `thumb` or `trough`. |
-| `ttk::progressbar` | `-mode determinate` fills `-value / -maximum` of the track. `-mode indeterminate` moves a short bar. `step ?amount?` adds to the value and wraps at `-maximum`. `start ?interval?` steps it with a timer, and `stop` ends the timer. A `-variable` with text that is not a number sets the state `invalid`. |
-
-The list of a combobox is a popover with a round corner and a shadow. It opens below the field, or above it when the window has no room below. The arrow keys move the highlight, Return chooses, and Escape or a press outside closes the list. The list fades in and slides 6 pixels in 150 ms, and it closes the same way. The determinate bar eases to a new value in 200 ms. While `start` runs, the indeterminate bar moves back and forth on the render thread, so a busy script does not stop it.
-
-The parts for CSS: `TCombobox::arrow`, `::popdown`, `::item`, and `::item-active`; `TProgressbar::trough` and `::bar`. A `ttk::scale`, a `ttk::spinbox`, and a `ttk::scrollbar` match the rules of `Scale`, `Spinbox`, and `Scrollbar` too, and a `ttk::combobox` the rules of `Entry`.
-
 ### Play: Tin Moon
 
 Tin Moon is a lander, and a `ttk::progressbar` is its fuel tank: the bar has `-variable fuel`, so each burn of the engine empties it. Press Space or click the screen to start. Up, or the pad, fires the main engine, and Left and Right, or B and A, fire the side jets. Put the ship down on the gold pad slowly and level. The fuel that is left adds to the score. With "Play on the page" on, a ship that flies out of the top of the screen falls across the page and bounces off the headings and the code. Each one that it hits gives 10 fuel back when the ship comes back. Escape or a scroll brings the ship back at once.
@@ -192,6 +180,18 @@ proc tick {} {
 }
 tick
 ```
+
+| Widget | Notes |
+|---|---|
+| `ttk::combobox` | An entry with a list of `-values`. A press on the arrow, or the Down key, opens the list. A readonly combobox opens it on a press anywhere. `-postcommand` runs before the list opens. A choice from the list sends `<<ComboboxSelected>>`. `current` gives or sets the index of the text in `-values`, and `set` sets the text. `-placeholder` shows a hint in an empty field. |
+| `ttk::spinbox` | An entry with up and down buttons. It steps through `-values`, or from `-from` to `-to` by `-increment`, with `-format` and `-wrap`. The Up and Down keys send `<<Increment>>` and `<<Decrement>>`. |
+| `ttk::scale` | A slider from `-from` to `-to` (0 to 1.0 by default) with no resolution. `get` gives `-value`, and `set` runs `-command` with the new value. A `-variable` that does not exist stays unset until the value changes. |
+| `ttk::scrollbar` | The overlay scrollbar of the modern theme, with `set first last`, `get`, `delta`, and `fraction`. `identify` gives `thumb` or `trough`. |
+| `ttk::progressbar` | `-mode determinate` fills `-value / -maximum` of the track. `-mode indeterminate` moves a short bar. `step ?amount?` adds to the value and wraps at `-maximum`. `start ?interval?` steps it with a timer, and `stop` ends the timer. A `-variable` with text that is not a number sets the state `invalid`. |
+
+The list of a combobox is a popover with a round corner and a shadow. It opens below the field, or above it when the window has no room below. The arrow keys move the highlight, Return chooses, and Escape or a press outside closes the list. The list fades in and slides 6 pixels in 150 ms, and it closes the same way. The determinate bar eases to a new value in 200 ms. While `start` runs, the indeterminate bar moves back and forth on the render thread, so a busy script does not stop it.
+
+The parts for CSS: `TCombobox::arrow`, `::popdown`, `::item`, and `::item-active`; `TProgressbar::trough` and `::bar`. A `ttk::scale`, a `ttk::spinbox`, and a `ttk::scrollbar` match the rules of `Scale`, `Spinbox`, and `Scrollbar` too, and a `ttk::combobox` the rules of `Entry`.
 
 ## How they differ from the classic widgets
 

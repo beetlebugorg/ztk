@@ -45,6 +45,7 @@ PAGES = [
     ("docs/agents.md", "agents/", "Start", "For agents"),
     ("docs/replay.md", "replay/", "Start", "Watch it get built"),
     ("docs/widgets/README.md", "widgets/", "Widgets", "All widgets"),
+    ("docs/toys.md", "toys/", "Widgets", "Toys"),
     ("docs/widgets/basic.md", "widgets/basic/", "Widgets", "Frames, labels, and buttons"),
     ("docs/widgets/toggles.md", "widgets/toggles/", "Widgets", "Check and radio buttons"),
     ("docs/widgets/entry.md", "widgets/entry/", "Widgets", "Entry and spinbox"),
@@ -347,7 +348,7 @@ class Build:
 <link rel="stylesheet" href="{root}assets/site.css">{script}</head>
 <body><a class="skip" href="#content">Skip to the content</a>
 <header class="top"><div class="wrap"><a class="logo" href="{root}"><span class="glyph" aria-hidden="true">tk</span>ztk</a>
-<nav class="toplinks" aria-label="Site"><a href="{root}overview/" aria-current="page">Docs</a><a href="{root}widgets/">Widgets</a><a class="sib" href="https://beetlebug.org/ztcl/">ztcl</a><a href="{REPO}">GitHub</a></nav></div></header>
+<nav class="toplinks" aria-label="Site"><a href="{root}overview/" aria-current="page">Docs</a><a href="{root}widgets/">Widgets</a><a href="{root}toys/">Toys</a><a class="sib" href="https://beetlebug.org/ztcl/">ztcl</a><a href="{REPO}">GitHub</a></nav></div></header>
 <div class="docs"><input class="toc-toggle" type="checkbox" id="toc"><label class="toc-button" for="toc">Contents</label>
 <aside class="sidebar"><nav aria-label="Documentation">{self.nav(page)}</nav></aside>
 <main class="prose" id="content">{body}{self.pager(page)}</main></div>
@@ -419,8 +420,19 @@ class Build:
                 "still": True, "shot": (SITE_DIR / "shots" / "widget-hero-light.png").is_file()}
         figure = self.live_figure(hero, (SITE_DIR / "hero.tcl").read_text(encoding="utf-8"), "").replace('class="live-demo"', 'class="live-demo stack"')
         landing = landing.replace("<!-- live: hero -->", figure)
+        # A toy of a widget page on the landing page: `<!-- live: toy-NAME -->`.
+        for name in re.findall(r"<!-- live: (toy-[a-z]+) -->", landing):
+            code = next((m.group(1) for f in sorted((ROOT / "docs" / "widgets").glob("*.md"))
+                         for m in [re.search(rf"<!-- widget: {name};[^\n]*-->\n```tcl\n(.*?)```\n", f.read_text(encoding="utf-8"), re.S)] if m), None)
+            if code is None:
+                raise SystemExit(f"docs/site/index.html: no widget page has the toy {name}")
+            meta = {"live": True, "name": name, "id": f"live-{name}", "alt": f"The toy {name[4:]} before it runs", "still": True,
+                    "shot": (SITE_DIR / "shots" / f"widget-{name}-light.png").is_file()}
+            landing = landing.replace(f"<!-- live: {name} -->", self.live_figure(meta, code, ""))
         self.check_landing(landing)
         landing = landing.replace("</head>", '<script type="module" src="assets/live.js"></script>\n</head>', 1)
+        if 'data-name="toy-' in landing:
+            landing = landing.replace("</head>", '<script type="module" src="assets/toys.js"></script>\n</head>', 1)
         if out.exists():
             shutil.rmtree(out)
         for page, title, body in rendered:
