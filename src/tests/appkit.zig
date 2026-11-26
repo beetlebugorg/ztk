@@ -124,6 +124,27 @@ test "appkit: a window draws with Metal and gives frame, resize, and close event
     sendMouse(w.ns_window, 2, 20, 300 - 30);
     _ = try waitFor(p, .button);
 
+    // With the input method on, a plain key still comes as a key with its text.
+    p.textInput(win, true, .{ .x = 10, .y = 10, .w = 200, .h = 24 });
+    sendKey(w.ns_window, 10, "a", "a", 0x00, 0);
+    const typed = try waitFor(p, .key);
+    try t.expectEqual(@as(u32, 'a'), typed.key.keysym);
+    try t.expectEqualStrings("a", typed.key.text[0..typed.key.text_len]);
+    // The answers of an input method: marked text, then the final text.
+    const Range = extern struct { location: usize, length: usize };
+    const marked = objc.nsString("ni");
+    defer objc.release(marked);
+    objc.call(fn (objc.Id, objc.Sel, objc.Id, Range, Range) callconv(.c) void, w.view, "setMarkedText:selectedRange:replacementRange:", .{ marked, Range{ .location = 2, .length = 0 }, Range{ .location = std.math.maxInt(isize), .length = 0 } });
+    const pre = try waitFor(p, .preedit);
+    try t.expectEqualStrings("ni", pre.preedit.text);
+    try t.expectEqual(@as(u32, 2), pre.preedit.caret);
+    const final = objc.nsString("你");
+    defer objc.release(final);
+    objc.call(fn (objc.Id, objc.Sel, objc.Id, Range) callconv(.c) void, w.view, "insertText:replacementRange:", .{ final, Range{ .location = std.math.maxInt(isize), .length = 0 } });
+    const done = try waitFor(p, .commit);
+    try t.expectEqualStrings("你", done.commit.text);
+    p.textInput(win, false, .{});
+
     // The close button asks the core, and the window stays.
     objc.call(fn (objc.Id, objc.Sel, ?objc.Id) callconv(.c) void, w.ns_window, "performClose:", .{null});
     _ = try waitFor(p, .close);

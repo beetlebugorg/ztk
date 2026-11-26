@@ -19,6 +19,12 @@
 //! area of the view gives the motion with no button down, the leave, and
 //! the cursor updates. Each pointer position also goes to the render
 //! thread with `Window.feedPointer`.
+//!
+//! While the core has text input on, a key goes through
+//! `interpretKeyEvents:`, and the view adopts `NSTextInputClient`.
+//! `macime.zig` decides whether an answer of the input method is a
+//! `preedit`, a `commit`, or the key event as before. A text of an event
+//! lives until the `poll` after the one that gives the event.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -37,6 +43,7 @@ const Target = @import("../render/thread.zig").Target;
 const Atlas = @import("../text/atlas.zig").Atlas;
 const mackeys = @import("mackeys.zig");
 const Pasteboard = @import("pasteboard.zig").Pasteboard;
+const Ime = @import("macime.zig").Ime;
 const Id = objc.Id;
 const Sel = objc.Sel;
 const Class = objc.Class;
@@ -44,6 +51,8 @@ const Class = objc.Class;
 const NSPoint = extern struct { x: f64, y: f64 };
 const NSSize = extern struct { w: f64, h: f64 };
 const NSRect = extern struct { origin: NSPoint, size: NSSize };
+const NSRange = extern struct { location: usize, length: usize };
+const not_found: usize = std.math.maxInt(isize);
 
 extern "c" fn pthread_main_np() c_int;
 extern "Foundation" const NSDefaultRunLoopMode: Id;
@@ -80,6 +89,11 @@ pub const Win = struct {
     /// The keysym of each key code that is down, so a release has the
     /// keysym of its press.
     down_syms: [128]u32 = @splat(0),
+    /// The input method: on for a text widget with the focus, the box of
+    /// the widget in logical pixels, and the composition.
+    ime_on: bool = false,
+    ime_rect: geom.Rect = .{},
+    ime: Ime = .{},
 };
 
 pub const AppKit = struct {
@@ -95,6 +109,9 @@ pub const AppKit = struct {
     windows: u32 = 0,
     /// The clipboard: the general pasteboard.
     clip: Pasteboard,
+    /// The texts of the events of the last poll, and of the events since.
+    texts_given: std.ArrayListUnmanaged([]u8) = .empty,
+    texts_new: std.ArrayListUnmanaged([]u8) = .empty,
 
     pub fn init(gpa: std.mem.Allocator) !*AppKit {
         // AppKit makes windows only on the main thread.
@@ -110,6 +127,10 @@ pub const AppKit = struct {
     }
 
     pub fn deinit(a: *AppKit) void {
+        a.freeTexts(&a.texts_given);
+        a.freeTexts(&a.texts_new);
+        a.texts_given.deinit(a.gpa);
+        a.texts_new.deinit(a.gpa);
         a.events.deinit(a.gpa);
         a.gpa.destroy(a);
     }
@@ -133,6 +154,7 @@ pub const AppKit = struct {
         .setCursor = vSetCursor,
         .clipboardSet = vClipboardSet,
         .clipboardGet = vClipboardGet,
+        .textInput = vTextInput,
     };
 
     fn vClipboardSet(ptr: *anyopaque, typ: []const u8, data: []const u8) void {
@@ -254,6 +276,7 @@ pub const AppKit = struct {
         objc.release(w.layer);
         w.renderer.deinit();
         w.atlas.deinit();
+        w.ime.deinit(a.gpa);
         a.gpa.destroy(w);
         a.windows -|= 1;
     }
@@ -344,6 +367,9 @@ pub const AppKit = struct {
 
     fn vPoll(ptr: *anyopaque, gpa: std.mem.Allocator, out: *std.ArrayListUnmanaged(Event)) anyerror!void {
         const a = self(ptr);
+        // The texts of the events that the last poll gave are no longer in use.
+        a.freeTexts(&a.texts_given);
+        std.mem.swap(std.ArrayListUnmanaged([]u8), &a.texts_given, &a.texts_new);
         const pool = objc.Pool.push();
         defer pool.pop();
         const past = objc.call(fn (Class, Sel) callconv(.c) Id, objc.class("NSDate").?, "distantPast", .{});
@@ -553,6 +579,122 @@ pub const AppKit = struct {
         return objc.call(fn (Class, Sel, usize, usize) callconv(.c) ?Id, cls, "frameResizeCursorFromPosition:inDirections:", .{ position, 3 });
     }
 
+    // ---- The input method ----
+
+    fn freeTexts(a: *AppKit, list: *std.ArrayListUnmanaged([]u8)) void {
+        for (list.items) |x| a.gpa.free(x);
+        list.clearRetainingCapacity();
+    }
+
+    fn keepText(a: *AppKit, text: []const u8) ?[]const u8 {
+        const copy = a.gpa.dupe(u8, text) catch return null;
+        a.texts_new.append(a.gpa, copy) catch {
+            a.gpa.free(copy);
+            return null;
+        };
+        return copy;
+    }
+
+    fn apply(w: *Win, act: Ime.Action) void {
+        const a = w.owner;
+        switch (act) {
+            .none => {},
+            .preedit => |p| if (a.keepText(p.text)) |x| a.push(.{ .preedit = .{ .window = &w.window, .text = x, .caret = p.caret } }),
+            .commit => |c| if (a.keepText(c)) |x| a.push(.{ .commit = .{ .window = &w.window, .text = x } }),
+        }
+    }
+
+    fn vTextInput(_: *anyopaque, win: *Window, on: bool, rect: geom.Rect) void {
+        const w = winOf(win);
+        w.ime_rect = rect;
+        if (on == w.ime_on) {
+            if (on) if (inputContext(w.view)) |ctx| send(ctx, "invalidateCharacterCoordinates", .{});
+            return;
+        }
+        w.ime_on = on;
+        if (!on) {
+            if (inputContext(w.view)) |ctx| send(ctx, "discardMarkedText", .{});
+            apply(w, w.ime.discard());
+        }
+    }
+
+    fn inputContext(view: Id) ?Id {
+        return objc.call(fn (Id, Sel) callconv(.c) ?Id, view, "inputContext", .{});
+    }
+
+    /// The text of an `NSString` or an `NSAttributedString`.
+    fn plainString(obj: Id) Id {
+        const attributed = objc.class("NSAttributedString").?;
+        if (objc.call(fn (Id, Sel, Class) callconv(.c) bool, obj, "isKindOfClass:", .{attributed}))
+            return objc.call(fn (Id, Sel) callconv(.c) Id, obj, "string", .{});
+        return obj;
+    }
+
+    fn onHasMarked(view: Id, _: Sel) callconv(.c) bool {
+        const w = dataOf(view) orelse return false;
+        return w.ime.hasMarked();
+    }
+
+    fn onMarkedRange(view: Id, _: Sel) callconv(.c) NSRange {
+        const w = dataOf(view) orelse return .{ .location = not_found, .length = 0 };
+        if (!w.ime.hasMarked()) return .{ .location = not_found, .length = 0 };
+        const s = objc.nsString(w.ime.marked.items);
+        defer objc.release(s);
+        return .{ .location = 0, .length = objc.call(fn (Id, Sel) callconv(.c) usize, s, "length", .{}) };
+    }
+
+    fn onSelectedRange(_: Id, _: Sel) callconv(.c) NSRange {
+        // The text of the widget stays in the core, so the input method
+        // sees an empty selection.
+        return .{ .location = not_found, .length = 0 };
+    }
+
+    fn onSetMarked(view: Id, _: Sel, text: Id, selected: NSRange, _: NSRange) callconv(.c) void {
+        const w = dataOf(view) orelse return;
+        const str = plainString(text);
+        apply(w, w.ime.setMarked(w.owner.gpa, objc.utf8(str), selected.location));
+    }
+
+    fn onUnmark(view: Id, _: Sel) callconv(.c) void {
+        const w = dataOf(view) orelse return;
+        apply(w, w.ime.unmark());
+    }
+
+    fn onInsert(view: Id, _: Sel, text: Id, _: NSRange) callconv(.c) void {
+        const w = dataOf(view) orelse return;
+        const str = plainString(text);
+        apply(w, w.ime.insert(objc.utf8(str)));
+    }
+
+    fn onCommand(view: Id, _: Sel, _: Sel) callconv(.c) void {
+        if (dataOf(view)) |w| w.ime.command();
+    }
+
+    fn onValidAttributes(_: Id, _: Sel) callconv(.c) Id {
+        return objc.call(fn (Class, Sel) callconv(.c) Id, objc.class("NSArray").?, "array", .{});
+    }
+
+    fn onAttributedSubstring(_: Id, _: Sel, _: NSRange, _: ?*NSRange) callconv(.c) ?Id {
+        return null;
+    }
+
+    fn onCharacterIndex(_: Id, _: Sel, _: NSPoint) callconv(.c) usize {
+        return not_found;
+    }
+
+    /// The box of the text widget in screen coordinates, so the candidate
+    /// window of the input method opens below it.
+    fn onFirstRect(view: Id, _: Sel, _: NSRange, actual: ?*NSRange) callconv(.c) NSRect {
+        if (actual) |r| r.* = .{ .location = not_found, .length = 0 };
+        const w = dataOf(view) orelse return .{ .origin = .{ .x = 0, .y = 0 }, .size = .{ .w = 0, .h = 0 } };
+        const r = w.ime_rect;
+        // The view is flipped: the bottom left of the box has the larger y.
+        const bottom_left = NSPoint{ .x = @floatFromInt(r.x), .y = @floatFromInt(r.y + r.h) };
+        const in_window = objc.call(fn (Id, Sel, NSPoint, ?Id) callconv(.c) NSPoint, view, "convertPoint:toView:", .{ bottom_left, null });
+        const on_screen = objc.call(fn (Id, Sel, NSPoint) callconv(.c) NSPoint, w.ns_window, "convertPointToScreen:", .{in_window});
+        return .{ .origin = on_screen, .size = .{ .w = @floatFromInt(r.w), .h = @floatFromInt(r.h) } };
+    }
+
     // ---- The classes made at run time ----
 
     fn winOf(win: *Window) *Win {
@@ -580,6 +722,20 @@ pub const AppKit = struct {
         b.method("mouseExited:", @ptrCast(&onExit), "v@:@");
         b.method("scrollWheel:", @ptrCast(&onScroll), "v@:@");
         b.method("cursorUpdate:", @ptrCast(&onCursorUpdate), "v@:@");
+        // NSTextInputClient. "{_NSRange=QQ}" is an NSRange, and
+        // "{CGRect={CGPoint=dd}{CGSize=dd}}" an NSRect.
+        _ = b.protocol("NSTextInputClient");
+        b.method("hasMarkedText", @ptrCast(&onHasMarked), "c@:");
+        b.method("markedRange", @ptrCast(&onMarkedRange), "{_NSRange=QQ}@:");
+        b.method("selectedRange", @ptrCast(&onSelectedRange), "{_NSRange=QQ}@:");
+        b.method("setMarkedText:selectedRange:replacementRange:", @ptrCast(&onSetMarked), "v@:@{_NSRange=QQ}{_NSRange=QQ}");
+        b.method("unmarkText", @ptrCast(&onUnmark), "v@:");
+        b.method("insertText:replacementRange:", @ptrCast(&onInsert), "v@:@{_NSRange=QQ}");
+        b.method("doCommandBySelector:", @ptrCast(&onCommand), "v@::");
+        b.method("validAttributesForMarkedText", @ptrCast(&onValidAttributes), "@@:");
+        b.method("attributedSubstringForProposedRange:actualRange:", @ptrCast(&onAttributedSubstring), "@@:{_NSRange=QQ}^{_NSRange=QQ}");
+        b.method("characterIndexForPoint:", @ptrCast(&onCharacterIndex), "Q@:{CGPoint=dd}");
+        b.method("firstRectForCharacterRange:actualRange:", @ptrCast(&onFirstRect), "{CGRect={CGPoint=dd}{CGSize=dd}}@:{_NSRange=QQ}^{_NSRange=QQ}");
         // The first click on a window that is not the key window also goes to the view.
         b.method("acceptsFirstMouse:", @ptrCast(&yesFor), "c@:@");
         return b.finish();
@@ -605,7 +761,13 @@ pub const AppKit = struct {
     }
 
     fn onKeyDown(view: Id, _: Sel, ev: Id) callconv(.c) void {
-        if (dataOf(view)) |w| keyEvent(w, ev, true);
+        const w = dataOf(view) orelse return;
+        // A key with Command or Control runs a binding and skips the input method.
+        if (!w.ime_on or flagsOf(ev) & (mackeys.flag_command | mackeys.flag_control) != 0) return keyEvent(w, ev, true);
+        w.ime.beginKey();
+        const list = objc.call(fn (Class, Sel, Id) callconv(.c) Id, objc.class("NSArray").?, "arrayWithObject:", .{ev});
+        send(view, "interpretKeyEvents:", .{list});
+        if (w.ime.endKey()) keyEvent(w, ev, true);
     }
 
     fn onKeyUp(view: Id, _: Sel, ev: Id) callconv(.c) void {

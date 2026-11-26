@@ -34,6 +34,8 @@ extern "objc" fn class_addIvar(cls: Class, name: [*:0]const u8, size: usize, ali
 extern "objc" fn class_getInstanceVariable(cls: Class, name: [*:0]const u8) ?Ivar;
 extern "objc" fn ivar_getOffset(ivar: Ivar) isize;
 extern "objc" fn object_getClass(obj: Id) Class;
+extern "objc" fn objc_getProtocol(name: [*:0]const u8) ?*anyopaque;
+extern "objc" fn class_addProtocol(cls: Class, protocol: *anyopaque) BOOL;
 extern "objc" fn objc_autoreleasePoolPush() *anyopaque;
 extern "objc" fn objc_autoreleasePoolPop(pool: *anyopaque) void;
 
@@ -133,6 +135,13 @@ pub const ClassBuilder = struct {
     /// method with one object argument and no result.
     pub fn method(b: ClassBuilder, name: [*:0]const u8, imp: *const anyopaque, types: [*:0]const u8) void {
         _ = class_addMethod(b.cls, sel_registerName(name), imp, types);
+    }
+
+    /// Declares that the class adopts a protocol, such as
+    /// `NSTextInputClient`. False when the system has no such protocol.
+    pub fn protocol(b: ClassBuilder, name: [*:0]const u8) bool {
+        const p = objc_getProtocol(name) orelse return false;
+        return class_addProtocol(b.cls, p);
     }
 
     pub fn finish(b: ClassBuilder) Class {
