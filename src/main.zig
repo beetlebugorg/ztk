@@ -133,14 +133,18 @@ pub fn main(init: std.process.Init) !void {
     var scale: f32 = 1;
     var script: ?[]const u8 = null;
     var rest: []const [:0]const u8 = &.{};
-    if (args.len > 1 and std.mem.eql(u8, args[1], "bundle")) {
+    // A program with an app in its slot (`ztk bundle` with a target) runs
+    // the app, reads no flag, and gives each word to the script.
+    const own_app = ztk.appbin.own(io, arena) catch |e| fail(err, "ztk: cannot read the app in this program: {s}\n", .{@errorName(e)});
+    if (own_app != null) rest = args[1..];
+    if (own_app == null and args.len > 1 and std.mem.eql(u8, args[1], "bundle")) {
         const code = ztk.bundle.run(io, arena, args[2..], err) catch |e| fail(err, "ztk bundle: {s}\n", .{@errorName(e)});
         err.flush() catch {};
         std.process.exit(code);
     }
     // A program in a macOS app runs the main script of the app, and each
     // word of the command line is an argument of the script.
-    const in_bundle = ztk.bundle.start(io, arena);
+    const in_bundle = if (own_app == null) ztk.bundle.start(io, arena) else null;
     if (in_bundle) |b| {
         script = b.main;
         root_dir = b.root;
@@ -148,7 +152,7 @@ pub fn main(init: std.process.Init) !void {
         rest = args[1..];
     }
     var i: usize = 1;
-    while (in_bundle == null and i < args.len) : (i += 1) {
+    while (in_bundle == null and own_app == null and i < args.len) : (i += 1) {
         const a: []const u8 = args[i];
         if (std.mem.eql(u8, a, "--headless")) {
             headless = true;
@@ -226,18 +230,27 @@ pub fn main(init: std.process.Init) !void {
             break;
         }
     }
+    var it: ztcl.Interp = undefined;
+    try it.init(init.gpa);
+    defer it.deinit();
+    if (own_app) |bytes| {
+        const app = ztk.appbin.mount(&it, arena, bytes) catch |e| fail(err, "ztk: the app in this program: {s}\n", .{@errorName(e)});
+        script = app.main;
+        allow_bits = app.allow;
+        root_dir = app.root;
+    }
     const path = script orelse {
         try err.writeAll(usage);
         err.flush() catch {};
         std.process.exit(2);
     };
-    const text = Io.Dir.cwd().readFileAlloc(io, path, arena, .limited(64 << 20)) catch |e| {
-        fail(err, "ztk: {s}: {s}\n", .{ path, @errorName(e) });
-    };
-
-    var it: ztcl.Interp = undefined;
-    try it.init(init.gpa);
-    defer it.deinit();
+    // The script of an app comes from its mount through `source`.
+    const text = if (own_app != null)
+        try it.str(try ztcl.value.newList(arena, &.{ .{ .str = "source" }, .{ .str = path } }))
+    else
+        Io.Dir.cwd().readFileAlloc(io, path, arena, .limited(64 << 20)) catch |e| {
+            fail(err, "ztk: {s}: {s}\n", .{ path, @errorName(e) });
+        };
     it.output = .{ .ctx = out, .write = write };
     // The capabilities of the program: the file commands by default, as a
     // desktop program needs them, and more from --allow.
@@ -332,7 +345,7 @@ pub fn main(init: std.process.Init) !void {
     const argv_value = try ztcl.value.wrapList(arena, list);
     try it.setVar("argv", argv_value);
     try it.setVar("argc", .{ .int = @intCast(rest.len) });
-    try it.setVar("argv0", .{ .str = path });
+    try it.setVar("argv0", .{ .str = if (own_app != null) args[0] else path });
 
     var status: u8 = 0;
     if (app.runScript(text)) |_| {
@@ -356,7 +369,7 @@ pub fn main(init: std.process.Init) !void {
         status = 1;
     }
     app.render.flush();
-    try err.print("frames: {d}\n", .{app.frames});
+    if (own_app == null) try err.print("frames: {d}\n", .{app.frames});
     if (want_stats) {
         app.stats.report(err) catch {};
         if (direct_be) |dbe| err.print("output: {s}, rows for each frame: {d}\n", .{ dbe.outputName(), if (dbe.frames > 0) dbe.rows_sum / dbe.frames else 0 }) catch {};

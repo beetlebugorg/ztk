@@ -1,4 +1,6 @@
-//! `ztk bundle`: writes a macOS app, a folder `Name.app`, from any host.
+//! `ztk bundle`: writes a macOS app, a folder `Name.app`, from any host,
+//! or with an output name that has no `.app`, one program file of a
+//! target with the app in its slot (`appbin.zig`).
 //!
 //!   Name.app/Contents/Info.plist
 //!   Name.app/Contents/MacOS/Name           a copy of a macOS ztk program
@@ -23,17 +25,25 @@ const std = @import("std");
 const Io = std.Io;
 const png = @import("png.zig");
 const Image = @import("render/renderer.zig").Image;
-const Capability = @import("ztcl").interp.Capability;
+const ztcl = @import("ztcl");
+const Capability = ztcl.interp.Capability;
+const appbin = @import("appbin.zig");
 
 pub const usage =
     \\usage: ztk bundle -o Name.app [options] main.tcl [file or folder ...]
+    \\       ztk bundle -o app [--target T] [--runner FILE] [--allow CAPS] main.tcl [file or folder ...]
+    \\  -o FILE           without .app: one program file with the app in it
+    \\  --target T        the target of one program file: x86_64-linux, aarch64-linux,
+    \\                    x86_64-macos, aarch64-macos, x86_64-windows, aarch64-windows
+    \\                    (default: this computer)
     \\  --name NAME        the name of the app (default: the name of -o)
     \\  --id ID            the bundle identifier (default: org.ztk.NAME)
     \\  --version V        the version (default: 1.0)
     \\  --icon FILE.png    the icon, square, 1024 pixels or less
     \\  --allow CAPS       the capabilities of the app, as for ztk --allow
     \\  --menu-bar-only    no Dock icon (LSUIElement), for an app with a tray
-    \\  --runner FILE      the macOS ztk program to copy (default: this program)
+    \\  --runner FILE      the ztk program to copy (default: this program, or for one
+    \\                    program file of another target lib/ztk/runtime/T/ next to it)
     \\  --no-sign          on macOS, leave the app unsigned (default: an ad hoc signature)
     \\
 ;
@@ -277,13 +287,14 @@ pub fn run(io: Io, a: std.mem.Allocator, args: []const [:0]const u8, err: *Io.Wr
     var allow: []const u8 = "file,channels";
     var menu_bar_only = false;
     var runner: ?[]const u8 = null;
+    var target: ?[]const u8 = null;
     var sign = @import("builtin").os.tag == .macos;
     var files: std.ArrayList([]const u8) = .empty;
     var i: usize = 0;
     while (i < args.len) : (i += 1) {
         const arg: []const u8 = args[i];
         const value: ?[]const u8 = if (i + 1 < args.len) args[i + 1] else null;
-        const slot: ?*?[]const u8 = if (std.mem.eql(u8, arg, "-o")) &output else if (std.mem.eql(u8, arg, "--name")) &name else if (std.mem.eql(u8, arg, "--id")) &id else if (std.mem.eql(u8, arg, "--icon")) &icon else if (std.mem.eql(u8, arg, "--runner")) &runner else null;
+        const slot: ?*?[]const u8 = if (std.mem.eql(u8, arg, "-o")) &output else if (std.mem.eql(u8, arg, "--target")) &target else if (std.mem.eql(u8, arg, "--name")) &name else if (std.mem.eql(u8, arg, "--id")) &id else if (std.mem.eql(u8, arg, "--icon")) &icon else if (std.mem.eql(u8, arg, "--runner")) &runner else null;
         if (slot) |s| {
             s.* = value orelse return usageError(err, "ztk bundle: {s} needs a value\n", .{arg});
             i += 1;
@@ -302,6 +313,9 @@ pub fn run(io: Io, a: std.mem.Allocator, args: []const [:0]const u8, err: *Io.Wr
     const out_path = output orelse return usageError(err, "ztk bundle: needs -o Name.app\n", .{});
     if (files.items.len == 0) return usageError(err, "ztk bundle: needs a main script\n", .{});
     if (Capability.parse(allow) == null) return usageError(err, "ztk bundle: unknown capability in \"{s}\"\n", .{allow});
+    if (target != null or !std.mem.endsWith(u8, std.mem.trimEnd(u8, out_path, "/"), ".app")) {
+        return single(io, a, err, out_path, target orelse ztcl.buildnative.hostTarget(), runner, allow, files.items);
+    }
     const base = std.fs.path.basename(std.mem.trimEnd(u8, out_path, "/"));
     const app_name = name orelse (if (std.mem.endsWith(u8, base, ".app")) base[0 .. base.len - 4] else base);
     if (app_name.len == 0 or std.mem.indexOfAny(u8, app_name, "/\\") != null) return usageError(err, "ztk bundle: bad name \"{s}\"\n", .{app_name});
@@ -372,6 +386,62 @@ pub fn run(io: Io, a: std.mem.Allocator, args: []const [:0]const u8, err: *Io.Wr
 /// bundle from Windows gets its mode on the Mac, from the archive or from
 /// `chmod +x`.
 const exe_permissions: Io.File.Permissions = if (@import("builtin").os.tag == .windows) .default_file else .fromMode(0o755);
+
+/// Reads the files of an app for `appbin`: the main script by its last
+/// part, and each other file or folder below its `embedPath`.
+fn collect(io: Io, a: std.mem.Allocator, paths: []const []const u8) ![]appbin.File {
+    const cwd = Io.Dir.cwd();
+    var out: std.ArrayList(appbin.File) = .empty;
+    for (paths, 0..) |p, k| {
+        const name = if (k == 0) std.fs.path.basename(p) else embedPath(p);
+        var dir = cwd.openDir(io, p, .{ .iterate = true }) catch |e| switch (e) {
+            error.NotDir => {
+                try out.append(a, .{ .name = name, .data = try cwd.readFileAlloc(io, p, a, .limited(256 << 20)) });
+                continue;
+            },
+            else => return e,
+        };
+        defer dir.close(io);
+        var walker = try dir.walk(a);
+        defer walker.deinit();
+        while (try walker.next(io)) |entry| {
+            if (entry.kind != .file) continue;
+            const rel = try std.mem.replaceOwned(u8, a, entry.path, "\\", "/");
+            try out.append(a, .{ .name = try std.fmt.allocPrint(a, "{s}/{s}", .{ name, rel }), .data = try dir.readFileAlloc(io, entry.path, a, .limited(256 << 20)) });
+        }
+    }
+    return out.items;
+}
+
+/// Writes one program file: a copy of the ztk program of `target` with
+/// the app in its slot (`appbin.zig`).
+fn single(io: Io, a: std.mem.Allocator, err: *Io.Writer, out_path: []const u8, target: []const u8, runner: ?[]const u8, allow: []const u8, paths: []const []const u8) !u8 {
+    const bn = ztcl.buildnative;
+    var file: ?[]const u8 = null;
+    for (bn.targets) |tg| if (std.mem.eql(u8, tg.name, target)) {
+        file = if (std.mem.endsWith(u8, tg.file, ".exe")) "ztk.exe" else "ztk";
+    };
+    if (file == null) return usageError(err, "ztk bundle: unknown target \"{s}\"\n", .{target});
+    const cwd = Io.Dir.cwd();
+    const rt_path = runner orelse blk: {
+        const shipped = try std.fs.path.join(a, &.{ try std.process.executableDirPathAlloc(io, a), "..", "lib", "ztk", "runtime", target, file.? });
+        if (cwd.access(io, shipped, .{})) |_| break :blk shipped else |_| {}
+        if (std.mem.eql(u8, target, bn.hostTarget())) break :blk try std.process.executablePathAlloc(io, a);
+        break :blk shipped;
+    };
+    const runtime = cwd.readFileAlloc(io, rt_path, a, .limited(512 << 20)) catch |e| {
+        try err.print("ztk bundle: the ztk program of {s}: {s}: {s}. Give it with --runner.\n", .{ target, rt_path, @errorName(e) });
+        return 1;
+    };
+    const files = try collect(io, a, paths);
+    const bin = appbin.build(a, runtime, files, allow, null, std.fs.path.basename(out_path)) catch |e| {
+        try err.print("ztk bundle: {s}: {s}\n", .{ rt_path, appbin.describe(e) });
+        return 1;
+    };
+    try cwd.writeFile(io, .{ .sub_path = out_path, .data = bin, .flags = .{ .permissions = exe_permissions } });
+    try err.print("{s}: {d} bytes ({s} runtime: {d} bytes)\n", .{ out_path, bin.len, target, runtime.len });
+    return 0;
+}
 
 fn usageError(err: *Io.Writer, comptime fmt: []const u8, args: anytype) !u8 {
     try err.print(fmt, args);

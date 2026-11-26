@@ -444,12 +444,18 @@ pub const App = struct {
 
     /// Reads a file for `ztk::style load`. The real path of the file, with each
     /// symbolic link resolved, must be inside the real path of the style folder.
+    /// A path of a mount of ztcl, such as `//zipfs:/app/a.css`, comes from the mount.
     pub fn readFile(app: *App, path: []const u8, a: std.mem.Allocator) ![]u8 {
         // The browser build has no files: the page gives each style sheet by its name.
         if (comptime @import("builtin").os.tag == .freestanding) {
             const f = app.virtual_file orelse return error.NoIo;
             const text = f(std.fs.path.basename(path)) orelse return error.FileNotFound;
             return a.dupe(u8, text);
+        }
+        // An app in one file (`appbin.zig`) has its style sheets in its payload.
+        if (ztcl.vfs.isOurs(path)) {
+            const hit = (ztcl.vfs.find(app.it, path) catch return error.FileNotFound) orelse return error.FileNotFound;
+            return a.dupe(u8, ztcl.vfs.read(app.it, hit, "read", path) catch return error.FileNotFound);
         }
         const io = app.io orelse return error.NoIo;
         const root = app.style_root orelse return error.NoIo;

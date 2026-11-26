@@ -24,6 +24,7 @@ pub const objc = if (appkit_enabled) @import("sys/objc.zig") else struct {};
 pub const metal = if (appkit_enabled) @import("render/metal.zig") else @import("render/metal_off.zig");
 pub const appkit = if (appkit_enabled) @import("platform/appkit.zig") else struct {};
 pub const bundle = @import("bundle.zig");
+pub const appbin = @import("appbin.zig");
 pub const wayland = if (@import("build_options").wayland) @import("platform/wayland.zig") else struct {};
 /// True on Windows, where the Win32 backend exists.
 pub const windows_enabled = @import("builtin").os.tag == .windows;
@@ -100,6 +101,7 @@ test {
     _ = @import("platform/mackeys.zig");
     _ = @import("platform/macime.zig");
     _ = bundle;
+    _ = appbin;
     _ = direct;
     _ = vkdisplay;
     _ = @import("sys/host.zig");
