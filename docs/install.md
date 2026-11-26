@@ -47,7 +47,7 @@ ztk [flags] script.tcl [arguments]
 | `--exit-after-frames N` | Exits after N frames. |
 | `--dark` | Uses the dark color scheme. |
 | `--allow a,b` | Turns on more capabilities of ztcl, with the names of the `ztcl` runner: `package`, `interp`, `clock`, `event`, `socket`, `exec`, `random`, `env`, `sqlite`, and `thread`. |
-| `--root DIR` | Keeps the file commands in one folder, which a script sees as `/`. Until ztcl#122 gives a host mode, the default is the folder of the script. |
+| `--root DIR` | Keeps the file commands in one folder, which a script sees as `/`. With no `--root`, they use the real paths of the host. |
 | `--cpu` | Uses the CPU renderer on Wayland. |
 
-`ZTK_NO_ANIMATION=1` turns the animations off and shows each end state at once. The program gives a script the file commands and the file channels of ztcl (`file`, `open`, `read`, `puts` to a file) by default, inside the root folder: the folder of the script, or `--root`. A script sees the root as `/`. When ztcl#122 adds the host mode, the default is real paths of the host, as in `wish`, and `--root` keeps the folder rule. The other host access (`socket`, `exec`, and the others) needs `--allow`. `ztk::style load` reads style sheets from the folder of the script.
+`ZTK_NO_ANIMATION=1` turns the animations off and shows each end state at once. The program gives a script the file commands and the file channels of ztcl (`file`, `open`, `read`, `puts` to a file) by default, with the real paths of the host, as in `wish`. A relative path counts from the current folder. `--root DIR` keeps the file commands in one folder, which a script sees as `/`. The other host access (`socket`, `exec`, and the others) needs `--allow`. `ztk::style load` reads style sheets from the folder of the script.

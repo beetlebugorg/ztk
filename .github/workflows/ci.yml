@@ -131,9 +131,14 @@ jobs:
       - name: Read and write a file, and refuse an unknown capability
         run: |
           printf 'set f [open out.txt w]; puts $f hi; close $f; set f [open out.txt]; puts [read -nonewline $f]; close $f\n' > "$RUNNER_TEMP/f.tcl"
-          test "$(zig build run -- --headless "$RUNNER_TEMP/f.tcl" | tr -d '\r')" = hi
-          test -f "$RUNNER_TEMP/out.txt"
-          if zig build run -- --headless --allow nonsense "$RUNNER_TEMP/f.tcl"; then exit 1; fi
+          ztk="$PWD/zig-out/bin/ztk"
+          cd "$RUNNER_TEMP"
+          test "$("$ztk" --headless f.tcl | tr -d '\r')" = hi
+          test -f out.txt
+          mkdir root
+          "$ztk" --headless --root root f.tcl
+          test -f root/out.txt
+          if "$ztk" --headless --allow nonsense f.tcl; then exit 1; fi
 
   cross:
     name: Build (${{ matrix.target }})
