@@ -117,6 +117,43 @@ pub const TrayId = u32;
 /// The pixels are valid only during the call that gives them.
 pub const TrayIcon = struct { width: u32, height: u32, pixels: []const u8 };
 
+/// The options of a native file dialog. The strings are UTF-8 and are
+/// valid only during the call.
+pub const FileDialog = struct {
+    kind: Kind,
+    /// The window that owns the dialog, or null.
+    parent: ?*Window = null,
+    title: []const u8 = "",
+    /// The folder that the dialog shows first, and the first file name.
+    initial_dir: []const u8 = "",
+    initial_file: []const u8 = "",
+    /// The filters of `-filetypes`, in order.
+    filters: []const Filter = &.{},
+    /// The extension that a save adds to a name with none, with no dot.
+    default_ext: []const u8 = "",
+    /// An open of more than one file.
+    multiple: bool = false,
+    /// A save asks before it replaces a file.
+    confirm_overwrite: bool = true,
+
+    pub const Kind = enum { open, save, folder };
+    /// A filter: its name, and its patterns such as `*.txt`.
+    pub const Filter = struct { name: []const u8, patterns: []const []const u8 };
+};
+
+/// The answer of a file dialog, in memory of the allocator of the call.
+pub const FileDialogResult = struct {
+    /// The paths in UTF-8 with `/` between the parts.
+    paths: [][]u8,
+    /// The index of the filter that was chosen, or null.
+    filter: ?u32 = null,
+
+    pub fn deinit(r: FileDialogResult, gpa: std.mem.Allocator) void {
+        for (r.paths) |p| gpa.free(p);
+        gpa.free(r.paths);
+    }
+};
+
 /// The appearance of the system.
 pub const Appearance = struct {
     dark: bool,
@@ -154,13 +191,13 @@ pub const Cursor = enum {
     /// for a name with no shape here.
     pub fn fromTk(name: []const u8) ?Cursor {
         const map = [_]struct { []const u8, Cursor }{
-            .{ "arrow", .default },         .{ "left_ptr", .default },         .{ "top_left_arrow", .default },
-            .{ "xterm", .text },            .{ "hand1", .pointer },            .{ "hand2", .pointer },
-            .{ "watch", .wait },            .{ "crosshair", .crosshair },      .{ "cross", .crosshair },
-            .{ "tcross", .crosshair },      .{ "fleur", .move },               .{ "question_arrow", .help },
+            .{ "arrow", .default },               .{ "left_ptr", .default },            .{ "top_left_arrow", .default },
+            .{ "xterm", .text },                  .{ "hand1", .pointer },               .{ "hand2", .pointer },
+            .{ "watch", .wait },                  .{ "crosshair", .crosshair },         .{ "cross", .crosshair },
+            .{ "tcross", .crosshair },            .{ "fleur", .move },                  .{ "question_arrow", .help },
             .{ "sb_h_double_arrow", .ew_resize }, .{ "sb_v_double_arrow", .ns_resize }, .{ "X_cursor", .not_allowed },
-            .{ "size_we", .ew_resize },     .{ "size_ns", .ns_resize },        .{ "size_nw_se", .nwse_resize },
-            .{ "size_ne_sw", .nesw_resize }, .{ "size", .move },
+            .{ "size_we", .ew_resize },           .{ "size_ns", .ns_resize },           .{ "size_nw_se", .nwse_resize },
+            .{ "size_ne_sw", .nesw_resize },      .{ "size", .move },
         };
         for (map) |m| if (std.mem.eql(u8, m[0], name)) return m[1];
         return null;
@@ -242,6 +279,10 @@ pub const Platform = struct {
         /// The dark mode and the accent color of the system. A backend
         /// gives an `appearance` event when they change.
         appearance: ?*const fn (ptr: *anyopaque) Appearance = null,
+        /// Runs a native file dialog to its end, as `tk_getOpenFile`,
+        /// `tk_getSaveFile`, and `tk_chooseDirectory` need. Null: the dialog
+        /// was canceled, or it could not show.
+        fileDialog: ?*const fn (ptr: *anyopaque, gpa: std.mem.Allocator, opts: *const FileDialog) ?FileDialogResult = null,
 
         // The native menus. A backend with `native_menus` has each of these
         // functions. The core calls them on the UI thread. The backend
@@ -325,6 +366,13 @@ pub const Platform = struct {
     }
 
     /// Null: the backend has no appearance of the system.
+    pub fn hasFileDialog(p: Platform) bool {
+        return p.vtable.fileDialog != null;
+    }
+    pub fn fileDialog(p: Platform, gpa: std.mem.Allocator, opts: *const FileDialog) ?FileDialogResult {
+        const f = p.vtable.fileDialog orelse return null;
+        return f(p.ptr, gpa, opts);
+    }
     pub fn appearance(p: Platform) ?Appearance {
         const f = p.vtable.appearance orelse return null;
         return f(p.ptr);

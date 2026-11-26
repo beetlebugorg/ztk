@@ -81,6 +81,15 @@ pub const Headless = struct {
     /// The trays: the last call of `traySet` for each, and the count of the ids.
     trays: std.ArrayListUnmanaged(TrayRec) = .empty,
     tray_next: u32 = 1,
+    /// The file dialog: the paths that the next dialog gives (null: a cancel),
+    /// the filter that it gives, and the options of the last call.
+    dialog_answer: ?[]const []const u8 = null,
+    dialog_filter: ?u32 = null,
+    dialog_kind: ?plat.FileDialog.Kind = null,
+    dialog_title: std.ArrayListUnmanaged(u8) = .empty,
+    dialog_filters: usize = 0,
+    dialog_multiple: bool = false,
+    dialog_ext: [16]u8 = @splat(0),
     /// The texts of the input method events in the queue, freed at the next `poll`.
     ime_texts: std.ArrayListUnmanaged([]u8) = .empty,
     ime_texts_old: std.ArrayListUnmanaged([]u8) = .empty,
@@ -117,6 +126,7 @@ pub const Headless = struct {
         h.clip_set.deinit(h.gpa);
         for (h.trays.items) |*r| r.tooltip.deinit(h.gpa);
         h.trays.deinit(h.gpa);
+        h.dialog_title.deinit(h.gpa);
         h.freeTexts(&h.ime_texts);
         h.freeTexts(&h.ime_texts_old);
         h.ime_texts.deinit(h.gpa);
@@ -143,6 +153,7 @@ pub const Headless = struct {
         .clipboardGet = vClipboardGet,
         .textInput = vTextInput,
         .appearance = vAppearance,
+        .fileDialog = vFileDialog,
         .menuSet = vMenuSet,
         .menuEntrySet = vMenuEntrySet,
         .menuDrop = vMenuDrop,
@@ -392,6 +403,22 @@ pub const Headless = struct {
 
     fn vAppearance(ptr: *anyopaque) plat.Appearance {
         return self(ptr).system orelse .{ .dark = false };
+    }
+
+    /// Records the options of a dialog and gives the answer of the test.
+    fn vFileDialog(ptr: *anyopaque, gpa: std.mem.Allocator, opts: *const plat.FileDialog) ?plat.FileDialogResult {
+        const h = self(ptr);
+        h.dialog_kind = opts.kind;
+        h.dialog_title.clearRetainingCapacity();
+        h.dialog_title.appendSlice(h.gpa, opts.title) catch {};
+        h.dialog_filters = opts.filters.len;
+        h.dialog_multiple = opts.multiple;
+        h.dialog_ext = @splat(0);
+        @memcpy(h.dialog_ext[0..@min(opts.default_ext.len, 16)], opts.default_ext[0..@min(opts.default_ext.len, 16)]);
+        const answer = h.dialog_answer orelse return null;
+        const paths = gpa.alloc([]u8, answer.len) catch return null;
+        for (answer, paths) |s, *p| p.* = gpa.dupe(u8, s) catch return null;
+        return .{ .paths = paths, .filter = h.dialog_filter };
     }
 
     /// Sets the appearance of the system and queues the event of the change.

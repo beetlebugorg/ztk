@@ -207,7 +207,6 @@ test "windows: pointer messages become motion, button, wheel, and leave events" 
     try t.expect(has(events.items, .leave) != null);
 }
 
-
 fn keyLparam(scan: u32, extended: bool, up: bool) w32.LPARAM {
     var v: u32 = 1 | (scan << 16);
     if (extended) v |= 1 << 24;
@@ -599,4 +598,33 @@ test "windows: a tray icon in the notification area, its actions, and its menu" 
     _ = w32.SendMessageW(o.hwnd, @import("../platform/wintray.zig").callback_msg, (20 << 16) | 20, lp_menu);
     try pollAll(o.b, &events);
     try t.expect(has(events.items, .tray).?.tray.action == .menu);
+}
+
+test "windows: the file dialogs of Windows get their options" {
+    if (!enabled()) return;
+    const dlg = @import("../platform/windialog.zig");
+    const plat_ = @import("../platform/platform.zig");
+    const filters = [_]plat_.FileDialog.Filter{ .{ .name = "Text", .patterns = &.{"*.txt"} }, .{ .name = "All", .patterns = &.{"*"} } };
+    var open = dlg.configure(t.allocator, &.{ .kind = .open, .title = "Pick", .initial_file = "notes.txt", .filters = &filters, .multiple = true }) catch |e| {
+        std.debug.print("SKIP: no Common Item Dialog in this session ({s})\n", .{@errorName(e)});
+        return;
+    };
+    defer open.deinit();
+    const o = try dlg.readBack(&open, t.allocator);
+    defer t.allocator.free(o.file_name);
+    try t.expect(o.flags & dlg.flag.multiselect != 0);
+    try t.expect(o.flags & dlg.flag.file_must_exist != 0);
+    try t.expectEqualStrings("notes.txt", o.file_name);
+
+    var save = try dlg.configure(t.allocator, &.{ .kind = .save, .default_ext = "csv", .confirm_overwrite = false });
+    defer save.deinit();
+    const s = try dlg.readBack(&save, t.allocator);
+    defer t.allocator.free(s.file_name);
+    try t.expect(s.flags & dlg.flag.overwrite_prompt == 0);
+
+    var folder = try dlg.configure(t.allocator, &.{ .kind = .folder, .initial_dir = "C:/" });
+    defer folder.deinit();
+    const f = try dlg.readBack(&folder, t.allocator);
+    defer t.allocator.free(f.file_name);
+    try t.expect(f.flags & dlg.flag.pick_folders != 0);
 }

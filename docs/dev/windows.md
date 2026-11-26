@@ -86,6 +86,15 @@ The backend fills the native menus of [menus.md](menus.md) with `src/platform/wi
 - The flag `template` is for macOS and has no effect on Windows.
 - The tray test shows a real icon in the notification area, so it runs only with `ZTK_TEST_TRAY=1`, which the Windows job of CI sets.
 
+## File dialogs
+
+`tk_getOpenFile`, `tk_getSaveFile`, and `tk_chooseDirectory` (ztk#57, `docs/dev/platform-features.md`) run the Common Item Dialog of Windows with `src/platform/windialog.zig`:
+
+- `IFileOpenDialog` for an open and a folder (`FOS_PICKFOLDERS`), and `IFileSaveDialog` for a save, with `FOS_FORCEFILESYSTEM` and `FOS_NOCHANGEDIR`. An open has `FOS_FILEMUSTEXIST` and, with `-multiple`, `FOS_ALLOWMULTISELECT`. A save has `FOS_OVERWRITEPROMPT` unless `-confirmoverwrite 0`.
+- `-filetypes` becomes `SetFileTypes` with `*.txt;*.tcl` for each filter, and the index of `GetFileTypeIndex` sets `-typevariable`. `-initialdir` is an item of `SHCreateItemFromParsingName` for `SetFolder`.
+- `Show` with the window of `-parent` (or `.`) as the owner runs the dialog to its end. The paths of `SIGDN_FILESYSPATH` come back with `/` between the parts, as Tk gives them. A cancel gives an empty string.
+- The test of the backend configures each kind of dialog and reads its options back with no `Show`, so no dialog opens on the desktop.
+
 ## CI
 
 A `test-windows` job on `windows-latest` runs `zig build`, `zig build test`, and the headless script of the Linux job. From PR 3 on, the Direct3D 12 tests run on the WARP adapter of the runner, or print `SKIP:` with the reason.
