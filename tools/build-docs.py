@@ -327,8 +327,12 @@ class Build:
                 if not heads:
                     raise SystemExit(f"{f}: the toy {m.group(1)} has no heading \"### Play: NAME\"")
                 title, name, code = heads[-1].strip(), m.group(1), m.group(2)
+                stage = PAGE_OF.get(f"docs/build/{name.removeprefix('toy-')}.md")
+                build = f' data-build="{root}{stage}"' if stage else ""
                 games.append(f'<pre hidden class="toy-game" data-name="{name}" data-slug="{slug(title)}" data-title="{html.escape(title, quote=True)}" '
-                             f'data-page="{root}{page}#play-{slug(title)}" data-shot="{root}assets/shots/widget-{name}">{html.escape(code)}</pre>')
+                             f'data-page="{root}{page}#play-{slug(title)}" data-shot="{root}assets/shots/widget-{name}"'
+                             # A toy with a stage (docs/build/NAME.md) links to it.
+                             f'{build}>{html.escape(code)}</pre>')
         return "".join(games)
 
     @staticmethod

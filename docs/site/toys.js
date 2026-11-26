@@ -334,6 +334,12 @@ class Console extends Toy {
     this.games = new Map([...fig.querySelectorAll("pre.toy-game")].map((p) => [p.dataset.name.slice(4), p]));
     this.status = fig.querySelector(".toy-status");
     this.link = fig.querySelector(".toy-page");
+    // "Watch it get built" opens the stage of a game that has one.
+    this.build = document.createElement("a");
+    this.build.className = "toy-page toy-build";
+    this.build.textContent = "Watch it get built";
+    this.build.hidden = true;
+    this.link.after(this.build);
     this.img = fig.querySelector(".ld-frame img");
     this.source = fig.querySelector(".ld-frame source");
     this.menuShot = [this.img?.src, this.source?.srcset];
@@ -388,6 +394,8 @@ class Console extends Toy {
     this.link.href = game.dataset.page;
     this.link.textContent = `Play ${game.dataset.title} on its widget page`;
     this.link.hidden = false;
+    this.build.hidden = !game.dataset.build;
+    if (game.dataset.build) this.build.href = game.dataset.build;
     this.status.textContent = `${game.dataset.title}. Menu or Escape goes back to the game list.`;
     const url = new URL(location.href);
     url.searchParams.set("game", game.dataset.slug);
@@ -402,6 +410,7 @@ class Console extends Toy {
     if (this.img) [this.img.src, this.img.alt] = [this.menuShot[0], "The game list of the handheld"];
     if (this.source) this.source.srcset = this.menuShot[1];
     this.link.hidden = true;
+    this.build.hidden = true;
     this.status.textContent = "The game list.";
     const url = new URL(location.href);
     url.searchParams.delete("game");
