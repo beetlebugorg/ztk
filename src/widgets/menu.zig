@@ -181,6 +181,9 @@ pub const Data = struct {
     is_bar: bool = false,
     /// The start of the open move of a drawn menu.
     open_us: i64 = 0,
+    /// The move of the highlight of a drawn menu: its top at the start, and the start time, or 0.
+    hl_from: i32 = 0,
+    hl_us: i64 = 0,
 };
 
 pub fn data(w: *const Widget) *Data {

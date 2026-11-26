@@ -14,8 +14,9 @@
 //!
 //! A menu opens with a fade and a slide of 6 logical pixels in 150 ms, as
 //! the list of a combobox. The two paints at the ends of the move go to
-//! the render thread as a frame animation. An unpost removes the menu at
-//! once, as Tk does.
+//! the render thread as a frame animation. An unpost ends the chain at
+//! once, as Tk does, and the menus of the chain fade out in 150 ms
+//! (`Fade`): the frame paints them from their last state.
 //!
 //! While a chain is posted, the first menu holds the grab, so each
 //! pointer event of the window goes to the bindings of the class `Menu`
@@ -36,6 +37,7 @@ const scene = @import("../scene.zig");
 const path = @import("../path.zig");
 const anim = @import("../anim.zig");
 const easing = @import("../easing.zig");
+const loop_mod = @import("../loop.zig");
 const style_mod = @import("../style.zig");
 const menu = @import("menu.zig");
 const options = @import("../options.zig");
@@ -160,6 +162,7 @@ fn repaint(w: *Widget) void {
 pub fn post(w: *Widget) void {
     const app = w.app;
     if (app.menu_root) |r| if (r != w) unpostAll(app);
+    clearFade(app);
     const d = menu.data(w);
     d.open_us = app.platform.nowUs();
     d.cascade = -1;
@@ -242,8 +245,60 @@ pub fn unpost(w: *Widget) void {
     unpostChain(w);
 }
 
+/// A menu of a closed chain during its close move.
+const Ghost = struct { w: *Widget, r: geom.Rect, active: i64 };
+
+/// The menus of the last closed chain. They fade out in 150 ms, and a native timer removes them.
+pub const Fade = struct {
+    items: [max_depth]Ghost = undefined,
+    n: usize = 0,
+    start_us: i64 = 0,
+    top: ?*Widget = null,
+    timer: ?loop_mod.TimerId = null,
+};
+
+/// Removes the closing menus at once.
+fn clearFade(app: *App) void {
+    const f = &app.menu_fade;
+    if (f.timer) |id| _ = app.loop.cancel(id);
+    // Each toplevel paints again: `f.top` can be gone, so the code does not read it.
+    if (f.n > 0) {
+        const dirty: widget.Dirty = .{ .style = false, .measure = false, .layout = false, .paint = true };
+        if (app.root) |r| r.invalidate(dirty);
+        for (app.tops.items) |t| if (t.alive()) t.invalidate(dirty);
+    }
+    f.* = .{};
+}
+
+fn fadeDone(ctx: ?*anyopaque) void {
+    const app: *App = @ptrCast(@alignCast(ctx.?));
+    app.menu_fade.timer = null;
+    clearFade(app);
+}
+
+/// Starts the close move of the posted chain.
+fn startFade(app: *App) void {
+    clearFade(app);
+    if (anim.reduced(app)) return;
+    const f = &app.menu_fade;
+    var list: [max_depth]*Widget = undefined;
+    for (chain(app, &list)) |w| {
+        const d = menu.data(w);
+        if (d.is_bar) continue;
+        f.items[f.n] = .{ .w = w, .r = rect(w), .active = d.active };
+        f.n += 1;
+    }
+    if (f.n == 0) return;
+    f.top = if (app.menu_top) |t| t else f.items[0].w.toplevel();
+    f.start_us = app.platform.nowUs();
+    f.timer = app.loop.addNative(move_dur_us, fadeDone, app) catch null;
+    if (f.timer == null) f.* = .{};
+}
+
 /// Unposts the chain and ends the grab.
 pub fn unpostAll(app: *App) void {
+    if (app.menu_root == null) return;
+    startFade(app);
     const r = app.menu_root orelse return;
     app.menu_root = null;
     app.menu_top = null;
@@ -258,6 +313,11 @@ pub fn unpostAll(app: *App) void {
 /// Removes a menu that is going away from the chain.
 pub fn forget(w: *Widget) void {
     const app = w.app;
+    const f = &app.menu_fade;
+    for (f.items[0..f.n]) |g| if (g.w == w) {
+        clearFade(app);
+        break;
+    };
     if (app.menu_button == w) app.menu_button = null;
     if (app.menu_root == w) {
         app.menu_root = null;
@@ -408,7 +468,24 @@ fn barStep(w: *Widget, step: i64) ztcl.Error!void {
 
 /// The progress of the open move at a time: 0 is hidden and 1 is open.
 pub fn openness(d: *const menu.Data, now: i64) f32 {
-    const t = std.math.clamp(@as(f32, @floatFromInt(now - d.open_us)) / @as(f32, @floatFromInt(move_dur_us)), 0, 1);
+    return progress(d.open_us, now);
+}
+
+const hl_dur_us: i64 = 120_000;
+
+/// The top of the highlight of the active entry in the coordinates of the menu, at a time.
+fn highlightY(w: *Widget, now: i64) i32 {
+    const d = menu.data(w);
+    const to = menu.yOf(w, d.active);
+    if (d.hl_us == 0 or now - d.hl_us >= hl_dur_us) return to;
+    const t = easing.Timing.ease_out.eval(@as(f32, @floatFromInt(now - d.hl_us)) / @as(f32, @floatFromInt(hl_dur_us)));
+    const y = @as(f32, @floatFromInt(d.hl_from)) + (@as(f32, @floatFromInt(to - d.hl_from))) * t;
+    return @intFromFloat(@round(y));
+}
+
+/// The eased progress of a move that started at `start_us`.
+fn progress(start_us: i64, now: i64) f32 {
+    const t = std.math.clamp(@as(f32, @floatFromInt(now - start_us)) / @as(f32, @floatFromInt(move_dur_us)), 0, 1);
     return easing.Timing.ease_out.eval(t);
 }
 
@@ -422,7 +499,7 @@ fn faded(st: Style, p: f32) Style {
     return s;
 }
 
-fn paintMenu(w: *Widget, b: *scene.Builder, r0: geom.Rect, p: f32) !void {
+fn paintMenu(w: *Widget, b: *scene.Builder, r0: geom.Rect, p: f32, active_entry: i64) !void {
     const app = w.app;
     const d = menu.data(w);
     const raw = Parts.of(w);
@@ -437,6 +514,15 @@ fn paintMenu(w: *Widget, b: *scene.Builder, r0: geom.Rect, p: f32) !void {
     const sep = faded(raw.sep, p);
     const ins = paint.insets(&raw.box);
     const m = menu.metrics(w);
+    // The highlight of the active entry: at its eased place during a move between entries.
+    if (active_entry >= 0 and active_entry == d.active and active_entry < d.entries.items.len) {
+        const now = if (app.anim_frame) |fr| fr.time_us else app.platform.nowUs();
+        const hy = highlightY(w, now);
+        if (d.hl_us != 0 and now - d.hl_us < hl_dur_us) app.anim_more = true;
+        try paint.styledBox(b, .{ .x = r.x + ins.left, .y = r.y + hy, .w = r.w - ins.horizontal(), .h = m.row }, &active);
+    } else if (active_entry >= 0 and active_entry < d.entries.items.len) {
+        try paint.styledBox(b, .{ .x = r.x + ins.left, .y = r.y + menu.yOf(w, active_entry), .w = r.w - ins.horizontal(), .h = m.row }, &active);
+    }
     var y = r.y + ins.top;
     for (d.entries.items, 0..) |*en, i| {
         const h: i32 = switch (en.kind) {
@@ -451,11 +537,10 @@ fn paintMenu(w: *Widget, b: *scene.Builder, r0: geom.Rect, p: f32) !void {
             try paint.styledBox(b, line, &sep);
             continue;
         }
-        const on = i == d.active;
+        const on = i == active_entry;
         const disabled = std.mem.eql(u8, en.get(.state), "disabled");
         var st = if (on) active else item;
         if (disabled) st.color.a = @intFromFloat(@as(f32, @floatFromInt(st.color.a)) * 0.45);
-        if (on) try paint.styledBox(b, row, &st);
         const inner = row.inset(paint.insets(&raw.item));
         var x = inner.x;
         if (c.ind > 0) {
@@ -531,6 +616,10 @@ fn byteOfChar(text: []const u8, i: i64) ?usize {
 
 /// Paints the posted chain of the toplevel `top`, over its widgets.
 pub fn paintPosted(app: *App, top: *Widget, b: *scene.Builder) !void {
+    const f = &app.menu_fade;
+    if (f.top == top) for (f.items[0..f.n]) |g| {
+        if (g.w.alive()) try paintMove(app, g.w, b, g.r, g.active, f.start_us, true);
+    };
     var list: [max_depth]*Widget = undefined;
     for (chain(app, &list)) |w| {
         if (shownTop(w) != top or menu.data(w).is_bar) continue;
@@ -540,22 +629,27 @@ pub fn paintPosted(app: *App, top: *Widget, b: *scene.Builder) !void {
 
 fn paintOne(app: *App, w: *Widget, b: *scene.Builder) !void {
     const d = menu.data(w);
-    const r = rect(w);
+    return paintMove(app, w, b, rect(w), d.active, d.open_us, false);
+}
+
+/// Paints a menu at the point `start_us` of its open move, or of its close move when `closing` is set.
+fn paintMove(app: *App, w: *Widget, b: *scene.Builder, r: geom.Rect, active_entry: i64, start_us: i64, closing: bool) !void {
     const now = if (app.anim_frame) |fr| fr.time_us else app.platform.nowUs();
     const reduced = anim.reduced(app);
-    const p: f32 = if (reduced) 1 else openness(d, now);
+    const t = progress(start_us, now);
+    const p: f32 = if (reduced) 1 else if (closing) 1 - t else t;
     const quads = &b.scene.quads;
     const at = quads.items.len;
-    try paintMenu(w, b, r, p);
-    const moving = now - d.open_us < move_dur_us and !reduced;
+    try paintMenu(w, b, r, p, active_entry);
+    const moving = now - start_us < move_dur_us and !reduced;
     if (!moving) return;
     const fr = app.anim_frame orelse {
         app.anim_more = true;
         return;
     };
     const n = quads.items.len - at;
-    try paintMenu(w, b, r, 0);
-    try paintMenu(w, b, r, 1);
+    try paintMenu(w, b, r, 0, active_entry);
+    try paintMenu(w, b, r, 1, active_entry);
     if (quads.items.len - at != 3 * n or n == 0) {
         quads.shrinkRetainingCapacity(at + n);
         app.anim_more = true;
@@ -567,7 +661,7 @@ fn paintOne(app: *App, w: *Widget, b: *scene.Builder) !void {
     quads.shrinkRetainingCapacity(at + n);
     const off_at = fr.anim_offsets.items.len;
     try fr.anim_offsets.appendSlice(gpa, &.{ 0, 1 });
-    try fr.anims.append(gpa, .{ .first = @intCast(at), .count = @intCast(n), .from = @intCast(mark), .stops = 2, .offsets = @intCast(off_at), .start_us = d.open_us, .delay_us = 0, .len_us = move_dur_us, .timing = easing.Timing.ease_out, .direction = .normal });
+    try fr.anims.append(gpa, .{ .first = @intCast(at), .count = @intCast(n), .from = @intCast(mark), .stops = 2, .offsets = @intCast(off_at), .start_us = start_us, .delay_us = 0, .len_us = move_dur_us, .timing = easing.Timing.ease_out, .direction = if (closing) .reverse else .normal });
 }
 
 // ---- Input ----
@@ -602,8 +696,13 @@ fn deepest(app: *App) ?*Widget {
 fn select(w: *Widget, index: i64) void {
     const d = menu.data(w);
     const before = d.active;
+    const now = w.app.platform.nowUs();
+    const from = if (before >= 0) highlightY(w, now) else 0;
     menu.activate(w, index);
     if (d.active == before) return;
+    // The highlight eases from its shown place when it moves from one entry to another.
+    d.hl_from = from;
+    d.hl_us = if (before >= 0 and d.active >= 0 and !anim.reduced(w.app)) now else 0;
     repaint(w);
     menu.selectEvent(w);
 }

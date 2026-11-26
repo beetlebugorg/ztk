@@ -31,7 +31,7 @@ ztk follows Tk 8.6.16. A script that runs in `wish` 8.6 runs in ztk when it uses
 - The drawn menu bar is a top inset of the toplevel, so `winfo height` of the toplevel includes the row of the bar.
 - The coordinates of `post` and `tk_popup` are those of the window of the toplevel of the menu, as `%X` and `%Y` give them.
 - A tearoff entry shows as a line. A click on it does not tear off the menu.
-- A posted menu closes at once. The entry `-image`, `-bitmap`, `-compound`, `-hidemargin`, and `-columnbreak` are stored and have no effect on a drawn menu.
+- The entry `-image`, `-bitmap`, `-compound`, `-hidemargin`, and `-columnbreak` are stored and have no effect on a drawn menu.
 - The modern theme draws a chevron on each menu button, also with `-indicatoron 0`.
 
 ## Styles and themes

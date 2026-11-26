@@ -39,5 +39,5 @@ bind . <Button-3> {tk_popup .bar.edit %X %Y}
 - `menubutton` and `ttk::menubutton` post their `-menu` on the side of `-direction`. A drag from the button to an entry and a release there invokes the entry.
 - The pointer: motion activates an entry and opens a cascade, a release invokes the entry, and a press outside the menus closes them.
 - The keys: `Up` and `Down` move the active entry, `Right` opens a cascade, `Left` closes it, and `Return` or `space` invokes the entry. `Escape` closes the menu. The letter of `-underline` invokes its entry. On the menu bar, `F10` opens the first menu, `Alt` with a letter opens the menu with that `-underline` letter, and `Left` and `Right` move along the bar.
-- A menu opens with a fade and a slide of 6 logical pixels in 150 ms. The move runs on the render thread.
+- A menu opens with a fade and a slide of 6 logical pixels in 150 ms, and fades out in 150 ms after it closes. The moves run on the render thread. The highlight of the active entry eases from one entry to the next in 120 ms.
 - The parts `::item`, `::item-active`, `::separator`, `::accelerator`, and `::indicator` of the class `Menu` accept CSS rules, and so do `::bar`, `::bar-item`, and `::bar-item-active` for the menu bar row. `Menubutton::indicator` is the chevron of a menu button.
