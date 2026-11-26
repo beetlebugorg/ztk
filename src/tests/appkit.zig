@@ -145,6 +145,33 @@ test "appkit: a window draws with Metal and gives frame, resize, and close event
     try t.expectEqualStrings("你", done.commit.text);
     p.textInput(win, false, .{});
 
+    // The appearance: the program goes dark, the observer gives an
+    // appearance event, and the dark mode reads true. Only this program
+    // changes, so the test leaves the system setting alone.
+    const get = p.vtable.appearance.?;
+    try t.expect(get(p.ptr).accent != null);
+    const look = struct {
+        fn named(name: []const u8) !objc.Id {
+            const n = objc.nsString(name);
+            defer objc.release(n);
+            return objc.call(fn (objc.Class, objc.Sel, objc.Id) callconv(.c) ?objc.Id, objc.class("NSAppearance").?, "appearanceNamed:", .{n}) orelse error.NoAppearance;
+        }
+    };
+    const setLook = struct {
+        fn set(app: objc.Id, ap: ?objc.Id) void {
+            objc.call(fn (objc.Id, objc.Sel, ?objc.Id) callconv(.c) void, app, "setAppearance:", .{ap});
+        }
+    }.set;
+    // Light first: the runner can be dark already, and a change is what
+    // gives the event.
+    setLook(a.app, try look.named("NSAppearanceNameAqua"));
+    _ = waitFor(p, .appearance) catch {};
+    try t.expect(!get(p.ptr).dark);
+    setLook(a.app, try look.named("NSAppearanceNameDarkAqua"));
+    _ = try waitFor(p, .appearance);
+    try t.expect(get(p.ptr).dark);
+    setLook(a.app, null);
+
     // The close button asks the core, and the window stays.
     objc.call(fn (objc.Id, objc.Sel, ?objc.Id) callconv(.c) void, w.ns_window, "performClose:", .{null});
     _ = try waitFor(p, .close);
