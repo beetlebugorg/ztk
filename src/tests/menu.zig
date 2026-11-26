@@ -419,3 +419,48 @@ test "menu: a menubutton posts its menu below and a drag to an entry invokes it"
     try h.update();
     try expectEval(&h, "set log", "two one");
 }
+
+test "menu: a closed menu fades out and a timer removes it" {
+    var h: Harness = undefined;
+    try h.initAnimated();
+    defer h.deinit();
+    _ = try h.eval(setup);
+    _ = try h.eval("wm geometry . 400x300; update; .m post 20 30");
+    h.head.advance(400);
+    try h.update();
+    _ = try h.eval(".m unpost");
+    try t.expect(h.app.menu_root == null);
+    try t.expectEqual(@as(usize, 1), h.app.menu_fade.n);
+    h.head.advance(75);
+    try h.update();
+    try t.expectEqual(@as(usize, 1), h.app.menu_fade.n);
+    h.head.advance(400);
+    try h.update();
+    try t.expectEqual(@as(usize, 0), h.app.menu_fade.n);
+    // A new post during a fade removes the fade at once.
+    _ = try h.eval(".m post 20 30; .m unpost; .m post 20 30");
+    try t.expectEqual(@as(usize, 0), h.app.menu_fade.n);
+    _ = try h.eval(".m unpost; destroy .m");
+    try t.expectEqual(@as(usize, 0), h.app.menu_fade.n);
+}
+
+test "menu: the highlight eases from one entry to the next" {
+    var h: Harness = undefined;
+    try h.initAnimated();
+    defer h.deinit();
+    _ = try h.eval(setup);
+    _ = try h.eval("wm geometry . 400x300; update; .m post 20 30");
+    h.head.advance(400);
+    try h.update();
+    try h.head.press(h.win, "Down");
+    try h.update();
+    h.head.advance(400);
+    try h.update();
+    const m = h.app.find(".m").?;
+    const d = @import("../widgets/menu.zig").data(m);
+    try h.head.press(h.win, "Down");
+    try h.update();
+    try t.expect(d.hl_us != 0);
+    try t.expectEqual(@import("../widgets/menu.zig").yOf(m, 1), d.hl_from);
+    try expectEval(&h, ".m index active", "3");
+}
