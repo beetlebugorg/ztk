@@ -43,6 +43,7 @@ const keysym_mod = @import("../keysym.zig");
 const Mods = event.Mods;
 const Cursor = plat.Cursor;
 const tsf = @import("tsf.zig");
+const windialog = @import("windialog.zig");
 
 pub const Renderer = enum { auto, d3d12, cpu };
 
@@ -166,6 +167,7 @@ pub const Win32 = struct {
         .clipboardGet = vClipboardGet,
         .textInput = vTextInput,
         .appearance = vAppearance,
+        .fileDialog = vFileDialog,
     };
 
     fn self(ptr: *anyopaque) *Win32 {
@@ -390,6 +392,16 @@ pub const Win32 = struct {
             .nwse_resize => w32.IDC_SIZENWSE,
             .nesw_resize => w32.IDC_SIZENESW,
         };
+    }
+
+    // ---- File dialogs ----
+
+    fn vFileDialog(ptr: *anyopaque, gpa: std.mem.Allocator, opts: *const plat.FileDialog) ?plat.FileDialogResult {
+        const b = self(ptr);
+        const owner: ?w32.HWND = if (opts.parent) |p| (if (b.recOf(p)) |r| r.hwnd else null) else null;
+        var d = windialog.configure(gpa, opts) catch return null;
+        defer d.deinit();
+        return windialog.show(&d, gpa, owner);
     }
 
     // ---- Appearance ----

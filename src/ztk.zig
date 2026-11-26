@@ -76,6 +76,7 @@ test {
     _ = @import("tests/sysclip.zig");
     _ = @import("tests/ime.zig");
     _ = @import("tests/appearance.zig");
+    _ = @import("tests/filedialog.zig");
     _ = @import("textinput.zig");
     _ = @import("tests/tree.zig");
     _ = @import("tests/options.zig");
@@ -109,6 +110,7 @@ test {
         _ = @import("tests/d3d12.zig");
         _ = @import("platform/windows.zig");
         _ = @import("tests/windows.zig");
+        _ = @import("platform/windialog.zig");
         _ = @import("platform/tsf.zig");
         _ = @import("tests/tsf.zig");
         _ = @import("platform/winkeys.zig");

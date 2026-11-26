@@ -64,6 +64,15 @@ Win32 gives the messages of a window only to the thread that made it. The UI thr
 - The offscreen target is a texture. The tests read it back and compare it with the CPU image of the same scene.
 - The device is on the first hardware adapter of `IDXGIFactory6::EnumAdapterByGpuPreference`. With no hardware adapter, it is on the WARP adapter. With no device at all, `init` gives `error.NoD3D12`, and the backend uses the CPU renderer with `SetDIBitsToDevice` for the rows that changed.
 
+## File dialogs
+
+`tk_getOpenFile`, `tk_getSaveFile`, and `tk_chooseDirectory` (ztk#57, `docs/dev/platform-features.md`) run the Common Item Dialog of Windows with `src/platform/windialog.zig`:
+
+- `IFileOpenDialog` for an open and a folder (`FOS_PICKFOLDERS`), and `IFileSaveDialog` for a save, with `FOS_FORCEFILESYSTEM` and `FOS_NOCHANGEDIR`. An open has `FOS_FILEMUSTEXIST` and, with `-multiple`, `FOS_ALLOWMULTISELECT`. A save has `FOS_OVERWRITEPROMPT` unless `-confirmoverwrite 0`.
+- `-filetypes` becomes `SetFileTypes` with `*.txt;*.tcl` for each filter, and the index of `GetFileTypeIndex` sets `-typevariable`. `-initialdir` is an item of `SHCreateItemFromParsingName` for `SetFolder`.
+- `Show` with the window of `-parent` (or `.`) as the owner runs the dialog to its end. The paths of `SIGDN_FILESYSPATH` come back with `/` between the parts, as Tk gives them. A cancel gives an empty string.
+- The test of the backend configures each kind of dialog and reads its options back with no `Show`, so no dialog opens on the desktop.
+
 ## CI
 
 A `test-windows` job on `windows-latest` runs `zig build`, `zig build test`, and the headless script of the Linux job. From PR 3 on, the Direct3D 12 tests run on the WARP adapter of the runner, or print `SKIP:` with the reason.

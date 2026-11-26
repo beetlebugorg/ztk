@@ -25,6 +25,7 @@ pub fn register(app: *App) !void {
     const it = app.it;
     _ = try it.eval("namespace eval ::ztk::priv {}");
     it.user = app;
+    try @import("filedialog.zig").register(app);
     try it.register("frame", widget.classCommand(&frame.class));
     try app.classes.put(app.gpa, "frame", &frame.class);
     try loop.register(app);

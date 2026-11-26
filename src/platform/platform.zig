@@ -110,6 +110,43 @@ pub const MenuHandler = struct {
     call: *const fn (ctx: ?*anyopaque, id: MenuId, entry: i32, action: event.MenuAction) void,
 };
 
+/// The options of a native file dialog. The strings are UTF-8 and are
+/// valid only during the call.
+pub const FileDialog = struct {
+    kind: Kind,
+    /// The window that owns the dialog, or null.
+    parent: ?*Window = null,
+    title: []const u8 = "",
+    /// The folder that the dialog shows first, and the first file name.
+    initial_dir: []const u8 = "",
+    initial_file: []const u8 = "",
+    /// The filters of `-filetypes`, in order.
+    filters: []const Filter = &.{},
+    /// The extension that a save adds to a name with none, with no dot.
+    default_ext: []const u8 = "",
+    /// An open of more than one file.
+    multiple: bool = false,
+    /// A save asks before it replaces a file.
+    confirm_overwrite: bool = true,
+
+    pub const Kind = enum { open, save, folder };
+    /// A filter: its name, and its patterns such as `*.txt`.
+    pub const Filter = struct { name: []const u8, patterns: []const []const u8 };
+};
+
+/// The answer of a file dialog, in memory of the allocator of the call.
+pub const FileDialogResult = struct {
+    /// The paths in UTF-8 with `/` between the parts.
+    paths: [][]u8,
+    /// The index of the filter that was chosen, or null.
+    filter: ?u32 = null,
+
+    pub fn deinit(r: FileDialogResult, gpa: std.mem.Allocator) void {
+        for (r.paths) |p| gpa.free(p);
+        gpa.free(r.paths);
+    }
+};
+
 /// The appearance of the system.
 pub const Appearance = struct {
     dark: bool,
@@ -235,6 +272,10 @@ pub const Platform = struct {
         /// The dark mode and the accent color of the system. A backend
         /// gives an `appearance` event when they change.
         appearance: ?*const fn (ptr: *anyopaque) Appearance = null,
+        /// Runs a native file dialog to its end, as `tk_getOpenFile`,
+        /// `tk_getSaveFile`, and `tk_chooseDirectory` need. Null: the dialog
+        /// was canceled, or it could not show.
+        fileDialog: ?*const fn (ptr: *anyopaque, gpa: std.mem.Allocator, opts: *const FileDialog) ?FileDialogResult = null,
 
         // The native menus. A backend with `native_menus` has each of these
         // functions. The core calls them on the UI thread. The backend
@@ -292,6 +333,13 @@ pub const Platform = struct {
     }
 
     /// Null: the backend has no appearance of the system.
+    pub fn hasFileDialog(p: Platform) bool {
+        return p.vtable.fileDialog != null;
+    }
+    pub fn fileDialog(p: Platform, gpa: std.mem.Allocator, opts: *const FileDialog) ?FileDialogResult {
+        const f = p.vtable.fileDialog orelse return null;
+        return f(p.ptr, gpa, opts);
+    }
     pub fn appearance(p: Platform) ?Appearance {
         const f = p.vtable.appearance orelse return null;
         return f(p.ptr);
