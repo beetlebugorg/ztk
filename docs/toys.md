@@ -19,6 +19,7 @@ set games {
     lamplighter "LAMPLIGHTER" ttk::notebook
     twinlanes  "TWIN LANES"  panedwindow
     pixelpad   "PIXEL PAD"   text
+    diskhound  "DISK HOUND"  ttk::treeview
 }
 . configure -background #1d1a33
 canvas .sky -width 360 -height 32 -background #1d1a33 -highlightthickness 0
