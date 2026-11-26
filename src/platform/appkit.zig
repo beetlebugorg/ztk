@@ -53,6 +53,7 @@ const Ime = @import("macime.zig").Ime;
 const nsmenu = @import("nsmenu.zig");
 const macdock = @import("macdock.zig");
 const mactray = @import("mactray.zig");
+const macdialog = @import("macdialog.zig");
 const Id = objc.Id;
 const Sel = objc.Sel;
 const Class = objc.Class;
@@ -213,6 +214,7 @@ pub const AppKit = struct {
         .trayCreate = vTrayCreate,
         .traySet = vTraySet,
         .trayDrop = vTrayDrop,
+        .fileDialog = vFileDialog,
     };
 
     // ---- The tray ----
@@ -303,6 +305,11 @@ pub const AppKit = struct {
     fn menuKey(ctx: *anyopaque, ev: Id) void {
         const w = self(ctx).key_win orelse return;
         send(w.view, "keyDown:", .{ev});
+    }
+
+    fn vFileDialog(_: *anyopaque, gpa: std.mem.Allocator, opts: *const plat.FileDialog) ?plat.FileDialogResult {
+        const parent: ?Id = if (opts.parent) |win| winOf(win).ns_window else null;
+        return macdialog.run(gpa, opts, parent);
     }
 
     fn vClipboardSet(ptr: *anyopaque, typ: []const u8, data: []const u8) void {
