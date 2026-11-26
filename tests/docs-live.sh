@@ -8,7 +8,8 @@
 # the pixels. The first snippet of each page then gets edits: a variable
 # that the reader changed keeps its value when the code keeps its first
 # value, a new first value in the code wins, and an error keeps the last
-# good window.
+# good window. X-ray then draws boxes, and Inspect sets -cursor on the
+# first widget and writes it into the code.
 # Use: tests/docs-live.sh [page folder ...]     (after: zig build wasm)
 # The default is each page with a live snippet, for example widgets/menus.
 # Exit status: 0 pass, 1 fail, 77 when a tool or the build is missing.
@@ -75,7 +76,7 @@ for item in live:
     fail |= not ok
     print(("ok" if ok else "FAIL") + f" {tag}: {name} runs and equals its shot: {share*100:.3f} % of the pixels differ by more than 2 levels, worst {worst}")
 c = r.get("checks", {})
-for key, want in (("kept", "2"), ("added", "5"), ("changed", "3"), ("error", "invalid command name \"no_such_command\""), ("stayed", "5")):
+for key, want in (("kept", "2"), ("added", "5"), ("changed", "3"), ("error", "invalid command name \"no_such_command\""), ("stayed", "5"), ("boxes", "yes"), ("cursor", "hand2"), ("written", "yes")):
     got = c.get(key)
     ok = got == want
     fail |= not ok
