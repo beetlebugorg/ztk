@@ -361,11 +361,12 @@ pack .props.file.svg -fill x -pady 1
 pack .props.file.save .props.file.load -side left -fill x -expand 1 -padx 1
 pack .props.order .props.grp .props.snap .props.file -fill x -pady {6 0}
 
-# The console: an output area and an entry with a history.
+# The console: an output area (a text widget that scrolls back over the
+# last 200 lines) and an entry with a history.
 frame .con -padx 10 -pady 6
 pack .con -side bottom -fill x
 cls .con console
-label .con.out -textvariable vec::conout -anchor nw -justify left -height 3
+text .con.out -height 3 -wrap word -state disabled -takefocus 0 -padx 0 -pady 0 -highlightthickness 0
 frame .con.line
 label .con.line.p -text "%"
 entry .con.line.e -textvariable vec::cmd
@@ -998,6 +999,12 @@ proc vec::log {text} {
     foreach line [split $text \n] { lappend conlines $line }
     set conlines [lrange $conlines end-199 end]
     set conout [join [lrange $conlines end-2 end] \n]
+    # The output area keeps the last 200 lines and shows the end.
+    .con.out configure -state normal
+    .con.out delete 1.0 end
+    .con.out insert end [join $conlines \n]
+    .con.out configure -state disabled
+    .con.out see end
 }
 
 # The commands of a console script. They run in this interpreter, and the

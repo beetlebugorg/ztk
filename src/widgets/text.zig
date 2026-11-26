@@ -30,6 +30,8 @@ const index = @import("../text_widget/index.zig");
 const tags_mod = @import("../text_widget/tags.zig");
 const texttag = @import("texttag.zig");
 const textview = @import("textview.zig");
+const textbind = @import("textbind.zig");
+const undo_mod = @import("../text_widget/undo.zig");
 const scroll = @import("../scroll.zig");
 const bind = @import("../bind.zig");
 const Spec = options.Spec;
@@ -99,6 +101,7 @@ pub const class: widget.Class = .{
     .init = init,
     .deinit = deinit,
     .configured = configured,
+    .teardown = textbind.teardown,
     .measure = measure,
     .paint = textview.paintText,
     .event = texttag.tagEvent,
@@ -120,6 +123,17 @@ pub const Data = struct {
     vx: scroll.View = .{},
     vy: scroll.View = .{},
     caret_on: bool = true,
+    /// The caret timer: its id and the time that the next blink is due.
+    timer: ?u64 = null,
+    due_us: i64 = 0,
+    /// The undo stacks, the flag of `edit modified`, and a flag that is
+    /// true while an undo or a redo edits the text.
+    undo: undo_mod.Stack = .{},
+    modified: bool = false,
+    replaying: bool = false,
+    /// True while a typed text replaces the selection, so the delete and
+    /// the insert are one compound action.
+    compound: bool = false,
 };
 
 pub fn data(w: *const Widget) *Data {
@@ -175,6 +189,7 @@ fn deinit(w: *Widget) void {
     d.buf.deinit();
     d.bindings.deinit();
     d.view.deinit(w.app.gpa);
+    d.undo.deinit(w.app.gpa);
     scroll.forget(w);
     for (d.cur_tags.items) |n| w.app.gpa.free(n);
     d.cur_tags.deinit(w.app.gpa);
@@ -303,8 +318,7 @@ fn insertChars(w: *Widget, at: Pos, args: []const Value, it: *ztcl.Interp) ztcl.
         const s = try it.str(args[i]);
         if (s.len == 0) continue;
         const from = p;
-        p = d.buf.insert(p, s) catch return error.OutOfMemory;
-        textview.noteEdit(w, from.line, 1, p.line - from.line + 1);
+        p = try insertText(w, p, s);
         // With a tag list, the new text has the tags of the list only.
         if (i + 1 < args.len) {
             const names = try it.list(args[i + 1]);
@@ -329,8 +343,103 @@ fn deleteRange(w: *Widget, a0: Pos, z0: Pos) void {
         if (a.ch == 0 and a.line > 0 and a.line < d.buf.lineCount()) a = d.buf.backward(a, 1);
         if (a.line >= d.buf.lineCount()) a = z;
     }
+    if (!a.lt(z)) return;
+    if (recording(w)) {
+        var out: std.ArrayList(u8) = .empty;
+        defer out.deinit(w.app.gpa);
+        d.buf.get(a, z, &out, w.app.gpa) catch {};
+        d.undo.record(w.app.gpa, .delete, a, out.items, autoSep(w), maxUndo(w)) catch {};
+    }
     d.buf.delete(a, z);
     textview.noteEdit(w, a.line, z.line - a.line + 1, 1);
+    setModified(w, true);
+}
+
+/// Inserts one text at a position before `end`, with the undo record
+/// and the flag of `edit modified`, and gives the end of the new text.
+pub fn insertText(w: *Widget, p: Pos, s: []const u8) ztcl.Error!Pos {
+    const d = data(w);
+    if (recording(w)) d.undo.record(w.app.gpa, .insert, p, s, autoSep(w), maxUndo(w)) catch return error.OutOfMemory;
+    const e = d.buf.insert(p, s) catch return error.OutOfMemory;
+    textview.noteEdit(w, p.line, 1, e.line - p.line + 1);
+    setModified(w, true);
+    return e;
+}
+
+/// Deletes from `a` to `z` with the rule for the last newline.
+pub fn deleteText(w: *Widget, a: Pos, z: Pos) void {
+    deleteRange(w, a, z);
+    changed(w);
+}
+
+fn recording(w: *Widget) bool {
+    const d = data(w);
+    const v = options.get(w, "-undo").value;
+    return !d.replaying and v == .boolean and v.boolean;
+}
+
+fn autoSep(w: *Widget) bool {
+    if (data(w).compound) return false;
+    const v = options.get(w, "-autoseparators").value;
+    return v == .boolean and v.boolean;
+}
+
+fn maxUndo(w: *Widget) i64 {
+    const v = options.get(w, "-maxundo").value;
+    return if (v == .int) v.int else 0;
+}
+
+/// Sets the flag of `edit modified`. A change sends `<<Modified>>` as
+/// an idle callback.
+pub fn setModified(w: *Widget, on: bool) void {
+    const d = data(w);
+    if (d.modified == on) return;
+    d.modified = on;
+    const script = std.fmt.allocPrint(w.app.gpa, "if {{[winfo exists {{{s}}}]}} {{event generate {{{s}}} <<Modified>>}}", .{ w.path, w.path }) catch return;
+    defer w.app.gpa.free(script);
+    _ = w.app.loop.addIdle(script) catch {};
+}
+
+/// Applies the last compound action of the undo stack (`redo` false) or
+/// of the redo stack, and moves it to the other stack.
+pub fn undoStep(w: *Widget, redo: bool) ztcl.Error!bool {
+    const d = data(w);
+    const gpa = w.app.gpa;
+    const from = if (redo) &d.undo.redo else &d.undo.undo;
+    const to = if (redo) &d.undo.undo else &d.undo.redo;
+    const has = if (redo) d.undo.canRedo() else d.undo.canUndo();
+    if (!has) return false;
+    const group = undo_mod.Stack.pop(from, gpa) catch return error.OutOfMemory;
+    defer gpa.free(group);
+    d.replaying = true;
+    defer d.replaying = false;
+    var at: Pos = .{};
+    for (group) |act| {
+        const n = buffer.countChars(act.text);
+        // The inverse of an insert is a delete, and the inverse of a
+        // delete is an insert. A redo applies the action itself.
+        const ins = (act.kind == .delete) != redo;
+        if (ins) {
+            at = try insertText(w, act.pos, act.text);
+        } else {
+            deleteRange(w, act.pos, d.buf.forward(act.pos, n));
+            at = act.pos;
+        }
+    }
+    // The group goes on the other stack in its first order.
+    if (to.items.len > 0 and to.items[to.items.len - 1].kind != .sep) to.append(gpa, .{ .kind = .sep }) catch {};
+    var k = group.len;
+    while (k > 0) {
+        k -= 1;
+        to.append(gpa, group[k]) catch gpa.free(group[k].text);
+    }
+    to.append(gpa, .{ .kind = .sep }) catch {};
+    d.undo.last = .sep;
+    if (at.line >= d.buf.lineCount()) at = d.buf.last();
+    d.buf.setMark("insert", at, null) catch {};
+    changed(w);
+    textview.see(w, at);
+    return true;
 }
 
 fn changed(w: *Widget) void {
@@ -377,6 +486,49 @@ fn cmdDelete(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!Value
 }
 
 // ---- Subcommands ----
+
+const edit_names = [_][]const u8{ "canundo", "canredo", "modified", "redo", "reset", "separator", "undo" };
+
+fn cmdEdit(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!Value {
+    const d = data(w);
+    const gpa = w.app.gpa;
+    if (argv.len < 3) return it.fail("wrong # args: should be \"{s} edit option ?arg ...?\"", .{w.path});
+    const sub = try it.str(argv[2]);
+    const which = unique(&edit_names, sub) orelse return it.fail("bad edit option \"{s}\": must be canundo, canredo, modified, redo, reset, separator, or undo", .{sub});
+    if (which != 2 and argv.len != 3) return it.fail("wrong # args: should be \"{s} edit {s}\"", .{ w.path, edit_names[which] });
+    switch (which) {
+        0 => return .{ .int = @intFromBool(d.undo.canUndo()) },
+        1 => return .{ .int = @intFromBool(d.undo.canRedo()) },
+        2 => {
+            if (argv.len > 4) return it.fail("wrong # args: should be \"{s} edit modified ?boolean?\"", .{w.path});
+            if (argv.len == 3) return .{ .int = @intFromBool(d.modified) };
+            const t = try it.str(argv[3]);
+            const b = options.parseBool(t) orelse return it.fail("expected boolean value but got \"{s}\"", .{t});
+            // A set sends `<<Modified>>` also when the flag keeps its value.
+            d.modified = !b;
+            setModified(w, b);
+            return Value.empty;
+        },
+        3, 6 => {
+            if (!recordingOn(w)) return Value.empty;
+            if (!try undoStep(w, which == 3)) return it.fail("nothing to {s}", .{if (which == 3) "redo" else "undo"});
+            return Value.empty;
+        },
+        4 => {
+            d.undo.reset(gpa);
+            return Value.empty;
+        },
+        else => {
+            d.undo.separator(gpa) catch return error.OutOfMemory;
+            return Value.empty;
+        },
+    }
+}
+
+fn recordingOn(w: *Widget) bool {
+    const v = options.get(w, "-undo").value;
+    return v == .boolean and v.boolean;
+}
 
 pub fn prefix(word: []const u8, full: []const u8) bool {
     return word.len > 0 and word.len <= full.len and std.mem.eql(u8, word, full[0..word.len]);
@@ -563,8 +715,9 @@ fn subcommand(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!?Val
         return try textview.cmdBox(w, it, try getIndex(w, it, argv[2]), sub[0] == 'd');
     }
     if (eq(u8, sub, "sync")) return Value.empty;
+    if (eq(u8, sub, "edit")) return try cmdEdit(w, it, argv);
     if (eq(u8, sub, "pendingsync")) return .{ .int = 0 };
-    const later = [_][]const u8{ "debug", "dump", "edit", "image", "peer", "scan", "search", "window" };
+    const later = [_][]const u8{ "debug", "dump", "image", "peer", "scan", "search", "window" };
     for (later) |n| if (eq(u8, sub, n)) return it.fail("the text subcommand \"{s}\" is not in ztk yet", .{n});
     return null;
 }
@@ -572,8 +725,5 @@ fn subcommand(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!?Val
 pub fn register(app: *App) !void {
     try app.it.register("text", widget.classCommand(&class));
     try app.classes.put(app.gpa, "text", &class);
-    _ = try app.it.eval(
-        \\bind Text <MouseWheel> {%W yview scroll [expr {-%D / 40.0}] units}
-        \\bind Text <Shift-MouseWheel> {%W xview scroll [expr {-%D / 30.0}] units}
-    );
+    try textbind.register(app);
 }

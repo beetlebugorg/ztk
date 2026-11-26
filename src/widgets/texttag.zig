@@ -155,6 +155,7 @@ fn changeRanges(w: *Widget, it: *ztcl.Interp, tag: *Tag, args: []const Value, ad
         if (!a.lt(z)) continue;
         if (add) try tag.add(w.app.gpa, a, z) else try tag.remove(w.app.gpa, a, z);
     }
+    if (std.mem.eql(u8, tag.name, "sel")) @import("textbind.zig").selectionChanged(w);
     text.tagsChanged(w);
 }
 

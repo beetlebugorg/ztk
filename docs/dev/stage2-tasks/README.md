@@ -33,7 +33,7 @@ Do the tasks in order. One task is one branch, one PR, and one review. A task st
 
 The state on 2026-11-25: the tasks of the table up to task 11 are merged. Task 12 has four PRs ([the menu design](../menus.md)). PR 1 (the platform interface, #52) and PR 2 (the menu model and the native path, #69) are merged. PR 3 has six parts: 3a (the posted drawn menus, their keys, and the open move), 3b (the menu bar row), 3c (`menubutton` and `ttk::menubutton`), 3d (the gallery card, the widget page, and the `menu-open` bench case), 3e (the close fade and the move of the highlight), and 3f (the menu bars and the context menus of the spreadsheet and the vector tool). PR 4 has the popup surfaces of Wayland and the web.
 
-Task 12 is merged. Task 13 has three PRs: the paned windows (#98), `ttk::notebook` (#99), and the change of the two canvas apps to these widgets (#100). The next task is task 15, `text`.
+Task 12 is merged. Task 13 has three PRs: the paned windows (#98), `ttk::notebook` (#99), and the change of the two canvas apps to these widgets (#100). The next task is task 15, `text`. Task 15 has five PRs: the buffer, the indexes, and the marks (#105), the tags (#107), the layout and the scrolling (#110), undo and the class bindings with the widget page, and then `search`, `dump`, the embedded windows and images, and `peer`.
 
 Task 14 has two PRs (a decision for the user, 2026-11-25). PR 14a has the canvas widget, its scrolling, the stand-in `image` command, and `ztk::animate` on items. PR 14b has the two apps of the task, `examples/spreadsheet.tcl` and `examples/vector.tcl` with its script console, and their tests, gates, and gallery cards.
 

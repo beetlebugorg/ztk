@@ -468,6 +468,7 @@ pub fn main(init: std.process.Init) !void {
 
     // text-1mb-scroll: a text widget with 1 MB of text (16,384 lines of 64 bytes, with
     // -wrap word) scrolls by wheel steps from its middle, one step for each frame.
+    // text-1mb-type: a key in the middle of the same buffer.
     {
         var tx: World = undefined;
         try tx.it.init(gpa);
@@ -494,6 +495,17 @@ pub fn main(init: std.process.Init) !void {
             slot.* = nowNs() - t0;
         }
         report("text-1mb-scroll", buf[0..runs]);
+        // text-1mb-type: one key in the middle of the same buffer, through
+        // the class bindings, with the caret in the window.
+        tx.eval("focus .t; .t mark set insert 8192.10; .t see insert; update");
+        for (buf[0..runs]) |*slot| {
+            tx.head.advance(16);
+            const t0 = nowNs();
+            try tx.head.typeText(win, "a");
+            tx.eval("update");
+            slot.* = nowNs() - t0;
+        }
+        report("text-1mb-type", buf[0..runs]);
     }
 
     // sheet-10000-scroll: examples/spreadsheet.tcl with 10 000 rows of numbers and a formula in
