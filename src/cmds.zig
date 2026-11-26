@@ -117,6 +117,15 @@ fn cmdLimit(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
     const r = it.evalScript(script);
     it.step_limit = old_steps -| (steps - it.step_limit);
     it.mem_limit = old_memory;
+    // A request that the lower memory limit refused sets a flag on the
+    // counter of the root, and `catch` passes each error on while the
+    // flag is set. The error ends here, as at the top level of an eval.
+    var root = it;
+    while (root.parent) |p| root = p;
+    if (root.counter.refused) {
+        root.counter.clearRefused();
+        return it.memError();
+    }
     return r;
 }
 
