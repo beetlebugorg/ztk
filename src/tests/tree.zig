@@ -113,3 +113,23 @@ test "widget: 1000 frames in a tree free with no leak" {
     _ = try h.eval("destroy .");
     try t.expectEqual(@as(usize, 0), h.app.widgets.count());
 }
+
+test "tree: raise and lower change the stacking order, as in wish" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval("frame .a; frame .b; frame .c; frame .a.x; frame .q; frame .q.r");
+    const cases = [_][2][]const u8{
+        .{ "raise .a; winfo children .", ".b .c .q .a" },
+        .{ "lower .a; winfo children .", ".a .b .c .q" },
+        .{ "raise .a .b; winfo children .", ".b .a .c .q" },
+        .{ "lower .c .a; winfo children .", ".b .c .a .q" },
+        .{ "raise .a .a.x; raise .a .q.r; winfo children .", ".b .c .q .a" },
+        .{ "lower .; raise .", "" },
+    };
+    for (cases) |c| try t.expectEqualStrings(c[1], try h.eval(c[0]));
+    try t.expectEqualStrings("wrong # args: should be \"raise window ?aboveThis?\"", try h.evalError("raise"));
+    try t.expectEqualStrings("wrong # args: should be \"lower window ?belowThis?\"", try h.evalError("lower .a .b .c"));
+    try t.expectEqualStrings("bad window path name \".zz\"", try h.evalError("raise .a .zz"));
+    try t.expectEqualStrings("can't raise \".a.x\" above \".b\"", try h.evalError("raise .a.x .b"));
+}

@@ -45,6 +45,8 @@ pub fn register(app: *App) !void {
     try it.register("destroy", cmdDestroy);
     try it.register("exit", cmdExit);
     try it.register("winfo", cmdWinfo);
+    try it.register("raise", cmdRaise);
+    try it.register("lower", cmdLower);
     try it.register("grid", grid.command);
     try it.register("pack", @import("pack.zig").command);
     try it.register("place", @import("place.zig").command);
@@ -210,4 +212,58 @@ fn cmdWinfo(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
         .geometry => return .{ .str = try std.fmt.allocPrint(a, "{d}x{d}+{d}+{d}", .{ w.geom.w, w.geom.h, w.geom.x, w.geom.y }) },
         .manager => return .{ .str = if (w.manager) |m| m.name else if (w.parent == null) "wm" else "" },
     }
+}
+
+// ---- raise and lower ----
+
+fn cmdRaise(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
+    return restack(it, argv, true);
+}
+
+fn cmdLower(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
+    return restack(it, argv, false);
+}
+
+/// `raise window ?aboveThis?` and `lower window ?belowThis?`: move the
+/// widget in the stacking order of its siblings, which is the order of
+/// the children of the parent. The paint draws the children in that
+/// order, so the last one is on top. A reference widget stands for its
+/// ancestor that is a sibling of the widget. A toplevel keeps its place.
+fn restack(it: *ztcl.Interp, argv: []const Value, up: bool) ztcl.Error!Value {
+    const app = App.of(it);
+    app.enter();
+    defer app.leave();
+    const word = if (up) "raise" else "lower";
+    if (argv.len != 2 and argv.len != 3) return it.fail("wrong # args: should be \"{s} window ?{s}?\"", .{ word, if (up) "aboveThis" else "belowThis" });
+    const p = try it.str(argv[1]);
+    const w = app.find(p) orelse return it.fail("bad window path name \"{s}\"", .{p});
+    var ref: ?*widget.Widget = null;
+    if (argv.len == 3) {
+        const rp = try it.str(argv[2]);
+        ref = app.find(rp) orelse return it.fail("bad window path name \"{s}\"", .{rp});
+    }
+    if (w.isToplevel()) return Value.empty;
+    const parent = w.parent orelse return Value.empty;
+    var sib: ?*widget.Widget = null;
+    if (ref) |r| {
+        var x: ?*widget.Widget = r;
+        while (x) |y| : (x = y.parent) {
+            if (y.parent == parent) {
+                sib = y;
+                break;
+            }
+        }
+        if (sib == null) return it.fail("can't {s} \"{s}\" {s} \"{s}\"", .{ word, p, if (up) "above" else "below", try it.str(argv[2]) });
+        if (sib.? == w) return Value.empty;
+    }
+    const list = &parent.children;
+    const from = std.mem.indexOfScalar(*widget.Widget, list.items, w) orelse return Value.empty;
+    _ = list.orderedRemove(from);
+    const to: usize = if (sib) |sw| blk: {
+        const k = std.mem.indexOfScalar(*widget.Widget, list.items, sw).?;
+        break :blk if (up) k + 1 else k;
+    } else if (up) list.items.len else 0;
+    list.insert(app.gpa, to, w) catch return error.OutOfMemory;
+    parent.invalidate(.{ .style = false, .measure = false, .layout = false, .paint = true });
+    return Value.empty;
 }
