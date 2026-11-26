@@ -33,6 +33,7 @@ const font_mod = @import("../text/font.zig");
 const buffer = @import("../text_widget/buffer.zig");
 const tags_mod = @import("../text_widget/tags.zig");
 const text = @import("text.zig");
+const textembed = @import("textembed.zig");
 const Widget = widget.Widget;
 const Pos = buffer.Pos;
 const T = tags_mod.Opt;
@@ -52,8 +53,9 @@ pub const Attrs = struct {
 
 /// A piece of a display line: characters `c0` to `c1` and bytes `b0` to
 /// `b1`, at `x` from the left of the content, with the width `w`. A tab
-/// is a piece of its own with no glyph.
-pub const Piece = struct { c0: u32, c1: u32, b0: usize, b1: usize, x: i32, w: i32, attrs: Attrs, ascent: i32, tab: bool = false };
+/// is a piece of its own with no glyph, and so is the character of an
+/// embedded window or image (`emb`).
+pub const Piece = struct { c0: u32, c1: u32, b0: usize, b1: usize, x: i32, w: i32, attrs: Attrs, ascent: i32, tab: bool = false, emb: ?*const textembed.Embed = null };
 
 /// A display line: its characters, its top `y` from the top of the line
 /// of the text, its height, its baseline, and its pieces.
@@ -215,7 +217,7 @@ fn nextTab(w: *Widget, tabs: []const u8, x: f32) f32 {
     return base + k * step;
 }
 
-const Char = struct { adv: f32, run: u32, space: bool, tab: bool };
+const Char = struct { adv: f32, run: u32, space: bool, tab: bool, emb: ?*const textembed.Embed = null };
 
 /// Lays out a line of the text for a content width `avail`.
 pub fn layout(w: *Widget, line: u32, avail: i32, a: std.mem.Allocator) !Para {
@@ -243,6 +245,13 @@ pub fn layout(w: *Widget, line: u32, avail: i32, a: std.mem.Allocator) !Para {
         }
     }
     byte_of[n] = s.len;
+    // The character of an embed has the width of its box.
+    for (d.embeds.items) |e| if (e.pos.line == line and e.pos.ch < n) {
+        const c = &chars[e.pos.ch];
+        c.emb = e;
+        c.space = false;
+        if (!runs[c.run].attrs.elide) c.adv = @floatFromInt(textembed.contentSize(w, e).w + 2 * e.padx);
+    };
     const limit: f32 = @floatFromInt(@max(avail - o.rm, 1));
     var lines: std.ArrayList(DLine) = .empty;
     var d0: u32 = 0;
@@ -303,14 +312,17 @@ fn buildLine(w: *Widget, s: []const u8, runs: []const Run, chars: []const Char, 
     const base = paint.fontMetrics(app, if (d0 == d1) startAttrs(w, line).font else w.style.font);
     var asc: i32 = base.ascent;
     var desc: i32 = base.line_height - base.ascent;
+    // The tallest box of an embed with `top`, `center`, or `bottom`.
+    var box_h: i32 = 0;
+    var box_align: textembed.Align = .center;
     var x = margin;
     var i = d0;
     while (i < d1) {
         const c = chars[i];
         const r = runs[c.run];
         var j = i + 1;
-        if (!c.tab) {
-            while (j < d1 and chars[j].run == c.run and !chars[j].tab) j += 1;
+        if (!c.tab and c.emb == null) {
+            while (j < d1 and chars[j].run == c.run and !chars[j].tab and chars[j].emb == null) j += 1;
         }
         var wsum: f32 = 0;
         if (c.tab) {
@@ -319,16 +331,36 @@ fn buildLine(w: *Widget, s: []const u8, runs: []const Run, chars: []const Char, 
             for (chars[i..j]) |cc| wsum += cc.adv;
         }
         const m = paint.fontMetrics(app, r.attrs.font);
-        if (!r.attrs.elide) {
+        if (c.emb) |e| {
+            if (!r.attrs.elide) {
+                const h = textembed.contentSize(w, e).h + 2 * e.pady;
+                switch (e.valign) {
+                    .baseline => asc = @max(asc, h),
+                    else => box_h = @max(box_h, h),
+                }
+                if (e.valign != .baseline) box_align = e.valign;
+            }
+        } else if (!r.attrs.elide) {
             asc = @max(asc, m.ascent - r.attrs.offset);
             desc = @max(desc, m.line_height - m.ascent + r.attrs.offset);
         }
         const px: i32 = @intFromFloat(@round(x));
         const pw: i32 = @as(i32, @intFromFloat(@round(x + wsum))) - px;
-        try pieces.append(a, .{ .c0 = i, .c1 = j, .b0 = byte_of[i], .b1 = byte_of[j], .x = px, .w = pw, .attrs = r.attrs, .ascent = m.ascent, .tab = c.tab });
+        try pieces.append(a, .{ .c0 = i, .c1 = j, .b0 = byte_of[i], .b1 = byte_of[j], .x = px, .w = pw, .attrs = r.attrs, .ascent = m.ascent, .tab = c.tab, .emb = c.emb });
         x += wsum;
         i = j;
     }
+    // A box that is taller than the text grows the line below it for
+    // `top`, above it for `bottom`, and on both sides for `center`.
+    const more = box_h - (asc + desc);
+    if (more > 0) switch (box_align) {
+        .top => desc += more,
+        .bottom => asc += more,
+        else => {
+            asc += @divTrunc(more, 2);
+            desc += more - @divTrunc(more, 2);
+        },
+    };
     const mx: i32 = @intFromFloat(@round(margin));
     return .{ .c0 = d0, .c1 = d1, .y = 0, .h = @max(asc + desc, 1), .ascent = asc, .x = mx, .w = @as(i32, @intFromFloat(@round(x))) - mx, .pieces = pieces.items };
 }
@@ -345,7 +377,7 @@ pub fn xOf(w: *Widget, dl: DLine, line: u32, ch: u32, a: std.mem.Allocator) i32 
     const s = text.data(w).buf.lineText(line);
     for (dl.pieces) |p| {
         if (ch >= p.c1) continue;
-        if (ch <= p.c0 or p.attrs.elide or p.tab) return p.x;
+        if (ch <= p.c0 or p.attrs.elide or p.tab or p.emb != null) return p.x;
         const xs = paint.charXs(w.app, a, s[p.b0..p.b1], p.attrs.font) catch return p.x;
         return p.x + @as(i32, @intFromFloat(@round(xs[ch - p.c0])));
     }
@@ -359,7 +391,7 @@ pub fn charAtX(w: *Widget, dl: DLine, line: u32, x: i64, a: std.mem.Allocator) u
     for (dl.pieces) |p| {
         if (p.attrs.elide) continue;
         if (x >= p.x + p.w) continue;
-        if (p.tab or x < p.x) return p.c0;
+        if (p.tab or p.emb != null or x < p.x) return p.c0;
         const xs = paint.charXs(w.app, a, s[p.b0..p.b1], p.attrs.font) catch return p.c0;
         var k: u32 = 0;
         while (k < p.c1 - p.c0) : (k += 1) {

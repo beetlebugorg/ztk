@@ -250,4 +250,15 @@ bind $mn.hint <Button-3> {tk_popup .gedit %X %Y}
 grid $mn.mb $mn.tb $mn.hint -sticky w -padx 4 -pady 3
 pack .cols.left.menus -fill x -pady 4
 
+# Text: a text widget with tags, an embedded button, and undo.
+set tx [card .cols.left.text "Text"]
+text $tx.t -width 36 -height 4 -wrap word -undo 1
+$tx.t tag configure title -font {TkDefaultFont 12 bold}
+$tx.t tag configure accent -foreground #2563eb -underline 1
+$tx.t insert end "Notes\n" title "A text widget has tags, marks, and " {} "undo" accent ". Type here. "
+button $tx.t.ok -text Done -padx 6 -pady 0
+$tx.t window create end -window $tx.t.ok -align center -padx 2
+pack $tx.t -fill x
+pack .cols.left.text -fill x -pady 4
+
 set status ""

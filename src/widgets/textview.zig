@@ -30,6 +30,8 @@ const scroll = @import("../scroll.zig");
 const buffer = @import("../text_widget/buffer.zig");
 const text = @import("text.zig");
 const tl = @import("textlayout.zig");
+const textembed = @import("textembed.zig");
+const label = @import("label.zig");
 const Widget = widget.Widget;
 const Value = ztcl.Value;
 const Pos = buffer.Pos;
@@ -271,6 +273,7 @@ pub fn cmdView(w: *Widget, it: *ztcl.Interp, argv: []const Value, axis: u1) ztcl
     const eq = std.mem.eql;
     if (eq(u8, op, "moveto") and (axis == 0 or argv.len != 3)) {
         _ = try scroll.command(w, it, argv, v, steps(w, axis), false);
+        text.repaintView(w);
         report(w);
         return Value.empty;
     }
@@ -384,6 +387,11 @@ pub fn cmdBox(w: *Widget, it: *ztcl.Interp, p: Pos, line: bool) ztcl.Error!Value
     if (line) {
         return try intsValue(it.alloc(), &.{ c.x + pl.dl.x - xoff, top, pl.dl.w, pl.dl.h, pl.dl.ascent });
     }
+    // An embed gives the box of its window or image.
+    if (textembed.at(w, p)) |e| for (pl.dl.pieces) |pc| if (pc.emb == e) {
+        const r = textembed.box(w, e, pl.dl, pc);
+        return try intsValue(it.alloc(), &.{ c.x + r.x - xoff, top + r.y, r.w, r.h });
+    };
     const next = tl.xOf(w, pl.dl, p.line, p.ch + 1, a);
     const cw: i64 = if (p.ch >= d.buf.lineChars(p.line)) @max(c.w - (pl.x - xoff), 0) else @max(next - pl.x, 0);
     const x = c.x + pl.x - xoff;
@@ -414,6 +422,8 @@ pub fn paintText(w: *Widget, b: *scene.Builder) anyerror!void {
         // smooth scroll, so the UI thread paints each frame of it.
         if (app.part_move != .blocked) app.part_move = .mixed;
     }
+    // The embedded windows follow the view.
+    if (textembed.windowCount(w) > 0 and (d.arranged_at[0] != d.vx.shown(w) or d.arranged_at[1] != d.vy.shown(w))) textembed.arrangeAt(w, true);
     const first_quad = b.scene.quads.items.len;
     b.pushClip(c);
     var arena = std.heap.ArenaAllocator.init(app.gpa);
@@ -440,6 +450,13 @@ pub fn paintText(w: *Widget, b: *scene.Builder) anyerror!void {
                 if (x + pc.w < c.x) continue;
                 if (pc.attrs.bg) |bg| try b.box(.{ .x = x, .y = top, .w = pc.w, .h = dl.h }, .{ .fill = bg });
                 if (pc.tab) continue;
+                if (pc.emb) |e| {
+                    if (e.kind == .image) if (app.images.find(e.image)) |ph| {
+                        const r = textembed.box(w, e, dl, pc);
+                        try label.drawPhoto(b, ph, c.x + r.x - xoff, top + r.y, 1);
+                    };
+                    continue;
+                }
                 const fg = pc.attrs.fg orelse st.color;
                 const by = base_y - pc.attrs.offset;
                 try paint.textAt(app, b, x, by, s[pc.b0..pc.b1], pc.attrs.font, fg);

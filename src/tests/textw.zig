@@ -462,3 +462,80 @@ test "textw: debug and scan" {
         .{ ".t scan dragto 1 2 3 4", "wrong # args: should be \".t scan mark x y\" or \".t scan dragto x y ?gain?\"" },
     });
 }
+
+test "textw: embedded windows and images" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval("text .t -width 30 -height 5; pack .t; .t insert end \"ab\\ncd\"; button .t.b; frame .f; button .f.b");
+    try expectEvals(&h, &.{
+        .{ ".t window create 1.1 -window .t.b", "" },
+        .{ ".t window create 1.2 -create {frame %W.c -width 20 -height 30}", "" },
+        .{ ".t window names", ".t.b" },
+        .{ ".t index .t.b", "1.1" },
+        .{ ".t get 1.0 end", "ab\ncd\n" },
+        .{ ".t count -chars 1.0 end", "6" },
+        .{ ".t count -indices 1.0 end", "8" },
+        .{ ".t dump -window 1.0 end", "window .t.b 1.1 window {} 1.2" },
+        .{ ".t window configure .t.b", "{-align {} {} center center} {-create {} {} {} {}} {-padx {} {} 0 0} {-pady {} {} 0 0} {-stretch {} {} 0 0} {-window {} {} {} .t.b}" },
+        .{ ".t window configure .t.b -align top -stretch yes; .t window cget .t.b -align", "top" },
+        .{ ".t window cget .t.b -stretch", "1" },
+        .{ "winfo manager .t.b", "text" },
+        .{ "update; lsort [.t window names]", ".t.b .t.c" },
+        .{ "winfo ismapped .t.c", "1" },
+        .{ "expr {[lindex [.t dlineinfo 1.0] 3] >= 30}", "1" },
+        .{ ".t insert 1.0 xy; .t index .t.b", "1.3" },
+        .{ ".t delete 1.0 1.4; winfo exists .t.b", "0" },
+        .{ ".t window names", ".t.c" },
+        .{ "destroy .t.c; .t window names", "" },
+        .{ ".t dump -window 1.0 end", "window {} 1.0" },
+        .{ "image create photo p1 -width 4 -height 4; .t image create 2.0 -image p1", "p1" },
+        .{ ".t image create 2.0 -image p1", "p1#1" },
+        .{ ".t image create 2.0 -image p1 -name p1", "p1#2" },
+        .{ ".t image names", "p1 p1#1 p1#2" },
+        .{ ".t index p1", "2.2" },
+        .{ ".t image cget p1#1 -name", "" },
+        .{ ".t image configure p1", "{-align {} {} center center} {-padx {} {} 0 0} {-pady {} {} 0 0} {-image {} {} {} p1} {-name {} {} {} {}}" },
+        .{ ".t dump -image 2.0 2.end", "image p1#2 2.0 image p1#1 2.1 image p1 2.2" },
+        .{ ".t peer names", "" },
+    });
+    try expectErrors(&h, &.{
+        .{ ".t window", "wrong # args: should be \".t window option ?arg ...?\"" },
+        .{ ".t window foo", "bad window option \"foo\": must be cget, configure, create, or names" },
+        .{ ".t window create", "wrong # args: should be \".t window create index ?-option value ...?\"" },
+        .{ ".t window create 1.0 -window .x", "bad window path name \".x\"" },
+        .{ ".t window create 1.0 -window .f.b", "can't embed .f.b in .t" },
+        .{ ".t window create 1.0 -bogus 1", "unknown option \"-bogus\"" },
+        .{ ".t window create 1.0 -padx x", "bad screen distance \"x\"" },
+        .{ ".t window create 1.0 -align x", "bad align \"x\": must be baseline, bottom, center, or top" },
+        .{ ".t window create 1.0 -window", "value for \"-window\" missing" },
+        .{ ".t window cget 1.1 -window", "no embedded window at index \"1.1\"" },
+        .{ ".t window names x", "wrong # args: should be \".t window names\"" },
+        .{ ".t image create 2.0", "Either a \"-name\" or a \"-image\" argument must be provided to the \"image create\" subcommand" },
+        .{ ".t image create 2.0 -image nope", "image \"nope\" doesn't exist" },
+        .{ ".t image foo", "bad option \"foo\": must be cget, configure, create, or names" },
+        .{ ".t image cget 1.1 -align", "no embedded image at index \"1.1\"" },
+        .{ ".t peer foo", "bad peer option \"foo\": must be create or names" },
+        .{ ".t peer create", "wrong # args: should be \".t peer create pathName ?-option value ...?\"" },
+    });
+}
+
+test "textw: the display forms of the index modifiers" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval("text .t -width 10 -height 5 -wrap char; pack .t; .t insert end \"0123456789abcdefghij0123456789\\nxyz\\nlast line here\"; update");
+    _ = try h.eval("set e [lindex [split [.t index {1.0 display lineend}] .] 1]");
+    try expectEvals(&h, &.{
+        .{ "expr {$e > 3 && $e < 29}", "1" },
+        .{ "expr {[.t index {1.0 + 1 display lines}] eq \"1.[expr {$e + 1}]\"}", "1" },
+        .{ ".t index {1.2 display linestart}", "1.0" },
+        .{ ".t compare {1.2 +1 display lines} == {1.2 + 1 displaylines}", "1" },
+        .{ ".t index {1.3 - 1 display lines}", "1.0" },
+        .{ ".t index {3.4 + 5 display lines}", "3.14" },
+        .{ ".t index {end + 1 display lines}", "4.0" },
+        .{ ".t compare {end - 1 display lines} == {3.end display linestart}", "1" },
+        .{ ".t index {1.0 + 1 lines}", "2.0" },
+        .{ ".t index {2.1 + 1 display lines}", "3.1" },
+    });
+}
