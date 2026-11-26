@@ -1,5 +1,13 @@
 # Install
 
+## With Homebrew
+
+```sh
+brew install beetlebugorg/tap/ztk
+```
+
+Homebrew installs the `ztk` program on macOS and Linux (arm64 and x86-64) from the release binaries.
+
 ## In the browser
 
 The quickest way to try ztk is the [playground](https://beetlebug.org/ztk/play/index.html). It runs each example, and you can edit the script.
