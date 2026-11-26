@@ -15,7 +15,14 @@ proc echo {data} {.t write [string map [list \r \r\n] $data]}
 focus .t
 ```
 
-`ztk::terminal` is a terminal emulator. ztk keeps the state of the terminal (the screen, the scrollback, the cursor, and the modes) and draws the cells with its own fonts and colors, so each renderer draws it. Tk has no terminal widget.
+`ztk::terminal` is a terminal emulator. Its state (the parser, the screen, the scrollback, the cursor, and the modes) is [libghostty-vt](https://github.com/ghostty-org/ghostty) 1.0.2, the terminal core of Ghostty, through the `ztcl::vt` module of ztcl. The build compiles it from source and links it statically on each target, with no C code, no C++ code, and no libc. ztk renders the cells with its own fonts and colors, so each renderer draws the terminal, and ztk handles the keys, the mouse, and the selection. Tk has no terminal widget.
+
+| Platform | `-shell 1` | `-command` (a program on a PTY) |
+|---|---|---|
+| Linux, x86-64 and arm64 | Yes | Yes, on a pseudo-terminal of `ztcl::pty`, when the embedder turns on `exec` |
+| macOS, arm64 and x86-64 | Yes | Yes, as on Linux |
+| Windows, x86-64 | Yes | Yes, on a pseudo console (ConPTY) |
+| The web (WebAssembly) | Yes | No: the browser build has no processes |
 
 - `-command list` runs a program on a pseudo-terminal with `ztcl::pty spawn`, for example `-command {/bin/sh -l}` or `-command {vim notes.txt}`. The interpreter needs the `exec` capability of ztcl. The `ztk` program does not turn it on, so in `ztk` and in the playground `-command` gives an error. An embedder that turns on `exec` and `channels` gets a full terminal. `-cwd dir` is the working folder of the program, and `-exitcommand script` runs with the status of `ztcl::pty status` when the program ends. On Windows the program runs on a pseudo console (ConPTY), for example `-command cmd.exe` or `-command {powershell.exe -NoLogo}`, and its output has the escape sequences of a VT terminal.
 - Without a program, `pathName write data` puts text and control sequences on the screen, and the keys and the replies of the terminal go to the script of `-inputcommand`, with the bytes as the last word.
@@ -28,7 +35,7 @@ focus .t
 - Subcommands: `write`, `send`, `paste`, `get ?first? ?last?` (the text of view lines, where 0 is the first row of the screen and negative lines are in the scrollback), `size`, `cursor`, `title`, `selection get|clear|range`, `copy`, `yview`, `channel`, `status`, and `kill ?signal?`.
 - The part `::selection` accepts CSS rules. The class `Terminal` gets its colors from the theme.
 
-The terminal keeps no combining marks, and a resize cuts long lines and does not wrap them again. The plan of the terminal and the choice of a VT parser in Zig are in `docs/dev/terminal.md`.
+On 2026-11-26, `zig build term-bench` (ReleaseFast, 8,388,627 bytes of generated output on 80 by 24 cells, x86-64 Linux) parsed 141.6 MiB/s with libghostty-vt, against 114.7 MiB/s with the earlier VT core of ztk. libghostty-vt and `ztcl::vt` add 595,823 bytes to `ztk.wasm` (`docs/dev/libghostty.md`). The widget keeps no combining marks, and a resize cuts long lines and does not wrap them again. The design is in `docs/dev/terminal.md`, and [the references](../references/terminal.md) credit Ghostty.
 
 ### The shell in the widget
 

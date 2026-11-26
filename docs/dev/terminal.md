@@ -2,15 +2,11 @@
 
 `ztk::terminal` is a terminal emulator widget for dockyard and for each app that shows the output of a program. The user page is `docs/widgets/terminal.md`.
 
-## The VT core: libghostty or a parser in Zig
+## The VT core
 
-The first plan was to embed the terminal state of libghostty-vt and draw the grid in ztk. On 2026-11-25 the facts were:
+The state of the terminal is libghostty-vt 1.0.2, through `ztcl.vt.Term` of ztcl (module `ztcl::vt`). `src/term/core.zig` gives the widget the fields and the methods that it used on the earlier `Screen`. The user approved the dependency on 2026-11-26. ztk gets the module through its dependency on ztcl, which builds it from source with `-Dsimd=false` and links it statically, so the module has no C code, no C++ code, and no libc. `docs/dev/libghostty.md` has the pin, the measurements, and the size.
 
-- libghostty-vt has releases (`vt-1.0.0` to `vt-1.0.2`), a C API with semantic versions and an ABI check in its CI, and the MIT license.
-- Each release needs one Zig version. libghostty-vt 1.0 needs Zig 0.17, and ztk uses Zig 0.16.
-- The build fetches Zig packages, and its fast path uses simdutf and Highway in C++. Section 6 of `plan.md` allows no third-party library.
-
-So ztk has its own VT core in `src/term/`: `parser.zig` (the state machine), `screen.zig` (the grids, the cursor, the modes, the scrollback), `width.zig` (the cell width of a code point), `keys.zig` (the bytes of a key), and `boxdraw.zig`. The widget in `widget.zig` uses the screen through `write`, `resize`, `lineAt`, `scrollbackLen`, the cursor, and the modes. A second form of that interface on libghostty-vt is possible when ztk moves to Zig 0.17 and the user approves the dependency.
+ztk keeps its own code for the keys (`keys.zig`), the box drawing characters (`boxdraw.zig`), and the widget (`widget.zig`): the rendering, the mouse reports, the selection, and the scroll of the view. The earlier VT core of ztk (`parser.zig`, `screen.zig`, `width.zig`) is gone.
 
 ## The pseudo-terminal
 
