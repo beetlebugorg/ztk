@@ -119,6 +119,8 @@ pub const App = struct {
     /// The ids of the theme sheet and the platform sheet (0: none), and the look.
     theme_sheet: u32 = 0,
     platform_sheet: u32 = 0,
+    /// The sheet of `--system-accent` (0: none).
+    accent_sheet: u32 = 0,
     classic_look: bool = false,
     env: style_mod.Env = .{},
     style_root: ?[]const u8 = null,
@@ -293,7 +295,26 @@ pub const App = struct {
         }
         _ = try app.styles.add(.base, "base", @embedFile("themes/base.css"));
         app.theme_sheet = try app.styles.add(.theme, "modern", @embedFile("themes/modern.css"));
-        app.platform_sheet = try app.styles.add(.platform, "modern-linux", @embedFile("themes/modern-linux.css"));
+        app.platform_sheet = try app.addPlatformSheet();
+    }
+
+    /// The platform sheet of the modern theme: the native look of the
+    /// platform (Fluent on Windows), or the sheet of Linux.
+    fn addPlatformSheet(app: *App) !u32 {
+        const look = app.platform.nativeLook() orelse "";
+        if (std.mem.eql(u8, look, "windows")) return app.styles.add(.platform, "fluent-windows", @embedFile("themes/fluent-windows.css"));
+        return app.styles.add(.platform, "modern-linux", @embedFile("themes/modern-linux.css"));
+    }
+
+    /// Sets `--system-accent` to the accent of the system, in a sheet of
+    /// its own that a change of the accent replaces.
+    fn setAccentSheet(app: *App, accent: ?geom.Color) void {
+        if (app.accent_sheet != 0) app.styles.remove(app.accent_sheet);
+        app.accent_sheet = 0;
+        const c = accent orelse return;
+        var buf: [64]u8 = undefined;
+        const text = std.fmt.bufPrint(&buf, ":root {{ --system-accent: #{x:0>2}{x:0>2}{x:0>2}; }}", .{ c.r, c.g, c.b }) catch return;
+        app.accent_sheet = app.styles.add(.platform, "system-accent", text) catch 0;
     }
 
     /// Changes the theme sheets to the classic look or the modern look.
@@ -308,7 +329,7 @@ pub const App = struct {
             app.theme_sheet = try app.styles.add(.theme, "classic", @embedFile("themes/classic.css"));
         } else {
             app.theme_sheet = try app.styles.add(.theme, "modern", @embedFile("themes/modern.css"));
-            app.platform_sheet = try app.styles.add(.platform, "modern-linux", @embedFile("themes/modern-linux.css"));
+            app.platform_sheet = try app.addPlatformSheet();
         }
     }
 
@@ -452,7 +473,16 @@ pub const App = struct {
     /// each widget when the scheme changed.
     pub fn followSystem(app: *App) void {
         const a = app.platform.appearance() orelse return;
+        const same_accent = if (app.accent) |x| (if (a.accent) |y| x.r == y.r and x.g == y.g and x.b == y.b else false) else a.accent == null;
         app.accent = a.accent;
+        if (!same_accent) {
+            app.setAccentSheet(a.accent);
+            if (a.dark == app.env.dark) {
+                if (app.root) |r| r.invalidate(.{ .style = true, .measure = false, .layout = false, .paint = true });
+                for (app.tops.items) |t| t.invalidate(.{ .style = true, .measure = false, .layout = false, .paint = true });
+                return;
+            }
+        }
         if (a.dark == app.env.dark) return;
         app.env.dark = a.dark;
         app.styles.generation +%= 1;

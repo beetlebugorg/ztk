@@ -209,6 +209,7 @@ pub const Win32 = struct {
         .trayCreate = vTrayCreate,
         .traySet = vTraySet,
         .trayDrop = vTrayDrop,
+        .nativeLook = vNativeLook,
         .textSystem = vTextSystem,
         .dropTypes = vDropTypes,
         .fileDialog = vFileDialog,
@@ -676,13 +677,32 @@ pub const Win32 = struct {
         const path = std.unicode.utf8ToUtf16LeStringLiteral("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize");
         const value = std.unicode.utf8ToUtf16LeStringLiteral("AppsUseLightTheme");
         if (w32.RegGetValueW(w32.HKEY_CURRENT_USER, path, value, w32.RRF_RT_REG_DWORD, null, &light, &size) != 0) light = 1;
+        return .{ .dark = light == 0, .accent = accentFill(light == 0) };
+    }
+
+    /// The accent of the controls, as WinUI fills them: the shade Dark 1
+    /// of the accent palette of the system in light mode, Light 2 in dark
+    /// mode. The palette has eight RGBA entries: Light 3, Light 2, Light 1,
+    /// the accent, Dark 1, Dark 2, Dark 3, and one more. With no palette,
+    /// the colorization color of the DWM.
+    fn accentFill(dark: bool) ?geom.Color {
+        var pal: [32]u8 = undefined;
+        var size: u32 = pal.len;
+        const path = std.unicode.utf8ToUtf16LeStringLiteral("Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Accent");
+        const value = std.unicode.utf8ToUtf16LeStringLiteral("AccentPalette");
+        // RRF_RT_REG_BINARY
+        if (w32.RegGetValueW(w32.HKEY_CURRENT_USER, path, value, 0x8, null, &pal, &size) == 0 and size >= 24) {
+            const i: usize = if (dark) 1 * 4 else 4 * 4;
+            return .{ .r = pal[i], .g = pal[i + 1], .b = pal[i + 2] };
+        }
         var argb: u32 = 0;
         var opaque_blend: w32.BOOL = 0;
-        const accent: ?geom.Color = if (w32.DwmGetColorizationColor(&argb, &opaque_blend) >= 0)
-            .{ .r = @truncate(argb >> 16), .g = @truncate(argb >> 8), .b = @truncate(argb) }
-        else
-            null;
-        return .{ .dark = light == 0, .accent = accent };
+        if (w32.DwmGetColorizationColor(&argb, &opaque_blend) < 0) return null;
+        return .{ .r = @truncate(argb >> 16), .g = @truncate(argb >> 8), .b = @truncate(argb) };
+    }
+
+    fn vNativeLook(_: *anyopaque) ?[]const u8 {
+        return "windows";
     }
 
     /// The appearance of the system, for the tests.

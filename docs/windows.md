@@ -30,6 +30,7 @@ The variable `ZTK_RENDERER` picks the output of the window:
 - Scale: each window has the scale of its monitor (per-monitor DPI), and the scale changes when the window moves to another monitor.
 - Drawing: Direct3D 12 on the first hardware GPU, then WARP. In the tests, each test scene equals the image of the CPU renderer within 2 levels in a channel.
 - Text: DirectWrite with the fonts of Windows. The default font is Segoe UI Variable with the optical size of each text size (Segoe UI on Windows 10), `monospace` is Cascadia Mono, and the glyphs have the grayscale antialiasing of Windows 11 apps.
+- Look: the controls have the Fluent look of Windows 11 from the theme resources of WinUI 3 (shapes, strokes, fills, sizes, and the accent of the system), in light and dark. See `src/themes/fluent-windows.css`.
 - Keys: the keysyms of Tk, the text of each key, and the modifiers Shift, Control, Alt, and the Windows key. Alt+F4 closes the window.
 - Pointer: motion, the buttons 1, 2, and 3, the two side buttons as 8 and 9, the wheel in both directions, and the cursor of each widget (`-cursor` and the CSS `cursor`).
 - Input methods: the Text Services Framework. The text of an input method goes into an entry or a spinbox.

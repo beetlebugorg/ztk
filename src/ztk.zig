@@ -130,6 +130,7 @@ test {
         _ = @import("platform/wintray.zig");
         _ = @import("platform/dwrite.zig");
         _ = @import("tests/dwrite_look.zig");
+        _ = @import("tests/fluent_look.zig");
         _ = @import("platform/wintaskbar.zig");
         _ = @import("platform/winrecent.zig");
         _ = @import("platform/winhotkey.zig");

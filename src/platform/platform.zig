@@ -350,6 +350,10 @@ pub const Platform = struct {
         /// Removes a tray icon.
         trayDrop: ?*const fn (ptr: *anyopaque, id: TrayId) void = null,
 
+        /// The name of the native look of the platform for the platform
+        /// sheet of the modern theme (`windows`), or null for the default.
+        nativeLook: ?*const fn (ptr: *anyopaque) ?[]const u8 = null,
+
         /// The text engine of the system for the fonts of the app
         /// (`text/system.zig`), or null for the TrueType faces of ztk.
         textSystem: ?*const fn (ptr: *anyopaque) ?@import("../text/system.zig").System = null,
@@ -457,6 +461,10 @@ pub const Platform = struct {
     }
     pub fn dropTypes(p: Platform, w: *Window, types: DropTypes) void {
         if (p.vtable.dropTypes) |f| f(p.ptr, w, types);
+    }
+    pub fn nativeLook(p: Platform) ?[]const u8 {
+        const f = p.vtable.nativeLook orelse return null;
+        return f(p.ptr);
     }
     pub fn setMenuHandler(p: Platform, h: MenuHandler) void {
         if (p.vtable.setMenuHandler) |f| f(p.ptr, h);
