@@ -357,6 +357,31 @@ class Build:
             if frag and frag not in ids:
                 raise SystemExit(f"docs/site/index.html: link to a missing anchor: {href}")
 
+    @staticmethod
+    def agents(out):
+        """The files for agents (https://llmstxt.org): llms.txt lists the
+        pages, llms-full.txt has the Markdown of each page, and api.json
+        is the API index of tools/api-index.tcl."""
+        intro = ("# ztk\n\n> Tk rebuilt in Zig on the ztcl interpreter. A script uses the Tk 8.6 commands, "
+                 "and ztk draws it with CSS styles: on Wayland, on Windows with Direct3D 12, and in a browser with WebGPU or WebGL 2. "
+                 "An agent can see and drive the window it builds: ztk::snapshot gives a PNG of a widget, "
+                 "ztk::tree gives each widget with its class and its box, and ztk::inject sends pointer and key "
+                 "events. `ztk --headless` runs a script with no display.\n\n")
+        lines, full, group = [intro], [intro], None
+        for src, page, section, label in PAGES:
+            if section == "References":
+                continue
+            if section != group:
+                lines.append(f"\n## {section}\n\n")
+                group = section
+            lines.append(f"- [{label}]({SITE}{page})\n")
+            full.append(f"\n\n<!-- {SITE}{page} -->\n\n" + (ROOT / src).read_text(encoding="utf-8"))
+        lines.append(f"\n## For agents\n\n- [API index]({SITE}api.json): each command, and each widget command with its options and their defaults, from the build of the site.\n"
+                     f"- [Full text]({SITE}llms-full.txt): the Markdown of each page above.\n")
+        (out / "llms.txt").write_text("".join(lines), encoding="utf-8")
+        (out / "llms-full.txt").write_text("".join(full), encoding="utf-8")
+        shutil.copy(SITE_DIR / "api.json", out / "api.json")
+
     def run(self, out):
         rendered = [(page, *self.render(src, page)) for src, page, _, _ in PAGES]
         for src, page, anchor in self.links:
@@ -399,6 +424,7 @@ class Build:
                 f'<meta http-equiv="refresh" content="0; url={target}">'
                 f'<link rel="canonical" href="{target}"><a href="{target}">This page moved.</a>\n',
                 encoding="utf-8")
+        self.agents(out)
         (out / ".nojekyll").write_text("", encoding="utf-8")
         print(f"wrote {len(rendered) + 1} pages to {out}")
 
