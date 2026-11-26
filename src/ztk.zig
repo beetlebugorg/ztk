@@ -145,6 +145,7 @@ test {
     _ = @import("term/keys.zig");
     _ = @import("term/boxdraw.zig");
     _ = @import("tests/terminal.zig");
+    _ = @import("tests/snapshot.zig");
     _ = @import("tests/menu.zig");
     _ = @import("tests/canvas.zig");
     _ = @import("canvas/tags.zig");

@@ -56,4 +56,4 @@ ztk follows Tk 8.6.16. A script that runs in `wish` 8.6 runs in ztk when it uses
 
 ## Additions
 
-ztk adds `ztk::terminal` (a terminal emulator widget), `ztk::style`, `ztk::class`, `ztk::animate`, `ztk::tooltip`, `ztk::limit`, the style classes `switch`, `segmented`, and `search`, `-placeholder` on entries, undo in entries, and fractional wheel steps.
+ztk adds `ztk::terminal` (a terminal emulator widget), `ztk::style`, `ztk::class`, `ztk::animate`, `ztk::tooltip`, `ztk::limit`, `ztk::snapshot` (a PNG image of a widget as base64 text), `ztk::tree` (each widget below a path with its class, its position in the toplevel, its size, and its map state), the style classes `switch`, `segmented`, and `search`, `-placeholder` on entries, undo in entries, and fractional wheel steps.
