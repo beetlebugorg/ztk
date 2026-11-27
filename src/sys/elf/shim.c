@@ -7,6 +7,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 #define _GNU_SOURCE
+#include <sys/auxv.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <pthread.h>
@@ -303,6 +304,9 @@ int ztk_fegetexcept(void) {
     return (int)(~m >> 7) & 0x3f;
 }
 #endif
+
+// __getauxval of glibc, which libgcc of AArch64 calls for the atomics.
+unsigned long ztk___getauxval(unsigned long type) { return getauxval(type); }
 
 // The function forms of isnan of glibc. musl has only the macro.
 int ztk_isnan(double x) { return __builtin_isnan(x); }
