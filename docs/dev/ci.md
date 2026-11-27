@@ -26,3 +26,11 @@ Facts from these runs:
 ## Changes
 
 1. Pull requests build two cross targets (aarch64-macos and x86_64-windows) in place of five. The scheduled run builds all five. The Test job builds the program and the tests with one `zig build`. Runs on main and the scheduled run are no longer cancelled by a later push.
+
+## After
+
+| Change | Pull request | Slowest job | Run wall time |
+|---|---|---|---|
+| 1 (two cross targets, one `zig build`) | #245 (CI files) | Build (aarch64-macos) and Build (x86_64-windows), 4.0 | 4.5 |
+
+The #245 run had 6 jobs that ran, in place of 10.
