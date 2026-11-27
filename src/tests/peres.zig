@@ -83,3 +83,23 @@ test "peres: a file that is not a program is refused" {
     defer arena.deinit();
     try t.expectError(error.NotPe, peres.add(arena.allocator(), "not a program", .{}));
 }
+
+test "peres: the subsystem of a program changes to GUI and back, with its checksum" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(t.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const self_path = try std.process.executablePathAlloc(t.io, a);
+    const exe = try std.Io.Dir.cwd().readFileAlloc(t.io, self_path, a, .limited(512 << 20));
+    // The test program is a console program.
+    try t.expectEqual(@as(?u16, 3), peres.subsystem(exe));
+    try peres.setSubsystem(exe, true);
+    try t.expectEqual(@as(?u16, 2), peres.subsystem(exe));
+    const pe = std.mem.readInt(u32, exe[0x3c..][0..4], .little);
+    const at = pe + 24 + 64;
+    try t.expectEqual(peres.checksum(exe, at), std.mem.readInt(u32, exe[at..][0..4], .little));
+    try peres.setSubsystem(exe, false);
+    try t.expectEqual(@as(?u16, 3), peres.subsystem(exe));
+    var junk: [64]u8 = @splat(0);
+    try t.expectError(error.NotPe, peres.setSubsystem(&junk, true));
+}

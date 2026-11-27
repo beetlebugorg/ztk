@@ -26,6 +26,7 @@
 const std = @import("std");
 const Io = std.Io;
 const png = @import("png.zig");
+const peres = @import("peres.zig");
 const Image = @import("render/renderer.zig").Image;
 const ztcl = @import("ztcl");
 const Capability = ztcl.interp.Capability;
@@ -43,13 +44,16 @@ pub const usage =
     \\  --name NAME        the name of the app (default: the name of -o)
     \\  --id ID            the bundle identifier (default: org.ztk.NAME)
     \\  --version V        the version (default: 1.0)
-    \\  --icon FILE.png    the icon, square, 1024 pixels or less
+    \\  --icon FILE.png    the icon, square, 1024 pixels or less (a Windows program: a
+    \\                    .ico, or a .png of 256 pixels or less)
     \\  --allow CAPS       the capabilities of the app, as for ztk --allow
     \\  --menu-bar-only    no Dock icon (LSUIElement), for an app with a tray
     \\  --runner FILE      the ztk program to copy (default: this program, or for one
     \\                    program file of another target lib/ztk/runtime/T/ next to it)
     \\  --no-sign          leave the app folder unsigned (default: an ad hoc signature
     \\                    with the JIT entitlement, from codesign on macOS)
+    \\  --console          a Windows program with a console window (default: the GUI
+    \\                    subsystem, with the console of the terminal that starts it)
     \\
 ;
 
@@ -332,6 +336,7 @@ pub fn run(io: Io, a: std.mem.Allocator, args: []const [:0]const u8, err: *Io.Wr
     var runner: ?[]const u8 = null;
     var target: ?[]const u8 = null;
     var sign = true;
+    var console = false;
     var files: std.ArrayList([]const u8) = .empty;
     var i: usize = 0;
     while (i < args.len) : (i += 1) {
@@ -349,6 +354,8 @@ pub fn run(io: Io, a: std.mem.Allocator, args: []const [:0]const u8, err: *Io.Wr
             menu_bar_only = true;
         } else if (std.mem.eql(u8, arg, "--no-sign")) {
             sign = false;
+        } else if (std.mem.eql(u8, arg, "--console")) {
+            console = true;
         } else if (arg.len > 1 and arg[0] == '-') {
             return usageError(err, "ztk bundle: unknown flag {s}\n", .{arg});
         } else try files.append(a, arg);
@@ -357,7 +364,7 @@ pub fn run(io: Io, a: std.mem.Allocator, args: []const [:0]const u8, err: *Io.Wr
     if (files.items.len == 0) return usageError(err, "ztk bundle: needs a main script\n", .{});
     if (Capability.parse(allow) == null) return usageError(err, "ztk bundle: unknown capability in \"{s}\"\n", .{allow});
     const is_app = std.mem.endsWith(u8, std.mem.trimEnd(u8, out_path, "/"), ".app");
-    if (!is_app) return single(io, a, err, out_path, target orelse ztcl.buildnative.hostTarget(), runner, allow, files.items);
+    if (!is_app) return single(io, a, err, out_path, target orelse ztcl.buildnative.hostTarget(), runner, allow, files.items, .{ .name = name, .version = version, .icon = icon, .console = console });
     if (target) |tg| if (!std.mem.endsWith(u8, tg, "-macos")) {
         return usageError(err, "ztk bundle: a .app folder is for a macOS target. Leave out .app for one program file of {s}.\n", .{tg});
     };
@@ -521,7 +528,47 @@ fn runtimePath(io: Io, a: std.mem.Allocator, target: []const u8, file: []const u
 
 /// Writes one program file: a copy of the ztk program of `target` with
 /// the app in its slot (`appbin.zig`).
-fn single(io: Io, a: std.mem.Allocator, err: *Io.Writer, out_path: []const u8, target: []const u8, runner: ?[]const u8, allow: []const u8, paths: []const []const u8) !u8 {
+/// The numbers of a version such as `1.2.3`, with 0 for the parts that
+/// it does not have.
+fn versionParts(v: []const u8) [4]u16 {
+    var out: [4]u16 = .{ 0, 0, 0, 0 };
+    var it = std.mem.splitScalar(u8, v, '.');
+    var k: usize = 0;
+    while (it.next()) |p| : (k += 1) {
+        if (k == 4) break;
+        out[k] = std.fmt.parseInt(u16, p, 10) catch 0;
+    }
+    return out;
+}
+
+/// The ztk program of Windows with the resources of the app: the icon of
+/// `--icon` (`.ico`, or a `.png` of 256 pixels or less), the manifest of
+/// `peres.defaultManifest`, and the version of `--name` and `--version`.
+/// The subsystem is GUI unless `--console`, so the app opens no console
+/// window, and the program attaches to the console of a terminal that
+/// starts it.
+fn windowsProgram(io: Io, a: std.mem.Allocator, runtime: []const u8, out_path: []const u8, win: WinOpts) ![]u8 {
+    const base = std.fs.path.stem(out_path);
+    const name = win.name orelse base;
+    const ver = versionParts(win.version);
+    var icons: []const peres.Icon = &.{};
+    if (win.icon) |p| {
+        const bytes = try Io.Dir.cwd().readFileAlloc(io, p, a, .limited(16 << 20));
+        icons = if (std.ascii.endsWithIgnoreCase(p, ".ico")) try peres.iconsFromIco(a, bytes) else &.{try peres.iconFromPng(bytes)};
+    }
+    const exe_name = std.fs.path.basename(out_path);
+    const out = try peres.add(a, runtime, .{
+        .icons = icons,
+        .manifest = try peres.defaultManifest(a, name, ver),
+        .version = .{ .file = ver, .product = ver, .product_name = name, .description = name, .internal_name = base, .original_filename = exe_name },
+    });
+    try peres.setSubsystem(out, !win.console);
+    return out;
+}
+/// The resources of a Windows program of `single`.
+const WinOpts = struct { name: ?[]const u8, version: []const u8, icon: ?[]const u8, console: bool };
+
+fn single(io: Io, a: std.mem.Allocator, err: *Io.Writer, out_path: []const u8, target: []const u8, runner: ?[]const u8, allow: []const u8, paths: []const []const u8, win: WinOpts) !u8 {
     const bn = ztcl.buildnative;
     var file: ?[]const u8 = null;
     for (bn.targets) |tg| if (std.mem.eql(u8, tg.name, target)) {
@@ -535,7 +582,14 @@ fn single(io: Io, a: std.mem.Allocator, err: *Io.Writer, out_path: []const u8, t
         return 1;
     };
     const files = try collect(io, a, paths);
-    const bin = appbin.build(a, runtime, files, allow, null, std.fs.path.basename(out_path)) catch |e| {
+    // A Windows program gets its icon, its manifest, and its version as
+    // resources, and the GUI subsystem unless --console, before the app
+    // goes in its slot.
+    const program = if (std.mem.eql(u8, file.?, "ztk.exe")) windowsProgram(io, a, runtime, out_path, win) catch |e| {
+        try err.print("ztk bundle: the resources of {s}: {s}\n", .{ out_path, @errorName(e) });
+        return 1;
+    } else runtime;
+    const bin = appbin.build(a, program, files, allow, null, std.fs.path.basename(out_path)) catch |e| {
         try err.print("ztk bundle: {s}: {s}\n", .{ rt_path, appbin.describe(e) });
         return 1;
     };
