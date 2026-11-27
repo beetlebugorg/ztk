@@ -22,6 +22,14 @@ const protocols = [_]Protocol{
     .{ .xml = "staging/cursor-shape/cursor-shape-v1.xml", .name = "cursor-shape-v1" },
 };
 
+/// A static Linux program (musl) opens the Vulkan loader with the ELF
+/// loader of `src/sys/elf`, which gives the libraries the glibc functions
+/// of `shim.c`.
+fn addElfShim(b: *std.Build, m: *std.Build.Module, target: std.Build.ResolvedTarget) void {
+    if (target.result.os.tag != .linux or !target.result.abi.isMusl() or target.result.cpu.arch != .x86_64) return;
+    m.addCSourceFile(.{ .file = b.path("src/sys/elf/shim.c"), .flags = &.{ "-std=c11", "-Wall", "-Wno-unused-result" } });
+}
+
 /// The module `vulkan_c`: the translation of `src/render/vulkan_c.h` with the
 /// pinned Vulkan headers.
 fn vulkanC(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Module {
@@ -69,6 +77,7 @@ pub fn build(b: *std.Build) void {
         ztk.link_libc = true;
         ztk.addIncludePath(b.dependency("vulkan_headers", .{}).path("include"));
         ztk.addImport("vulkan_c", vulkanC(b, target, optimize));
+        addElfShim(b, ztk, target);
         ztk.addAnonymousImport("quad_vert_spv", .{ .root_source_file = shader(b, "vertex", "src/render/shaders/quad.vert", "quad.vert.spv") });
         ztk.addAnonymousImport("quad_frag_spv", .{ .root_source_file = shader(b, "fragment", "src/render/shaders/quad.frag", "quad.frag.spv") });
     }
@@ -157,6 +166,7 @@ pub fn build(b: *std.Build) void {
         bench_ztk.link_libc = true;
         bench_ztk.addIncludePath(b.dependency("vulkan_headers", .{}).path("include"));
         bench_ztk.addImport("vulkan_c", vulkanC(b, target, .fast));
+        addElfShim(b, bench_ztk, target);
         bench_ztk.addAnonymousImport("quad_vert_spv", .{ .root_source_file = shader(b, "vertex", "src/render/shaders/quad.vert", "quad.vert.spv") });
         bench_ztk.addAnonymousImport("quad_frag_spv", .{ .root_source_file = shader(b, "fragment", "src/render/shaders/quad.frag", "quad.frag.spv") });
     }

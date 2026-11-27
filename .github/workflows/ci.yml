@@ -101,6 +101,15 @@ jobs:
         run: |
           if [ "$RUNNER_OS" = Linux ]; then ulimit -v 6000000; fi
           zig build install test
+      - name: Load the Vulkan driver in a static build
+        # The static (musl) program opens the Vulkan loader and lavapipe
+        # with the ELF loader of src/sys/elf. A failure to load prints its
+        # reason in the SKIP line of the Vulkan tests.
+        if: hashFiles('build.zig') != '' && runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y mesa-vulkan-drivers libvulkan1
+          zig build test -Dtarget=x86_64-linux-musl -Dtest-filter=elf --summary all
+          zig build test -Dtarget=x86_64-linux-musl -Dtest-filter=vulkan --summary all
       - name: Run a script
         if: hashFiles('build.zig') != ''
         run: |
