@@ -27,7 +27,7 @@ fn open() ?*vk.Vulkan {
         return null;
     }
     return vk.Vulkan.init(t.allocator, .{ .validate = true }) catch |e| {
-        std.debug.print("SKIP: no Vulkan device ({s})\n", .{@errorName(e)});
+        std.debug.print("SKIP: no Vulkan device ({s}: {s})\n", .{ @errorName(e), vk.reason() });
         return null;
     };
 }

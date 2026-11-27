@@ -7,6 +7,11 @@ const std = @import("std");
 
 pub const available = false;
 
+/// The cause of `error.NoVulkan`.
+pub fn reason() []const u8 {
+    return "the build has no Vulkan renderer";
+}
+
 pub const Options = struct {
     device_index: ?u32 = null,
     library_name: []const u8 = "libvulkan.so.1",

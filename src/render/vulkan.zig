@@ -1,10 +1,11 @@
 //! The Vulkan renderer. It draws a scene with one instanced draw call:
 //! each `Quad` is one instance, and the vertex shader makes the four
 //! corners of a triangle strip. The program does not link the Vulkan
-//! loader. `init` opens `libvulkan.so.1` with `DynLib`, reads
+//! loader. `init` opens `libvulkan.so.1` with `DynLib`, or in a static
+//! program with the ELF loader of `src/sys/elf/loader.zig`, reads
 //! `vkGetInstanceProcAddr`, and reads each other function from it and
 //! from `vkGetDeviceProcAddr` into two tables. Without the loader, `init`
-//! gives `error.NoVulkan`. The code uses Vulkan 1.0 core only. A draw
+//! gives `error.NoVulkan`, and `reason` gives the cause. The code uses Vulkan 1.0 core only. A draw
 //! submits one command buffer and waits for the queue, so the CPU and the
 //! GPU never share a buffer. The instance buffer grows by a factor of two.
 //! The atlas page is one R8 image that uploads again when the generation
@@ -23,6 +24,58 @@ const Image = renderer_mod.Image;
 pub const c = @import("vulkan_c");
 
 pub const available = true;
+
+const elfload = @import("../sys/elf/loader.zig");
+
+var reason_buf: [512]u8 = undefined;
+var reason_len: usize = 0;
+
+/// The cause of the last `error.NoVulkan` of `init`.
+pub fn reason() []const u8 {
+    return reason_buf[0..reason_len];
+}
+
+fn setReason(comptime fmt: []const u8, args: anytype) void {
+    const out: []u8 = std.fmt.bufPrint(&reason_buf, fmt, args) catch &reason_buf;
+    reason_len = out.len;
+}
+
+/// The Vulkan loader: `std.DynLib`, or the ELF loader in a static program.
+const Lib = if (elfload.supported) struct {
+    h: elfload.Handle,
+
+    fn open(name: []const u8) !Lib {
+        const h = elfload.open(name) catch |e| {
+            setReason("{s}", .{elfload.lastError()});
+            return e;
+        };
+        return .{ .h = h };
+    }
+
+    fn lookup(l: *Lib, comptime T: type, name: [:0]const u8) ?T {
+        return @ptrCast(@alignCast(elfload.sym(l.h, name) orelse return null));
+    }
+
+    fn close(_: *Lib) void {}
+} else struct {
+    d: std.DynLib,
+
+    fn open(name: []const u8) !Lib {
+        const d = std.DynLib.open(name) catch |e| {
+            setReason("{s}: {s}", .{ name, @errorName(e) });
+            return e;
+        };
+        return .{ .d = d };
+    }
+
+    fn lookup(l: *Lib, comptime T: type, name: [:0]const u8) ?T {
+        return l.d.lookup(T, name);
+    }
+
+    fn close(l: *Lib) void {
+        l.d.close();
+    }
+};
 
 const vert_spv = @embedFile("quad_vert_spv");
 const frag_spv = @embedFile("quad_frag_spv");
@@ -149,7 +202,7 @@ const atlas_size: u32 = Atlas.page_size;
 
 pub const Vulkan = struct {
     gpa: std.mem.Allocator,
-    lib: std.DynLib,
+    lib: Lib,
     get_instance_proc: GetProc,
     global: GlobalFns = .{},
     ifn: InstanceFns = .{},
@@ -192,9 +245,12 @@ pub const Vulkan = struct {
     debug_extension: bool = false,
 
     pub fn init(gpa: std.mem.Allocator, opts: Options) !*Vulkan {
-        var lib = std.DynLib.open(opts.library_name) catch return error.NoVulkan;
+        var lib = Lib.open(opts.library_name) catch return error.NoVulkan;
         errdefer lib.close();
-        const get_proc = lib.lookup(GetProc, "vkGetInstanceProcAddr") orelse return error.NoVulkan;
+        const get_proc = lib.lookup(GetProc, "vkGetInstanceProcAddr") orelse {
+            setReason("{s}: no vkGetInstanceProcAddr", .{opts.library_name});
+            return error.NoVulkan;
+        };
         const v = try gpa.create(Vulkan);
         errdefer gpa.destroy(v);
         v.* = .{ .gpa = gpa, .lib = lib, .get_instance_proc = get_proc };
