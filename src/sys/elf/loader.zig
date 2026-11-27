@@ -873,28 +873,45 @@ fn resolve(m: *const Module, si: u32) ?Found {
     return globalLookup(name, ver);
 }
 
-/// Points each missing function at a stub: `mov rdi, name; mov rax,
-/// missingFn; jmp rax`.
+/// Points each missing function at a stub that calls `missingFn` with
+/// the name. x86-64: `mov rdi, name; mov rax, missingFn; jmp rax`.
+/// AArch64: `ldr x0, name; ldr x16, missingFn; br x16; nop`, then the two
+/// addresses, and a flush of the instruction cache.
 fn makeStubs(list: []const Missing) Error!void {
-    const size = 24;
+    const size = if (is_arm) 32 else 24;
     const len = std.mem.alignForward(usize, list.len * size, page);
     const mem = std.c.mmap(null, len, .{ .READ = true, .WRITE = true }, .{ .TYPE = .PRIVATE, .ANONYMOUS = true }, -1, 0);
     if (mem == std.c.MAP_FAILED) return error.MapFailed;
     const code: [*]u8 = @ptrCast(mem);
     for (list, 0..) |mis, k| {
         const c = code + k * size;
-        c[0] = 0x48;
-        c[1] = 0xbf;
-        std.mem.writeInt(u64, c[2..10], @intFromPtr(mis.name), .little);
-        c[10] = 0x48;
-        c[11] = 0xb8;
-        std.mem.writeInt(u64, c[12..20], @intFromPtr(&missingFn), .little);
-        c[20] = 0xff;
-        c[21] = 0xe0;
+        if (is_arm) {
+            // LDR (literal): 0x58000000 | imm19 << 5 | Rt, with the offset imm19 * 4.
+            std.mem.writeInt(u32, c[0..4], 0x58000000 | (4 << 5) | 0, .little);
+            std.mem.writeInt(u32, c[4..8], 0x58000000 | (5 << 5) | 16, .little);
+            std.mem.writeInt(u32, c[8..12], 0xd61f0200, .little);
+            std.mem.writeInt(u32, c[12..16], 0xd503201f, .little);
+            std.mem.writeInt(u64, c[16..24], @intFromPtr(mis.name), .little);
+            std.mem.writeInt(u64, c[24..32], @intFromPtr(&missingFn), .little);
+        } else {
+            c[0] = 0x48;
+            c[1] = 0xbf;
+            std.mem.writeInt(u64, c[2..10], @intFromPtr(mis.name), .little);
+            c[10] = 0x48;
+            c[11] = 0xb8;
+            std.mem.writeInt(u64, c[12..20], @intFromPtr(&missingFn), .little);
+            c[20] = 0xff;
+            c[21] = 0xe0;
+        }
         @as(*usize, @ptrFromInt(mis.at)).* = @intFromPtr(c);
     }
+    if (is_arm) clear_cache(code, code + len);
     _ = std.c.mprotect(@alignCast(mem), len, .{ .READ = true, .EXEC = true });
 }
+
+/// The flush of the instruction cache of compiler-rt.
+extern "c" fn __clear_cache(start: [*]u8, end: [*]u8) void;
+const clear_cache = __clear_cache;
 
 fn missingFn(name: [*:0]const u8) callconv(.c) noreturn {
     var buf: [256]u8 = undefined;
@@ -1356,4 +1373,26 @@ test "elf: the TLS of a test library is per thread (libztktls.so.1)" {
     // A new thread starts from the initial values of the PT_TLS block.
     try t.expectEqual(@as(c_long, 6017), there);
     try t.expect(there_addr.? != here);
+}
+
+test "elf: a call of a function with no definition stops in its stub" {
+    if (!supported) return error.SkipZigTest;
+    const h = open("libztktls.so.1") catch return error.SkipZigTest;
+    const call: *const fn (c_int) callconv(.c) c_int = @ptrCast(@alignCast(sym(h, "call_missing") orelse return error.NoSymbol));
+    // The stub stops the program, so the call runs in a child process.
+    const pid = std.c.fork();
+    if (pid == 0) {
+        // The message of the stub goes nowhere: stderr of the child is closed.
+        // No core file (qemu writes one for a guest that aborts).
+        _ = std.c.close(2);
+        const no_core: std.c.rlimit = .{ .cur = 0, .max = 0 };
+        _ = std.c.setrlimit(.CORE, &no_core);
+        _ = call(1);
+        std.c._exit(0);
+    }
+    try t.expect(pid > 0);
+    var status: c_int = 0;
+    _ = std.c.waitpid(pid, &status, 0);
+    // Killed by SIGABRT (6), from `missingFn`.
+    try t.expectEqual(@as(c_int, 6), status & 0x7f);
 }

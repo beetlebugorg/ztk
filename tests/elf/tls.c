@@ -7,3 +7,7 @@ static __thread int counter = 5;
 __thread long shared_value = 7;
 int *counter_addr(void) { return &counter; }
 long bump(void) { counter += 1; shared_value += 10; return counter * 1000 + shared_value; }
+
+/* A function with no definition anywhere: the loader gives it a stub. */
+extern int ztk_no_such_function(int);
+int call_missing(int x) { return ztk_no_such_function(x); }
