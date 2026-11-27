@@ -1219,23 +1219,27 @@ fn dlIteratePhdrFn(cb: PhdrCallback, data: ?*anyopaque) callconv(.c) c_int {
 
 // ---- The table ----
 
-/// The names of `libc_names.zig` that the C library of this target has.
-/// The C library of AArch64 has no x86 port functions and no `arch_prctl`.
+/// The names of `libc_names.zig` that the C library of this target has,
+/// and `__getauxval`. The C library of AArch64 has no x86 port functions
+/// and no `arch_prctl`.
 const libc_names = blk: {
     const all = @import("libc_names.zig").names;
-    if (!is_arm) break :blk all;
     const x86_only = [_][]const u8{ "arch_prctl", "ioperm", "iopl" };
     @setEvalBranchQuota(400_000);
-    var out: [all.len][2][]const u8 = undefined;
+    var out: [all.len + 1][2][]const u8 = undefined;
     var n: usize = 0;
     for (all) |p| {
-        const skip = for (x86_only) |x| {
+        const skip = is_arm and for (x86_only) |x| {
             if (std.mem.eql(u8, p[0], x)) break true;
         } else false;
         if (skip) continue;
         out[n] = p;
         n += 1;
     }
+    // libgcc of AArch64 reads AT_HWCAP for its atomics with __getauxval, a
+    // name of glibc that the generated table does not have.
+    out[n] = .{ "__getauxval", "ztk___getauxval" };
+    n += 1;
     const final = out[0..n].*;
     break :blk final;
 };
@@ -1395,4 +1399,11 @@ test "elf: a call of a function with no definition stops in its stub" {
     _ = std.c.waitpid(pid, &status, 0);
     // Killed by SIGABRT (6), from `missingFn`.
     try t.expectEqual(@as(c_int, 6), status & 0x7f);
+}
+
+test "elf: __getauxval of the table gives the page size" {
+    if (!supported) return error.SkipZigTest;
+    const h = open("libztktls.so.1") catch return error.SkipZigTest;
+    const f: *const fn () callconv(.c) c_ulong = @ptrCast(@alignCast(sym(h, "page_size") orelse return error.NoSymbol));
+    try t.expectEqual(@as(c_ulong, page), f());
 }

@@ -11,3 +11,7 @@ long bump(void) { counter += 1; shared_value += 10; return counter * 1000 + shar
 /* A function with no definition anywhere: the loader gives it a stub. */
 extern int ztk_no_such_function(int);
 int call_missing(int x) { return ztk_no_such_function(x); }
+
+/* glibc gives __getauxval to libgcc. AT_PAGESZ is 6. */
+extern unsigned long __getauxval(unsigned long);
+unsigned long page_size(void) { return __getauxval(6); }
