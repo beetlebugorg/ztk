@@ -123,6 +123,8 @@ pub const App = struct {
     accent_sheet: u32 = 0,
     classic_look: bool = false,
     env: style_mod.Env = .{},
+    /// The state of `ztk::debug`.
+    dbg: @import("debug.zig").State = .{},
     style_root: ?[]const u8 = null,
     io: ?std.Io = null,
     on_exit: ?*const fn (code: u8) noreturn = null,

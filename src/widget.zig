@@ -315,10 +315,11 @@ pub fn traceScript(a: std.mem.Allocator, command: []const u8, path: []const u8) 
 /// cannot change it.
 pub fn classCommand(comptime class: *const Class) ztcl.interp.NativeFn {
     return struct {
-        fn call(it: *ztcl.Interp, argv: []const ztcl.Value, _: ?*ztcl.interp.Cmd) ztcl.Error!ztcl.Value {
+        fn call(it: *ztcl.Interp, argv: []const ztcl.Value, site: ?*ztcl.interp.Cmd) ztcl.Error!ztcl.Value {
             const app = App.of(it);
             app.enter();
             defer app.leave();
+            if (app.dbg.sources) app.dbg.site = site;
             if (argv.len < 2) return it.wrongArgs(class.command ++ " pathName ?-option value ...?");
             const w = try create(app, class, try it.str(argv[1]));
             const pathcopy = try it.alloc().dupe(u8, w.path);
@@ -383,7 +384,10 @@ pub fn widgetCommand(it: *ztcl.Interp, argv: []const ztcl.Value, cmd: ?*ztcl.int
         return it.fail("wrong # args: should be \"{s} option ?arg ...?\"", .{w.path});
     }
     const sub = try it.str(argv[1]);
-    if (sub.len >= 2 and std.mem.startsWith(u8, "configure", sub)) return own(it, try options.configure(w, it, argv[2..]));
+    if (sub.len >= 2 and std.mem.startsWith(u8, "configure", sub)) {
+        if (app.dbg.sources) app.dbg.site = cmd;
+        return own(it, try options.configure(w, it, argv[2..]));
+    }
     if (sub.len >= 2 and std.mem.startsWith(u8, "cget", sub)) {
         if (argv.len != 3) return it.fail("wrong # args: should be \"{s} cget option\"", .{w.path});
         return own(it, try options.cget(w, it, argv[2]));

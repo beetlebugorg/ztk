@@ -155,6 +155,9 @@ const Sheet = struct {
     sheet: css_parse.Sheet,
 };
 
+/// The result of `StyleSet.explain`: the sheet and the declaration.
+pub const Explained = struct { sheet: []const u8, origin: Origin, decl: css_parse.Decl };
+
 const Match = struct {
     origin: u8,
     specificity: u32,
@@ -386,6 +389,35 @@ pub const StyleSet = struct {
     pub fn diagnostics(s: *const StyleSet, id: u32) []const css_parse.Diagnostic {
         for (s.sheets.items) |sh| if (sh.id == id) return sh.sheet.diagnostics;
         return &.{};
+    }
+
+    /// The declaration that wins for one of `props` on `w`, for
+    /// `ztk::debug why`. It sorts the matches as `compute` does and gives
+    /// the last one. It reads no cache and runs only when a script asks.
+    pub fn explain(s: *const StyleSet, w: *const Widget, env: Env, props: []const css_parse.Prop) ?Explained {
+        var best: ?Explained = null;
+        var best_key: Match = undefined;
+        for (s.sheets.items, 0..) |sh, si| {
+            for (sh.sheet.rules) |rule| {
+                if (!mediaOk(rule.media, env)) continue;
+                var spec: ?u32 = null;
+                for (rule.selectors) |*sel| {
+                    if (sel.part == null and select.matches(sel, w, null)) {
+                        if (spec == null or sel.specificity > spec.?) spec = sel.specificity;
+                    }
+                }
+                const sp = spec orelse continue;
+                for (rule.decls, 0..) |d, di| {
+                    if (std.mem.indexOfScalar(css_parse.Prop, props, d.prop) == null) continue;
+                    const key: Match = .{ .origin = @intFromEnum(sh.origin), .specificity = sp, .sheet_index = @intCast(si), .order = rule.order, .decl_index = @intCast(di), .decls = &.{} };
+                    if (best == null or !matchLess({}, key, best_key)) {
+                        best = .{ .sheet = sh.name, .origin = sh.origin, .decl = d };
+                        best_key = key;
+                    }
+                }
+            }
+        }
+        return best;
     }
 
     fn mediaOk(m: css_parse.Media, env: Env) bool {

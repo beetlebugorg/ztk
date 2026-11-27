@@ -14,6 +14,7 @@ const ztcl = @import("ztcl");
 const geom = @import("geom.zig");
 const widget_mod = @import("widget.zig");
 const Widget = widget_mod.Widget;
+const debug = @import("debug.zig");
 
 pub const Type = enum {
     string,
@@ -116,6 +117,8 @@ pub const Slot = struct {
     /// Owned by the widget allocator. The text that the script gave.
     text: []const u8 = "",
     value: Parsed = .none,
+    /// The last call that set the option, while `ztk::debug sources` is on.
+    src: ?*debug.Source = null,
 };
 
 /// The limit of a screen distance in logical pixels.
@@ -394,15 +397,18 @@ pub fn applyEx(w: *Widget, it: *ztcl.Interp, pairs: []const ztcl.Value, creating
     }
     if (pending.items.len == 0) return;
     const changed = try a.alloc(usize, pending.items.len);
+    const rec = w.app.dbg.sources;
     for (pending.items, changed) |p, *c| {
         const gpa = w.app.gpa;
         const owned = try gpa.dupe(u8, p.text);
         const slot = &w.opts[p.index];
+        const prev = if (rec) try a.dupe(u8, try textOf(w, it, p.index)) else "";
         if (slot.set) gpa.free(slot.text);
-        slot.* = .{ .set = true, .text = owned, .value = p.parsed };
+        slot.* = .{ .set = true, .text = owned, .value = p.parsed, .src = slot.src };
         // A parsed text value points at the owned copy.
         if (p.parsed == .text) slot.value = .{ .text = owned };
         c.* = p.index;
+        if (rec) debug.note(w, it, p.index, if (creating) .create else .configure, pairs, prev);
     }
     w.afterConfigure(changed) catch |e| return e;
     w.invalidate(.{ .style = true, .measure = true, .layout = true, .paint = true });
@@ -416,9 +422,11 @@ pub fn setOne(w: *Widget, it: *ztcl.Interp, i: usize, text: []const u8, d: widge
     const gpa = w.app.gpa;
     const owned = try gpa.dupe(u8, norm);
     const slot = &w.opts[i];
+    const prev = if (w.app.dbg.sources) try it.alloc().dupe(u8, try textOf(w, it, i)) else "";
     if (slot.set) gpa.free(slot.text);
-    slot.* = .{ .set = true, .text = owned, .value = parsed };
+    slot.* = .{ .set = true, .text = owned, .value = parsed, .src = slot.src };
     if (parsed == .text) slot.value = .{ .text = owned };
+    if (w.app.dbg.sources) debug.note(w, it, i, .animate, &.{}, prev);
     const changed = [_]usize{i};
     try w.afterConfigure(&changed);
     if (w.life == .dead) return;
@@ -433,7 +441,8 @@ pub fn store(w: *Widget, i: usize, text: []const u8, parsed: Parsed) !void {
     const owned = try gpa.dupe(u8, text);
     const slot = &w.opts[i];
     if (slot.set) gpa.free(slot.text);
-    slot.* = .{ .set = true, .text = owned, .value = if (parsed == .text) .{ .text = owned } else parsed };
+    slot.* = .{ .set = true, .text = owned, .value = if (parsed == .text) .{ .text = owned } else parsed, .src = slot.src };
+    if (w.app.dbg.sources) debug.note(w, w.app.it, i, .internal, &.{}, "");
 }
 
 /// The index of an option of the class. The name is a real option.
@@ -469,7 +478,10 @@ pub fn initSlots(w: *Widget, it: *ztcl.Interp) !void {
 
 pub fn freeSlots(w: *Widget) void {
     const gpa = w.app.gpa;
-    for (w.opts) |s| if (s.set) gpa.free(s.text);
+    for (w.opts) |s| {
+        if (s.set) gpa.free(s.text);
+        if (s.src) |r| r.free(gpa);
+    }
     gpa.free(w.opts);
     w.opts = &.{};
 }

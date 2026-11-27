@@ -138,6 +138,7 @@
    "ztk::animate",
    "ztk::class",
    "ztk::clock",
+   "ztk::debug",
    "ztk::inject",
    "ztk::limit",
    "ztk::snapshot",
