@@ -1131,7 +1131,9 @@ pub const Win32 = struct {
             },
             w32.WM_SETTINGCHANGE => {
                 // The dark mode of the apps changes with the setting "ImmersiveColorSet".
-                if (lp != 0) {
+                // The animation effects change with SPI_SETCLIENTAREAANIMATION
+                // in wParam, for the setting for less motion.
+                if (wp == 0x1043) b.push(.{ .appearance = .{ .window = w } }) else if (lp != 0) {
                     const name: [*:0]const u16 = @ptrFromInt(@as(usize, @bitCast(lp)));
                     if (std.mem.eql(u16, std.mem.span(name), std.unicode.utf8ToUtf16LeStringLiteral("ImmersiveColorSet"))) b.push(.{ .appearance = .{ .window = w } });
                 }
