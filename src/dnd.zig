@@ -4,6 +4,7 @@
 //!     tkdnd::drop_target register .w ?{DND_Files DND_Text}?
 //!     tkdnd::drop_target unregister .w
 //!     bind .w <<Drop>> {puts %D}
+//!     ztk::dnd drag .w -files [list $path] ?-text text? ?-move bool?
 //!
 //! A widget of the list accepts the types of its entry (`*` is both). The
 //! window of its toplevel accepts the union of the types of its widgets,
@@ -171,4 +172,41 @@ pub fn handleEvent(app: *App, d: anytype, top: *Widget) void {
             fire(app, w, "Drop", data, d.x, d.y);
         },
     }
+}
+
+/// `ztk::dnd drag window ?-files list? ?-text string? ?-move bool?`: a
+/// drag of files or text out of the window to other apps, from a
+/// binding of `<B1-Motion>`. It runs in the modal loop of the system
+/// until the user drops or cancels, and gives the action of the target:
+/// `copy`, `move`, or `none`. A backend with no drags gives
+/// `ZTK DND UNAVAILABLE`.
+pub fn cmdDnd(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
+    const app = App.of(it);
+    const usage = "ztk::dnd drag window ?-files list? ?-text string? ?-move bool?";
+    if (argv.len < 3 or !std.mem.eql(u8, try it.str(argv[1]), "drag")) return it.wrongArgs(usage);
+    if (argv.len % 2 != 1) return it.wrongArgs(usage);
+    const path = try it.str(argv[2]);
+    const w = app.find(path) orelse return it.fail("bad window path name \"{s}\"", .{path});
+    var d: plat.DragData = .{};
+    var i: usize = 3;
+    while (i < argv.len) : (i += 2) {
+        const opt = try it.str(argv[i]);
+        const v = argv[i + 1];
+        if (std.mem.eql(u8, opt, "-files")) {
+            const l = try it.readList(v);
+            const files = try it.alloc().alloc([]const u8, l.len);
+            for (l, files) |x, *f| f.* = try it.str(x);
+            d.files = files;
+        } else if (std.mem.eql(u8, opt, "-text")) {
+            d.text = try it.str(v);
+        } else if (std.mem.eql(u8, opt, "-move")) {
+            const t = try it.str(v);
+            d.allow_move = @import("options.zig").parseBool(t) orelse return it.fail("expected boolean value but got \"{s}\"", .{t});
+        } else return it.fail("bad option \"{s}\": must be -files, -move, or -text", .{opt});
+    }
+    if (d.files.len == 0 and d.text.len == 0) return it.fail("a drag needs -files or -text", .{});
+    const f = app.platform.vtable.dragStart orelse
+        return it.failCode("ZTK DND UNAVAILABLE", "a drag out of the window is not available on this platform", .{});
+    const win = app.winOf(w.toplevel()) orelse return it.fail("\"{s}\" has no window", .{path});
+    return .{ .str = @tagName(f(app.platform.ptr, win, d)) };
 }

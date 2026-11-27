@@ -628,6 +628,38 @@ test "windows: the thumbnail buttons keep their slots, and a click gives a thumb
     try t.expectEqual(@as(u32, 1), has(events.items, .thumb).?.thumb.index);
 }
 
+test "windows: a drag out gives the files and the text, and a cancel ends DoDragDrop" {
+    if (!enabled()) return;
+    const drag = @import("../platform/windrag.zig");
+    const drop = @import("../platform/windrop.zig");
+    const gpa = t.allocator;
+    const o = try drag.DataObject.create(&gpa, .{ .files = &.{ "C:/a/b.txt", "C:/c d.txt" }, .text = "hi" });
+    defer _ = o.vtbl.Release(o);
+    const files = (try drag.readFormat(gpa, o, drop.CF_HDROP)).?;
+    defer gpa.free(files);
+    // DROPFILES: pFiles 20 and fWide 1, then the paths with `\`.
+    try t.expectEqual(@as(u32, 20), std.mem.readInt(u32, files[0..4], .little));
+    try t.expectEqual(@as(u32, 1), std.mem.readInt(u32, files[16..20], .little));
+    const want = std.unicode.utf8ToUtf16LeStringLiteral("C:\\a\\b.txt\x00C:\\c d.txt\x00\x00");
+    try t.expectEqualSlices(u8, std.mem.sliceAsBytes(want), files[20..]);
+    const text = (try drag.readFormat(gpa, o, drop.CF_UNICODETEXT)).?;
+    defer gpa.free(text);
+    try t.expectEqualSlices(u8, std.mem.sliceAsBytes(std.unicode.utf8ToUtf16LeStringLiteral("hi\x00")), text);
+    // CF_TEXT is not a format of the drag.
+    var f: drop.FORMATETC = .{ .cfFormat = 1 };
+    try t.expect(o.vtbl.QueryGetData(o, &f) < 0);
+    var e: ?*anyopaque = null;
+    try t.expectEqual(@as(i32, 0), o.vtbl.EnumFormatEtc(o, 1, &e));
+    defer @import("../sys/com.zig").release(e.?);
+    var got: [4]drop.FORMATETC = undefined;
+    var n: u32 = 0;
+    _ = @import("../sys/com.zig").call(i32, e.?, 3, .{ @as(u32, 4), &got, &n });
+    try t.expectEqual(@as(u32, 2), n);
+    // A source that cancels at once: DoDragDrop ends with no drop.
+    var src: drag.DropSource = .{ .cancel_now = true };
+    try t.expectEqual(@import("../platform/platform.zig").DragAction.none, drag.runWith(&gpa, .{ .text = "x" }, &src));
+}
+
 test "windows: a jump list of tasks builds, and the test drops it with no commit" {
     if (!enabled()) return;
     const jump = @import("../platform/winjump.zig");
