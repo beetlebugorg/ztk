@@ -36,7 +36,7 @@ test "button: invoke, results, and disabled" {
     try t.expectEqualStrings("wrong # args: should be \".b invoke\"", try h.evalError(".b invoke extra"));
     try t.expectEqualStrings("flash is not supported in this stage", try h.evalError(".b flash"));
     try t.expectEqualStrings("bad option \"foo\": must be cget, configure, flash, or invoke", try h.evalError(".b foo"));
-    try t.expectEqualStrings("unknown option \"-image\"", try h.evalError("button .q -image x"));
+    try t.expectEqualStrings("image \"x\" doesn't exist", try h.evalError("button .q -image x"));
 }
 
 test "button: the pointer paths" {

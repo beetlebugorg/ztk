@@ -73,7 +73,7 @@ test "label: lines, characters, and options" {
     try t.expectEqual(2 * one, try num(&h, "winfo reqheight .b"));
     const zero = try num(&h, "winfo reqwidth .z");
     try t.expectEqual(10 * zero, try num(&h, "winfo reqwidth .w"));
-    try t.expectEqualStrings("unknown option \"-image\"", try h.evalError("label .q -image x"));
+    try t.expectEqualStrings("image \"x\" doesn't exist", try h.evalError("label .q -image x"));
     try t.expectEqualStrings("bad state \"foo\": must be active, disabled, or normal", try h.evalError(".a configure -state foo"));
     try t.expectEqualStrings("bad anchor \"foo\": must be n, ne, e, se, s, sw, w, nw, or center", try h.evalError(".a configure -anchor foo"));
     try t.expectEqualStrings("bad justification \"foo\": must be left, right, or center", try h.evalError(".a configure -justify foo"));
@@ -94,7 +94,8 @@ test "wm: title, geometry, protocol, and state" {
     try t.expectEqualStrings("wrong # args: should be \"wm option window ?arg ...?\"", try h.evalError("wm title"));
     try t.expectEqualStrings("bad window path name \".zz\"", try h.evalError("wm title .zz"));
     try t.expectEqualStrings("bad option \"foo\": must be aspect, attributes, client, colormapwindows, command, deiconify, focusmodel, forget, frame, geometry, grid, group, iconbitmap, iconify, iconmask, iconname, iconphoto, iconposition, iconwindow, manage, maxsize, minsize, overrideredirect, positionfrom, protocol, resizable, sizefrom, stackorder, state, title, transient, or withdraw", try h.evalError("wm foo ."));
-    try t.expectEqualStrings("wm attributes is not supported in this stage", try h.evalError("wm attributes ."));
+    try t.expectEqualStrings("-alpha 1.0 -topmost 0 -zoomed 0 -fullscreen 0 -type {}", try h.eval("wm attributes ."));
+    try t.expectEqualStrings("bad attribute \"-bogus\": must be -alpha, -topmost, -zoomed, -fullscreen, or -type", try h.evalError("wm attributes . -bogus"));
     try t.expectEqualStrings("normal", try h.eval("wm state ."));
     try t.expectEqualStrings("withdrawn", try h.eval("wm withdraw .; wm state ."));
     try t.expectEqualStrings("normal", try h.eval("wm deiconify .; wm state ."));

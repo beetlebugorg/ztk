@@ -264,12 +264,13 @@ pub fn cmdWm(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.E
 }
 
 /// `wm attributes window ?option? ?value option value ...?`: -alpha,
-/// -fullscreen, -topmost, -type, and -zoomed, stored for the window.
+/// -topmost, -zoomed, -fullscreen, and -type, stored for the window, in
+/// the order of `wish` 8.6 on X11.
 fn attributes(app: *App, st: *State, args: []const Value) ztcl.Error!Value {
     const it = app.it;
     const a = it.alloc();
-    const keys = [_][]const u8{ "-alpha", "-fullscreen", "-topmost", "-type", "-zoomed" };
-    const defaults = [_][]const u8{ "1.0", "0", "0", "", "0" };
+    const keys = [_][]const u8{ "-alpha", "-topmost", "-zoomed", "-fullscreen", "-type" };
+    const defaults = [_][]const u8{ "1.0", "0", "0", "0", "" };
     const index = struct {
         fn of(k: []const u8) ?usize {
             for (keys, 0..) |n, i| if (eq(n, k)) return i;
@@ -287,15 +288,15 @@ fn attributes(app: *App, st: *State, args: []const Value) ztcl.Error!Value {
     }
     if (args.len == 1) {
         const k = try it.str(args[0]);
-        const i = index.of(k) orelse return it.fail("bad attribute \"{s}\": must be -alpha, -fullscreen, -topmost, -type, or -zoomed", .{k});
+        const i = index.of(k) orelse return it.fail("bad attribute \"{s}\": must be -alpha, -topmost, -zoomed, -fullscreen, or -type", .{k});
         const v = st.prop(keys[i]);
-        return .{ .str = try a.dupe(u8, if (v.len > 0 or i == 3) v else defaults[i]) };
+        return .{ .str = try a.dupe(u8, if (v.len > 0 or i == 4) v else defaults[i]) };
     }
     if (args.len % 2 != 0) return it.fail("wrong # args: should be \"wm attributes window ?-option value ...?\"", .{});
     var k: usize = 0;
     while (k < args.len) : (k += 2) {
         const name = try it.str(args[k]);
-        const i = index.of(name) orelse return it.fail("bad attribute \"{s}\": must be -alpha, -fullscreen, -topmost, -type, or -zoomed", .{name});
+        const i = index.of(name) orelse return it.fail("bad attribute \"{s}\": must be -alpha, -topmost, -zoomed, -fullscreen, or -type", .{name});
         st.setProp(app.gpa, keys[i], try it.str(args[k + 1])) catch return it.memError();
     }
     return Value.empty;

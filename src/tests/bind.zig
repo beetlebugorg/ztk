@@ -150,7 +150,10 @@ test "bind: virtual events and bindtags" {
     try t.expectEqualStrings("value for \"-x\" missing", try h.evalError("event generate .f <1> -x"));
     try t.expectEqualStrings("wrong # args: should be \"event generate window event ?-option value ...?\"", try h.evalError("event generate .f"));
     try t.expectEqualStrings("bad -when value \"later\": must be now, head, mark, or tail", try h.evalError("event generate .f <Motion> -when later"));
-    try t.expectEqualStrings("event add is not supported in this stage", try h.evalError("event add <<X>> <1>"));
+    try t.expectEqualStrings("", try h.eval("event add <<X>> <1>"));
+    try t.expectEqualStrings("<Button-1>", try h.eval("event info <<X>>"));
+    _ = try h.eval("event delete <<X>> <1>");
+    try t.expectEqualStrings("", try h.eval("event info <<X>>"));
 }
 
 test "dispatch: pointer movement runs Enter and Leave" {

@@ -8,6 +8,7 @@
 
 const std = @import("std");
 const Harness = @import("../testing.zig").Harness;
+const ztcl = @import("ztcl");
 const t = std.testing;
 
 fn expectAll(h: *Harness, cases: []const [2][]const u8) !void {
@@ -41,6 +42,9 @@ test "canvas: options and the messages of wish" {
     try h.init();
     defer h.deinit();
     _ = try h.eval("canvas .c; .c create rectangle 0 0 1 1; image create photo p1 -width 4 -height 4");
+    // `image create photo -file` reads through `open`, so the messages of a file need the file commands, as in wish.
+    try h.it.allow(@backingInt(ztcl.interp.Capability.file) | @backingInt(ztcl.interp.Capability.channels));
+    try ztcl.fsroot.setHost(&h.it);
     try expectAll(&h, &.{
         .{ ".c configure -confine", "-confine confine Confine 1 1" },
         .{ ".c configure -closeenough", "-closeenough closeEnough CloseEnough 1 1.0" },
