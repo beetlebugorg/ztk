@@ -7,6 +7,9 @@ const std = @import("std");
 
 pub const available = false;
 
+pub const drm_format_xbgr8888: u32 = 0x34324258;
+pub const drm_mod_linear: u64 = 0;
+
 /// The cause of `error.NoVulkan`.
 pub fn reason() []const u8 {
     return "the build has no Vulkan renderer";

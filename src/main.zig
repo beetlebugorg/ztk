@@ -187,6 +187,7 @@ pub fn main(init: std.process.Init) !void {
         allow_bits = b.allow;
         rest = args[1..];
     }
+    var force_cpu = false;
     var i: usize = 1;
     while (in_bundle == null and own_app == null and i < args.len) : (i += 1) {
         const a: []const u8 = args[i];
@@ -195,7 +196,7 @@ pub fn main(init: std.process.Init) !void {
         } else if (std.mem.eql(u8, a, "--mcp")) {
             mcp = true;
         } else if (std.mem.eql(u8, a, "--cpu")) {
-            // The Wayland backend renders with the CPU renderer, so the flag has no other effect.
+            force_cpu = true;
         } else if (std.mem.eql(u8, a, "--allow") or std.mem.eql(u8, a, "--root")) {
             if (i + 1 >= args.len) fail(err, "ztk: {s} needs a value\n", .{a});
             i += 1;
@@ -365,6 +366,8 @@ pub fn main(init: std.process.Init) !void {
             .display = init.environ_map.get("WAYLAND_DISPLAY"),
             .no_input_thread = if (init.environ_map.get("ZTK_NO_INPUT_THREAD")) |v| std.mem.eql(u8, v, "1") else false,
             .debug = if (init.environ_map.get("ZTK_WAYLAND_DEBUG")) |v| std.mem.eql(u8, v, "1") else false,
+            // ZTK_RENDERER=cpu, vulkan, or auto. The default is auto: Vulkan when the compositor accepts its dma-bufs.
+            .renderer = if (force_cpu) .cpu else if (init.environ_map.get("ZTK_RENDERER")) |v| std.meta.stringToEnum(ztk.wayland.Renderer, v) orelse fail(err, "ztk: ZTK_RENDERER is cpu, vulkan, or auto\n", .{}) else .auto,
         }) catch |e| fail(err, "ztk: cannot use the Wayland display: {s}\n", .{@errorName(e)});
         platform = wl.?.platform();
     } else if (ztk.windows_enabled) {

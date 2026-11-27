@@ -10,7 +10,10 @@
 //! GPU never share a buffer. The instance buffer grows by a factor of two.
 //! The atlas page is one R8 image that uploads again when the generation
 //! of the atlas changes. With validation on, a debug messenger counts the
-//! messages, and the tests expect zero.
+//! messages, and the tests expect zero. `createExported` makes a target
+//! with linear memory that exports as a dma-buf (VK_KHR_external_memory_fd
+//! and VK_EXT_external_memory_dma_buf), for the Wayland backend. The device
+//! enables these extensions only when it has all of them.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -117,6 +120,7 @@ const InstanceFns = struct {
     vkGetDisplayModePropertiesKHR: c.PFN_vkGetDisplayModePropertiesKHR = null,
     vkCreateDebugUtilsMessengerEXT: c.PFN_vkCreateDebugUtilsMessengerEXT = null,
     vkDestroyDebugUtilsMessengerEXT: c.PFN_vkDestroyDebugUtilsMessengerEXT = null,
+    vkEnumerateDeviceExtensionProperties: c.PFN_vkEnumerateDeviceExtensionProperties = null,
 };
 
 const DeviceFns = struct {
@@ -173,6 +177,8 @@ const DeviceFns = struct {
     vkCmdCopyImageToBuffer: c.PFN_vkCmdCopyImageToBuffer = null,
     vkCmdCopyBufferToImage: c.PFN_vkCmdCopyBufferToImage = null,
     vkCmdPipelineBarrier: c.PFN_vkCmdPipelineBarrier = null,
+    vkGetImageSubresourceLayout: c.PFN_vkGetImageSubresourceLayout = null,
+    vkGetMemoryFdKHR: c.PFN_vkGetMemoryFdKHR = null,
 };
 
 const GlobalFns = struct {
@@ -189,7 +195,23 @@ pub const Target = struct {
     memory: c.VkDeviceMemory = null,
     view: c.VkImageView = null,
     framebuffer: c.VkFramebuffer = null,
+    /// An exported target (`createExported`): the dma-buf descriptor of its
+    /// memory and the layout of its one plane. The target owns the descriptor.
+    fd: i32 = -1,
+    stride: u32 = 0,
+    offset: u32 = 0,
 };
+
+/// The DRM format of an exported target: bytes R, G, B, X in memory (XB24).
+pub const drm_format_xbgr8888: u32 = 0x34324258;
+/// The DRM format modifier of linear memory.
+pub const drm_mod_linear: u64 = 0;
+
+/// The extensions of the dma-buf export. Each one is optional: without the
+/// three of `export_exts`, `canExport` is false.
+const export_instance_exts = [_][*:0]const u8{ "VK_KHR_get_physical_device_properties2", "VK_KHR_external_memory_capabilities" };
+const export_exts = [_][*:0]const u8{ "VK_KHR_external_memory", "VK_KHR_external_memory_fd", "VK_EXT_external_memory_dma_buf" };
+const dedicated_exts = [_][*:0]const u8{ "VK_KHR_get_memory_requirements2", "VK_KHR_dedicated_allocation" };
 
 const Buffer = struct {
     buf: c.VkBuffer = null,
@@ -243,6 +265,9 @@ pub const Vulkan = struct {
     name_buf: [256]u8 = undefined,
     name_len: usize = 0,
     debug_extension: bool = false,
+    /// The device has the extensions of `export_exts`.
+    export_on: bool = false,
+    dedicated_on: bool = false,
 
     pub fn init(gpa: std.mem.Allocator, opts: Options) !*Vulkan {
         var lib = Lib.open(opts.library_name) catch return error.NoVulkan;
@@ -322,6 +347,32 @@ pub const Vulkan = struct {
         return false;
     }
 
+    fn hasInstanceExt(v: *Vulkan, name: []const u8) bool {
+        var n: u32 = 0;
+        _ = v.global.vkEnumerateInstanceExtensionProperties.?(null, &n, null);
+        if (n == 0) return false;
+        const list = v.gpa.alloc(c.VkExtensionProperties, n) catch return false;
+        defer v.gpa.free(list);
+        _ = v.global.vkEnumerateInstanceExtensionProperties.?(null, &n, list.ptr);
+        for (list[0..n]) |ep| if (std.mem.eql(u8, std.mem.sliceTo(&ep.extensionName, 0), name)) return true;
+        return false;
+    }
+
+    /// Whether the physical device has each extension of a list.
+    fn hasDeviceExts(v: *Vulkan, names: []const [*:0]const u8) bool {
+        var n: u32 = 0;
+        _ = v.ifn.vkEnumerateDeviceExtensionProperties.?(v.phys, null, &n, null);
+        if (n == 0) return false;
+        const list = v.gpa.alloc(c.VkExtensionProperties, n) catch return false;
+        defer v.gpa.free(list);
+        _ = v.ifn.vkEnumerateDeviceExtensionProperties.?(v.phys, null, &n, list.ptr);
+        outer: for (names) |want| {
+            for (list[0..n]) |ep| if (std.mem.eql(u8, std.mem.sliceTo(&ep.extensionName, 0), std.mem.span(want))) continue :outer;
+            return false;
+        }
+        return true;
+    }
+
     fn debugCallback(severity: c.VkDebugUtilsMessageSeverityFlagBitsEXT, _: c.VkDebugUtilsMessageTypeFlagsEXT, data: [*c]const c.VkDebugUtilsMessengerCallbackDataEXT, user: ?*anyopaque) callconv(.c) c.VkBool32 {
         const v: *Vulkan = @ptrCast(@alignCast(user.?));
         if (severity & (c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | c.VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) != 0) {
@@ -347,6 +398,10 @@ pub const Vulkan = struct {
             exts[n_ext] = e;
             n_ext += 1;
         }
+        for (export_instance_exts) |e| if (v.hasInstanceExt(std.mem.span(e))) {
+            exts[n_ext] = e;
+            n_ext += 1;
+        };
         if (use_layer) {
             exts[n_ext] = "VK_EXT_debug_utils";
             n_ext += 1;
@@ -412,13 +467,32 @@ pub const Vulkan = struct {
         qi.queueFamilyIndex = v.queue_family;
         qi.queueCount = 1;
         qi.pQueuePriorities = &prio;
+        var exts: [export_exts.len + dedicated_exts.len][*:0]const u8 = undefined;
+        var n_ext: usize = 0;
+        if (v.ifn.vkEnumerateDeviceExtensionProperties != null and v.hasDeviceExts(&export_exts)) {
+            v.export_on = true;
+            for (export_exts) |e| {
+                exts[n_ext] = e;
+                n_ext += 1;
+            }
+            if (v.hasDeviceExts(&dedicated_exts)) {
+                v.dedicated_on = true;
+                for (dedicated_exts) |e| {
+                    exts[n_ext] = e;
+                    n_ext += 1;
+                }
+            }
+        }
         var ci = zero(c.VkDeviceCreateInfo, c.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO);
         ci.queueCreateInfoCount = 1;
         ci.pQueueCreateInfos = &qi;
+        ci.enabledExtensionCount = @intCast(n_ext);
+        ci.ppEnabledExtensionNames = @ptrCast(&exts);
         try check(v.ifn.vkCreateDevice.?(v.phys, &ci, null, &v.device));
         const getter = v.ifn.vkGetDeviceProcAddr.?;
         loadFns(DeviceFns, &v.dfn, getter, v.device);
         v.dfn.vkGetDeviceQueue.?(v.device, v.queue_family, 0, &v.queue);
+        if (v.dfn.vkGetMemoryFdKHR == null or v.dfn.vkGetImageSubresourceLayout == null) v.export_on = false;
     }
 
     /// One mode of a display: the size in pixels and the refresh rate in millihertz.
@@ -749,8 +823,86 @@ pub const Vulkan = struct {
         return t;
     }
 
+    /// Whether `createExported` can work: the device has the extensions of the dma-buf export.
+    pub fn canExport(v: *const Vulkan) bool {
+        return v.export_on;
+    }
+
+    /// A target with linear memory that exports as a dma-buf: one plane of
+    /// the DRM format `drm_format_xbgr8888` and the modifier `drm_mod_linear`.
+    /// A compositor reads it through `zwp_linux_dmabuf_v1`. A draw waits for
+    /// the queue, so the image is complete when `draw` returns.
+    pub fn createExported(v: *Vulkan, width: u32, height: u32) !*Target {
+        if (!v.export_on) return error.NoExport;
+        const t = try v.gpa.create(Target);
+        errdefer v.gpa.destroy(t);
+        t.* = .{ .width = width, .height = height };
+        var ext_info = zero(c.VkExternalMemoryImageCreateInfo, c.VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO);
+        ext_info.handleTypes = c.VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+        var ii = zero(c.VkImageCreateInfo, c.VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO);
+        ii.pNext = &ext_info;
+        ii.imageType = c.VK_IMAGE_TYPE_2D;
+        ii.format = c.VK_FORMAT_R8G8B8A8_UNORM;
+        ii.extent = .{ .width = width, .height = height, .depth = 1 };
+        ii.mipLevels = 1;
+        ii.arrayLayers = 1;
+        ii.samples = c.VK_SAMPLE_COUNT_1_BIT;
+        ii.tiling = c.VK_IMAGE_TILING_LINEAR;
+        ii.usage = c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | c.VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+        ii.sharingMode = c.VK_SHARING_MODE_EXCLUSIVE;
+        ii.initialLayout = c.VK_IMAGE_LAYOUT_UNDEFINED;
+        try check(v.dfn.vkCreateImage.?(v.device, &ii, null, &t.image));
+        errdefer v.dfn.vkDestroyImage.?(v.device, t.image, null);
+        var req: c.VkMemoryRequirements = undefined;
+        v.dfn.vkGetImageMemoryRequirements.?(v.device, t.image, &req);
+        var dedicated = zero(c.VkMemoryDedicatedAllocateInfo, c.VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO);
+        dedicated.image = t.image;
+        var export_info = zero(c.VkExportMemoryAllocateInfo, c.VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO);
+        export_info.handleTypes = c.VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+        if (v.dedicated_on) export_info.pNext = &dedicated;
+        var ai = zero(c.VkMemoryAllocateInfo, c.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO);
+        ai.pNext = &export_info;
+        ai.allocationSize = req.size;
+        ai.memoryTypeIndex = v.memoryType(req.memoryTypeBits, c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) catch try v.memoryType(req.memoryTypeBits, 0);
+        const ar = v.dfn.vkAllocateMemory.?(v.device, &ai, null, &t.memory);
+        if (ar != c.VK_SUCCESS) {
+            setReason("{s}: no exportable memory (vkAllocateMemory gave {d})", .{ v.deviceName(), ar });
+            return error.NoExport;
+        }
+        errdefer v.dfn.vkFreeMemory.?(v.device, t.memory, null);
+        try check(v.dfn.vkBindImageMemory.?(v.device, t.image, t.memory, 0));
+        var gi = zero(c.VkMemoryGetFdInfoKHR, c.VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR);
+        gi.memory = t.memory;
+        gi.handleType = c.VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+        var fd: c_int = -1;
+        const fr = v.dfn.vkGetMemoryFdKHR.?(v.device, &gi, &fd);
+        if (fr != c.VK_SUCCESS) {
+            setReason("{s}: no dma-buf of the memory (vkGetMemoryFdKHR gave {d})", .{ v.deviceName(), fr });
+            return error.NoExport;
+        }
+        t.fd = fd;
+        errdefer _ = std.os.linux.close(t.fd);
+        const sub = c.VkImageSubresource{ .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel = 0, .arrayLayer = 0 };
+        var layout: c.VkSubresourceLayout = undefined;
+        v.dfn.vkGetImageSubresourceLayout.?(v.device, t.image, &sub, &layout);
+        t.stride = @intCast(layout.rowPitch);
+        t.offset = @intCast(layout.offset);
+        t.view = try v.createView(t.image, c.VK_FORMAT_R8G8B8A8_UNORM);
+        errdefer v.dfn.vkDestroyImageView.?(v.device, t.view, null);
+        var fi = zero(c.VkFramebufferCreateInfo, c.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO);
+        fi.renderPass = v.render_pass;
+        fi.attachmentCount = 1;
+        fi.pAttachments = &t.view;
+        fi.width = width;
+        fi.height = height;
+        fi.layers = 1;
+        try check(v.dfn.vkCreateFramebuffer.?(v.device, &fi, null, &t.framebuffer));
+        return t;
+    }
+
     pub fn destroyTarget(v: *Vulkan, t: *Target) void {
         _ = v.dfn.vkDeviceWaitIdle.?(v.device);
+        if (t.fd >= 0) _ = std.os.linux.close(t.fd);
         v.dfn.vkDestroyFramebuffer.?(v.device, t.framebuffer, null);
         v.dfn.vkDestroyImageView.?(v.device, t.view, null);
         v.dfn.vkDestroyImage.?(v.device, t.image, null);
@@ -857,6 +1009,8 @@ pub const Vulkan = struct {
             v.dfn.vkCmdDraw.?(v.cmd, 4, @intCast(n), 0, 0);
         }
         v.dfn.vkCmdEndRenderPass.?(v.cmd);
+        // An exported image goes to the compositor in the general layout.
+        if (t.fd >= 0) v.barrier(t.image, c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, c.VK_IMAGE_LAYOUT_GENERAL, c.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, c.VK_ACCESS_MEMORY_READ_BIT, c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, c.VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
         try v.submitAndWait();
     }
 
@@ -871,7 +1025,8 @@ pub const Vulkan = struct {
         var region = std.mem.zeroes(c.VkBufferImageCopy);
         region.imageSubresource = .{ .aspectMask = c.VK_IMAGE_ASPECT_COLOR_BIT, .mipLevel = 0, .baseArrayLayer = 0, .layerCount = 1 };
         region.imageExtent = .{ .width = t.width, .height = t.height, .depth = 1 };
-        v.dfn.vkCmdCopyImageToBuffer.?(v.cmd, t.image, c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, v.readback.buf, 1, &region);
+        const layout: c.VkImageLayout = if (t.fd >= 0) c.VK_IMAGE_LAYOUT_GENERAL else c.VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        v.dfn.vkCmdCopyImageToBuffer.?(v.cmd, t.image, layout, v.readback.buf, 1, &region);
         try v.submitAndWait();
         @memcpy(out.pixels[0..bytes], v.readback.mapped.?[0..bytes]);
         out.width = t.width;
