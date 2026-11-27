@@ -137,3 +137,49 @@ test "debug diff: the pixels and the widgets that changed" {
     _ = try h.eval("ztk::debug forget before");
     try t.expectEqualStrings("no mark \"before\"", try h.evalError("ztk::debug diff before"));
 }
+
+test "debug short answers: explain, click, ran, and changes" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval(
+        \\ztk::debug sources on
+        \\button .save -text Save -command save
+        \\label .status -text Ready
+        \\pack .save .status
+        \\proc save {} { .status configure -text Saved; lock .save }
+        \\proc lock {w} { $w configure -state disabled }
+        \\update
+        \\ztk::debug mark a
+    );
+    const click = try h.eval("ztk::debug click .save");
+    try t.expect(std.mem.indexOf(u8, click, "command .save: save") != null);
+    try t.expect(std.mem.indexOf(u8, click, "option .status -text: \"Ready\" -> \"Saved\" (line 1 of proc save)") != null);
+    try t.expectEqualStrings(
+        \\.save -state is "disabled": set by $w configure -state disabled at line 1 of proc lock.
+        \\Before: "normal". Writes: 1.
+        \\Stack: lock .save < save
+        \\A click on .save runs no -command while it is disabled.
+    , try h.eval("ztk::debug explain .save -state"));
+    // The trace was off, so the click stopped it again, and `ran` has the records.
+    try t.expectEqualStrings("0", try h.eval("dict get [ztk::debug trace status] on"));
+    try t.expect(std.mem.indexOf(u8, try h.eval("ztk::debug ran"), "<ButtonRelease-1> on .save") != null);
+    try t.expect(std.mem.indexOf(u8, try h.eval("ztk::debug click .save"), "command .save did not run: the widget is disabled") != null);
+    const changes = try h.eval("ztk::debug changes a");
+    try t.expect(std.mem.indexOf(u8, changes, ".save -state: \"normal\" -> \"disabled\"") != null);
+    try t.expect(std.mem.indexOf(u8, changes, ".status -text: \"Ready\" -> \"Saved\"") != null);
+    try t.expectEqualStrings("wrong # args: should be \"ztk::debug explain pathName ?option?\"", try h.evalError("ztk::debug explain"));
+}
+
+test "debug mcp: initialize, tools/list, and a call" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval("button .b -text Hi; pack .b; update");
+    try t.expectEqualStrings("", try h.eval("::ztk::priv::dbg::mcp {{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}}"));
+    try t.expectEqualStrings("ztk", try h.eval("ztcl::json get [::ztk::priv::dbg::mcp {{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}}] result serverInfo name"));
+    try t.expectEqualStrings("11", try h.eval("llength [ztcl::json get [::ztk::priv::dbg::mcp {{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}}] result tools]"));
+    try t.expectEqualStrings("x", try h.eval("set r [::ztk::priv::dbg::mcp {{\"jsonrpc\":\"2.0\",\"id\":\"x\",\"method\":\"tools/call\",\"params\":{\"name\":\"ui_explain\",\"arguments\":{\"path\":\".b\",\"option\":\"-text\"}}}}]; ztcl::json get $r id"));
+    try t.expectEqualStrings(".b -text is \"Hi\": a call set it while the record was off.", try h.eval("lindex [split [ztcl::json get $r result content 0 text] \\n] 0"));
+    try t.expectEqualStrings("true", try h.eval("ztcl::json get [::ztk::priv::dbg::mcp {{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"ui_explain\",\"arguments\":{\"path\":\".nope\"}}}}] result isError"));
+}
