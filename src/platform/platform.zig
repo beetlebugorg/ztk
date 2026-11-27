@@ -448,6 +448,11 @@ pub const Platform = struct {
         /// Removes a tray icon.
         trayDrop: ?*const fn (ptr: *anyopaque, id: TrayId) void = null,
 
+        /// The icon of a window from `wm iconphoto`: one image for each
+        /// size that the script gives, in its order. `default` is true for
+        /// `-default`, the icon of the app and of its later windows.
+        setIcon: ?*const fn (ptr: *anyopaque, w: *Window, icons: []const TrayIcon, default: bool) void = null,
+
         /// The name of the native look of the platform for the platform
         /// sheet of the modern theme (`windows`), or null for the default.
         nativeLook: ?*const fn (ptr: *anyopaque) ?[]const u8 = null,
@@ -546,6 +551,9 @@ pub const Platform = struct {
     }
     pub fn traySet(p: Platform, id: TrayId, icon: TrayIcon, template: bool, tooltip: []const u8, menu: MenuId) void {
         if (p.vtable.traySet) |f| f(p.ptr, id, icon, template, tooltip, menu);
+    }
+    pub fn setIcon(p: Platform, w: *Window, icons: []const TrayIcon, default: bool) void {
+        if (p.vtable.setIcon) |f| f(p.ptr, w, icons, default);
     }
     pub fn trayDrop(p: Platform, id: TrayId) void {
         if (p.vtable.trayDrop) |f| f(p.ptr, id);
