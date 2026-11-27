@@ -19,4 +19,9 @@ cd "$root"
 status=0
 LD_LIBRARY_PATH="$dir" zig build test -Dtarget="$arch-linux-musl" $qemu -Dtest-filter=elf --summary all >"$dir/log" 2>&1 || status=$?
 grep -E 'tests passed|failed|error|elf:' "$dir/log" || true
+# A crash: run the test program again in gdb for the stack.
+bin="$(sed -n 's/^failed command: \([^ ]*\).*/\1/p' "$dir/log" | head -n 1)"
+if [ "$status" -ne 0 ] && [ -z "$qemu" ] && [ -n "$bin" ] && command -v gdb >/dev/null 2>&1; then
+    LD_LIBRARY_PATH="$dir" gdb -batch -ex run -ex "bt 25" "$bin" 2>&1 | grep -E '^#|signal' | head -40
+fi
 exit "$status"
