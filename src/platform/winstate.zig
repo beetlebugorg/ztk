@@ -105,3 +105,20 @@ pub fn setBackdrop(hwnd: w32.HWND, kind: plat.Backdrop) bool {
     const v: u32 = @backingInt(kind);
     return DwmSetWindowAttribute(hwnd, 38, &v, 4) >= 0;
 }
+
+/// DWMWA_USE_IMMERSIVE_DARK_MODE (20, from Windows 10 20H1): the title
+/// bar and the frame of the system in the dark or the light scheme. False
+/// on a system with no such attribute.
+pub fn setDark(hwnd: w32.HWND, dark: bool) bool {
+    const v: i32 = @intFromBool(dark);
+    return DwmSetWindowAttribute(hwnd, 20, &v, 4) >= 0;
+}
+
+extern "dwmapi" fn DwmGetWindowAttribute(h: w32.HWND, attr: u32, value: *anyopaque, size: u32) callconv(.winapi) i32;
+
+/// The dark scheme of the title bar of a window, for the tests, or null.
+pub fn isDark(hwnd: w32.HWND) ?bool {
+    var v: i32 = 0;
+    if (DwmGetWindowAttribute(hwnd, 20, &v, 4) < 0) return null;
+    return v != 0;
+}

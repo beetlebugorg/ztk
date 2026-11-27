@@ -694,6 +694,29 @@ test "windows: ztk::win::backdrop sets the system backdrop of a hidden window" {
     try t.expect(ws.setBackdrop(o.hwnd, .auto));
 }
 
+test "windows: the title bar of the system follows the dark scheme of the app" {
+    if (!enabled()) return;
+    const ws = @import("../platform/winstate.zig");
+    var events: std.ArrayListUnmanaged(Event) = .empty;
+    defer events.deinit(t.allocator);
+    const b = try be.Win32.init(t.allocator, .{ .visible = false, .renderer = .cpu });
+    defer b.deinit();
+    const p = b.platform();
+    const w = try p.createWindow(.{ .size = .{ .w = 200, .h = 100 }, .dark = true });
+    try pollAll(b, &events);
+    const hwnd = b.hwndOf(w).?;
+    // Windows 10 before 20H1 has no such attribute.
+    const first = ws.isDark(hwnd) orelse {
+        std.debug.print("SKIP: no dark title bar on this Windows\n", .{});
+        return;
+    };
+    try t.expect(first);
+    p.setWindowDark(w, false);
+    try t.expectEqual(@as(?bool, false), ws.isDark(hwnd));
+    p.setWindowDark(w, true);
+    try t.expectEqual(@as(?bool, true), ws.isDark(hwnd));
+}
+
 test "windows: full screen and topmost of wm attributes change the window and come back" {
     if (!enabled()) return;
     const ws = @import("../platform/winstate.zig");

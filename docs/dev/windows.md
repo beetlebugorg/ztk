@@ -146,3 +146,7 @@ Rule 12 of `AGENTS.md` forbids windows on the live desktop session of the develo
 ## Drags out
 
 `ztk::dnd drag window ?-files list? ?-text string? ?-move bool?` (ztk#62, `src/platform/windrag.zig`) calls `DoDragDrop` with a data object and a drop source of its own, and runs in the modal loop of OLE until the drop or the cancel. The data object gives `CF_HDROP` (a `DROPFILES` with wide paths, each with `\` between the parts) and `CF_UNICODETEXT`, each in a new `HGLOBAL` for the receiver, and `EnumFormatEtc` is `SHCreateStdEnumFmtEtc`. The drop source drops when the buttons go up and cancels at Escape. The effect of the target gives `copy`, `move`, or `none`. The test reads each format through the table of the object, and runs `DoDragDrop` with a source that cancels at once, so no drag shows.
+
+## Title bar
+
+The title bar and the frame of the system follow the scheme of the app (`--dark`, or the dark mode of Windows): `DwmSetWindowAttribute` with `DWMWA_USE_IMMERSIVE_DARK_MODE` at the creation of each window (`WindowOptions.dark`) and at each change of the scheme (`setWindowDark`), from Windows 10 20H1. This is the first part of step 4 of `docs/dev/native-look.md`. Mica needs a swap chain for composition, which comes next.

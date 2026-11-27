@@ -507,6 +507,9 @@ pub const App = struct {
         }
         if (a.dark == app.env.dark) return;
         app.env.dark = a.dark;
+        // The title bars of the system follow the scheme.
+        if (app.window) |w| app.platform.setWindowDark(w, a.dark);
+        for (app.tops.items) |t| if (app.winOf(t)) |w| app.platform.setWindowDark(w, a.dark);
         app.styles.generation +%= 1;
         if (app.root) |r| r.invalidate(.{ .style = true, .measure = true, .layout = true, .paint = true });
         for (app.tops.items) |t| t.invalidate(.{ .style = true, .measure = true, .layout = true, .paint = true });
