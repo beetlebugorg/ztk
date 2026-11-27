@@ -169,6 +169,7 @@ test {
     if (@import("builtin").os.tag == .linux) {
         _ = @import("platform/dbus.zig");
         _ = @import("platform/portal.zig");
+        _ = @import("platform/sni.zig");
     }
     _ = @import("tests/entry.zig");
     _ = @import("tests/entry2.zig");
