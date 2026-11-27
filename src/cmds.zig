@@ -97,7 +97,7 @@ pub fn register(app: *App) !void {
     try it.register("tk", wm.cmdTk);
     app.root = try widget.makeNode(app, &toplevel.root_class, ".", null);
     try toplevel.register(app);
-    const win = try app.platform.createWindow(.{});
+    const win = try app.platform.createWindow(.{ .dark = app.env.dark });
     win.user = app.root;
     app.window = win;
     app.root.?.data = win;
@@ -159,7 +159,7 @@ fn cmdInterp(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.E
     // With `--allow interp`, the capability is on before this command
     // replaced the real one: the bit goes off, so `allow` puts the real
     // command back.
-    const bit = @intFromEnum(ztcl.interp.Capability.interp);
+    const bit = @backingInt(ztcl.interp.Capability.interp);
     it.capabilities &= ~@as(@TypeOf(it.capabilities), bit);
     try it.allow(bit);
     return it.callWords(argv);

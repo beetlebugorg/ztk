@@ -17,6 +17,9 @@ pub const WindowOptions = struct {
     /// Null: a toplevel window. Else a popup surface next to an anchor
     /// in a parent window. Only a backend with `Platform.popups` reads it.
     popup: ?Popup = null,
+    /// The window starts in the dark scheme: a backend with a title bar
+    /// of the system draws it dark.
+    dark: bool = false,
 };
 
 /// A popup surface: a drawn menu or a drop-down list. On Wayland it is an
@@ -392,6 +395,9 @@ pub const Platform = struct {
         /// Runs a drag of files or text out of a window to its end, in the
         /// modal loop of the system, and gives the action of the target.
         dragStart: ?*const fn (ptr: *anyopaque, w: *Window, d: DragData) DragAction = null,
+        /// The scheme of the title bar and the frame of the system for a
+        /// window: dark or light, as the scheme of the app.
+        setWindowDark: ?*const fn (ptr: *anyopaque, w: *Window, dark: bool) void = null,
         /// Sets the full screen and the topmost state of a window, from
         /// `wm attributes`.
         setWindowState: ?*const fn (ptr: *anyopaque, w: *Window, s: WindowState) void = null,
@@ -588,6 +594,9 @@ pub const Platform = struct {
     pub fn messageBox(p: Platform, opts: *const MessageBox) ?MessageBox.Button {
         const f = p.vtable.messageBox orelse return null;
         return f(p.ptr, opts);
+    }
+    pub fn setWindowDark(p: Platform, w: *Window, dark: bool) void {
+        if (p.vtable.setWindowDark) |f| f(p.ptr, w, dark);
     }
     pub fn hasWindowState(p: Platform) bool {
         return p.vtable.setWindowState != null;

@@ -79,7 +79,7 @@ fn configured(w: *widget.Widget, changed: []const usize) ztcl.Error!void {
 /// Makes the window and the render thread of a toplevel other than ".".
 fn init(w: *widget.Widget) anyerror!void {
     const app = w.app;
-    const win = try app.platform.createWindow(.{ .size = .{ .w = 200, .h = 200 } });
+    const win = try app.platform.createWindow(.{ .size = .{ .w = 200, .h = 200 }, .dark = app.env.dark });
     errdefer app.platform.destroyWindow(win);
     win.user = w;
     if (app.window) |main| win.scale = main.scale;

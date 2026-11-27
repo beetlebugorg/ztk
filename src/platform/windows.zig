@@ -226,6 +226,7 @@ pub const Win32 = struct {
         .setWindowState = vSetWindowState,
         .reducedMotion = vReducedMotion,
         .winBackdrop = vWinBackdrop,
+        .setWindowDark = vSetWindowDark,
         .winJumpTasks = vWinJumpTasks,
         .winThumbBar = vWinThumbBar,
         .dragStart = vDragStart,
@@ -276,6 +277,8 @@ pub const Win32 = struct {
         defer b.gpa.free(title);
         const hwnd = w32.CreateWindowExW(0, class_name, title, w32.WS_OVERLAPPEDWINDOW, w32.CW_USEDEFAULT, w32.CW_USEDEFAULT, 200, 200, null, null, b.inst, null) orelse return error.NoWindow;
         errdefer _ = w32.DestroyWindow(hwnd);
+        // The title bar of the system in the scheme of the app.
+        if (opts.dark) _ = winstate.setDark(hwnd, true);
         const scale = scaleOf(hwnd);
         const w = try b.gpa.create(Window);
         errdefer b.gpa.destroy(w);
@@ -709,6 +712,11 @@ pub const Win32 = struct {
     fn vWinBackdrop(ptr: *anyopaque, w: *Window, kind: plat.Backdrop) bool {
         const r = self(ptr).recOf(w) orelse return false;
         return winstate.setBackdrop(r.hwnd, kind);
+    }
+
+    fn vSetWindowDark(ptr: *anyopaque, w: *Window, dark: bool) void {
+        const r = self(ptr).recOf(w) orelse return;
+        _ = winstate.setDark(r.hwnd, dark);
     }
 
     fn vWinJumpTasks(ptr: *anyopaque, tasks: []const plat.JumpTask) bool {
