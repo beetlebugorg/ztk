@@ -31,7 +31,7 @@ pub fn register(it: *ztcl.Interp) !void {
 }
 
 /// The position of `w` in its toplevel, in logical pixels.
-fn posInTop(w: *const widget.Widget) [2]i32 {
+pub fn posInTop(w: *const widget.Widget) [2]i32 {
     var p: [2]i32 = .{ 0, 0 };
     var x: ?*const widget.Widget = w;
     while (x) |c| : (x = c.parent) {
@@ -50,18 +50,15 @@ fn cmdSnapshot(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl
     try app.flush();
     // A script in the flush can delete the widget.
     const w = app.lookup(path) orelse return it.fail("bad window path name \"{s}\"", .{path});
-    const top = w.toplevel();
-    const win = app.winOf(top) orelse return it.fail("window \"{s}\" is not shown", .{path});
-    const scene = &app.renderOf(top).lastFrame().scene;
-    if (scene.width == 0 or scene.height == 0) return it.fail("window \"{s}\" has no frame yet", .{path});
     const gpa = app.gpa;
-    var full: Image = .{ .width = scene.width, .height = scene.height, .pixels = try gpa.alloc(u8, @as(usize, scene.width) * scene.height * 4) };
+    const shot = try renderTop(it, app, w, path);
+    const full = shot.image;
     defer gpa.free(full.pixels);
-    cpu.render(scene, &app.atlas, &full);
+    const win_scale = shot.scale;
 
     // The rectangle of the widget in device pixels, inside the image.
     const pos = posInTop(w);
-    const s = win.scale;
+    const s = win_scale;
     const x0 = clampPx(@as(f64, @floatFromInt(pos[0])) * s, full.width);
     const y0 = clampPx(@as(f64, @floatFromInt(pos[1])) * s, full.height);
     const x1 = clampPx(@as(f64, @floatFromInt(pos[0] +| w.geom.w)) * s, full.width);
@@ -81,6 +78,20 @@ fn cmdSnapshot(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl
     const enc = std.base64.standard.Encoder;
     const out = try it.alloc().alloc(u8, enc.calcSize(bytes.len));
     return .{ .str = enc.encode(out, bytes) };
+}
+
+/// The image of the last frame of the toplevel of `w`, from the CPU
+/// renderer, and the scale of its window. The pixels are owned by the
+/// App allocator.
+/// `name` is the path for the error messages.
+pub fn renderTop(it: *ztcl.Interp, app: *App, w: *widget.Widget, name: []const u8) ztcl.Error!struct { image: Image, scale: f64 } {
+    const top = w.toplevel();
+    const win = app.winOf(top) orelse return it.fail("window \"{s}\" is not shown", .{name});
+    const scene = &app.renderOf(top).lastFrame().scene;
+    if (scene.width == 0 or scene.height == 0) return it.fail("window \"{s}\" has no frame yet", .{name});
+    var full: Image = .{ .width = scene.width, .height = scene.height, .pixels = try app.gpa.alloc(u8, @as(usize, scene.width) * scene.height * 4) };
+    cpu.render(scene, &app.atlas, &full);
+    return .{ .image = full, .scale = win.scale };
 }
 
 fn clampPx(v: f64, max: u32) u32 {

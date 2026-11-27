@@ -116,3 +116,24 @@ test "debug trace: focus, grab, the ring, and stop" {
     try t.expectEqualStrings("0", try h.eval("dict get [ztk::debug trace status] count"));
     try t.expectEqualStrings("bad kind in \"nope\": must be event, motion, binding, command, option, geometry, dirty, frame, focus, grab, or all", try h.evalError("ztk::debug trace start -kinds nope"));
 }
+
+test "debug diff: the pixels and the widgets that changed" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval("wm geometry . 200x100; frame .f -width 200 -height 100 -background white; place .f -x 0 -y 0; frame .f.a -width 20 -height 10 -background white; place .f.a -x 10 -y 20; label .f.l -text hi; update");
+    try t.expectEqualStrings("before", try h.eval("ztk::debug mark before"));
+    try t.expectEqualStrings("pixels 0", try h.eval("ztk::debug diff before"));
+    _ = try h.eval(".f.a configure -background red; update");
+    try t.expectEqualStrings("pixels 200 box {10 20 20 10} options {{.f.a -background white red}}", try h.eval("ztk::debug diff before"));
+    _ = try h.eval("place .f.l -x 100 -y 50; frame .f.new; update");
+    _ = try h.eval("set d [ztk::debug diff before -image]");
+    try t.expectEqualStrings(".f.new", try h.eval("dict get $d added"));
+    try t.expectEqualStrings("{.f.l 0 1}", try h.eval("dict get $d mapped"));
+    try t.expectEqualStrings("{.f.a -background white red}", try h.eval("dict get $d options"));
+    // The image: red where the pixels changed.
+    try t.expectEqualStrings("255 0 0", try h.eval("image create photo d -data [dict get $d image]; d get 15 25"));
+    try t.expectEqualStrings("before", try h.eval("ztk::debug marks"));
+    _ = try h.eval("ztk::debug forget before");
+    try t.expectEqualStrings("no mark \"before\"", try h.evalError("ztk::debug diff before"));
+}

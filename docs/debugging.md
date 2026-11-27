@@ -1,6 +1,6 @@
 # Debugging
 
-`ztk::debug` answers the question "why is this widget like this". It gives the source of each option of a widget and the geometry chain that sets its size and place. The answers are Tcl dicts, so a script, a test, or an agent can read them.
+`ztk::debug` answers the question "why is this widget like this". It gives the source of each option of a widget and the geometry chain that sets its size and place. Its trace records what ran for each event, and its visual diffs show what an action changed. The answers are Tcl dicts, so a script, a test, or an agent can read them.
 
 ## The source of an option
 
@@ -141,6 +141,34 @@ foreach r [ztk::debug trace records -cause [dict get $click seq]] {
 ```
 
 While the trace is off, each hook tests one mask and makes no record.
+
+## Visual diffs
+
+`ztk::debug mark name ?path?` keeps the image of the toplevel of `path` (default `.`) and the state of each widget in it: the class, the box, the map state, and the text of each option. `ztk::debug diff name` makes the same capture again and gives what changed.
+
+```tcl
+label .msg -text Ready
+button .go -text Go -command {.msg configure -text Done -foreground red}
+pack .msg .go
+update
+ztk::debug mark before
+.go invoke
+update
+puts [ztk::debug diff before]
+```
+
+| Key | What it has |
+|---|---|
+| `pixels` | The count of device pixels that changed. |
+| `box` | The bounding box of the changed pixels in logical pixels: x, y, width, height. |
+| `size` | The old and the new size of the image, when it changed. |
+| `added`, `removed` | The widgets that are new, and the widgets that are gone. |
+| `moved` | Each widget whose box changed: the path, the old box, and the new box. |
+| `mapped` | Each widget whose map state changed: the path, the old state, and the new state. |
+| `options` | Each option whose text changed: the path, the option, the old text, and the new text. |
+| `image` | With `-image`: a PNG of the new image as base64 text. A changed pixel is red, and each other pixel is a pale copy. |
+
+The answer has only the keys with a change. The answer `pixels 0` with no other key means that the image and the widgets are the same. `-tolerance n` counts a pixel only when a channel changed by more than `n` (default 0). `ztk::debug marks` gives the names of the marks, and `ztk::debug forget name` removes one.
 
 ## Cost
 

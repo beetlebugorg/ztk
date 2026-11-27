@@ -38,6 +38,7 @@ const App = app_mod.App;
 const Widget = widget_mod.Widget;
 const Value = ztcl.Value;
 const trace_mod = @import("debugtrace.zig");
+const diff_mod = @import("debugdiff.zig");
 const bind = @import("bind.zig");
 const geom = @import("geom.zig");
 
@@ -48,6 +49,8 @@ pub const State = struct {
     /// True while option writes keep their source.
     keep: bool = false,
     trace: trace_mod.Trace = .{},
+    /// The marks of `ztk::debug mark`, by name. The keys are owned.
+    marks: diff_mod.Marks = .empty,
     /// The command site of the widget call that runs, for its line.
     site: ?*ztcl.interp.Cmd = null,
     /// Counts the recorded writes and the trace records, so two can be ordered.
@@ -61,6 +64,7 @@ pub const State = struct {
 
     pub fn deinit(s: *State, gpa: std.mem.Allocator) void {
         s.trace.deinit(gpa);
+        diff_mod.deinit(&s.marks, gpa);
     }
 };
 
@@ -185,7 +189,7 @@ pub fn register(it: *ztcl.Interp) !void {
     try it.register("ztk::debug", cmdDebug);
 }
 
-const usage = "ztk::debug sources ?on|off? | why pathName ?option? ?-all? | geometry pathName | trace subcommand ?arg ...?";
+const usage = "ztk::debug sources ?on|off? | why pathName ?option? ?-all? | geometry pathName | trace subcommand ?arg ...? | mark name ?pathName? | diff name ?-image? ?-tolerance n? | marks | forget name";
 
 fn cmdDebug(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
     if (argv.len < 2) return it.wrongArgs(usage);
@@ -202,11 +206,29 @@ fn cmdDebug(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
     }
     if (std.mem.eql(u8, sub, "why")) return cmdWhy(it, app, argv[2..]);
     if (std.mem.eql(u8, sub, "trace")) return cmdTrace(it, app, argv[2..]);
+    if (std.mem.eql(u8, sub, "mark")) return cmdMark(it, app, argv[2..]);
+    if (std.mem.eql(u8, sub, "diff")) return cmdDiff(it, app, argv[2..]);
+    if (std.mem.eql(u8, sub, "marks")) {
+        if (argv.len != 2) return it.wrongArgs("ztk::debug marks");
+        var names: std.ArrayList(Value) = .empty;
+        var iter = app.dbg.marks.keyIterator();
+        while (iter.next()) |k| try names.append(it.alloc(), .{ .str = try it.alloc().dupe(u8, k.*) });
+        std.mem.sort(Value, names.items, {}, lessStr);
+        return ztcl.value.wrapList(it.alloc(), names.items);
+    }
+    if (std.mem.eql(u8, sub, "forget")) {
+        if (argv.len != 3) return it.wrongArgs("ztk::debug forget name");
+        if (app.dbg.marks.fetchRemove(try it.str(argv[2]))) |kv| {
+            app.gpa.free(kv.key);
+            kv.value.free(app.gpa);
+        }
+        return Value.empty;
+    }
     if (std.mem.eql(u8, sub, "geometry")) {
         if (argv.len != 3) return it.wrongArgs("ztk::debug geometry pathName");
         return cmdGeometry(it, app, try it.str(argv[2]));
     }
-    return it.fail("bad option \"{s}\": must be geometry, sources, trace, or why", .{sub});
+    return it.fail("bad option \"{s}\": must be diff, forget, geometry, mark, marks, sources, trace, or why", .{sub});
 }
 
 fn widgetOf(it: *ztcl.Interp, app: *App, path: []const u8) ztcl.Error!*Widget {
@@ -743,4 +765,68 @@ pub fn recordValue(it: *ztcl.Interp, r: *const trace_mod.Record) ztcl.Error!Valu
     });
     const text = try std.mem.concat(a, u8, &.{ try it.str(head), " ", r.fields });
     return .{ .str = text };
+}
+
+// ---- Visual diffs ----
+
+fn lessStr(_: void, x: Value, y: Value) bool {
+    return std.mem.lessThan(u8, x.str, y.str);
+}
+
+/// `ztk::debug mark name ?pathName?`: keeps the image and the widgets of
+/// the toplevel of pathName (default ".") under the name.
+fn cmdMark(it: *ztcl.Interp, app: *App, args: []const Value) ztcl.Error!Value {
+    if (args.len < 1 or args.len > 2) return it.wrongArgs("ztk::debug mark name ?pathName?");
+    const name = try it.str(args[0]);
+    const path = if (args.len == 2) try it.str(args[1]) else ".";
+    _ = try widgetOf(it, app, path);
+    try app.flush();
+    const w = try widgetOf(it, app, path);
+    const m = try diff_mod.capture(it, app, w, path);
+    const gpa = app.gpa;
+    const gop = app.dbg.marks.getOrPut(gpa, name) catch {
+        m.free(gpa);
+        return error.OutOfMemory;
+    };
+    if (gop.found_existing) {
+        gop.value_ptr.*.free(gpa);
+    } else {
+        gop.key_ptr.* = gpa.dupe(u8, name) catch {
+            _ = app.dbg.marks.remove(name);
+            m.free(gpa);
+            return error.OutOfMemory;
+        };
+    }
+    gop.value_ptr.* = m;
+    return .{ .str = try it.alloc().dupe(u8, name) };
+}
+
+/// `ztk::debug diff name ?-image? ?-tolerance n?`: compares the mark with
+/// the toplevel now.
+fn cmdDiff(it: *ztcl.Interp, app: *App, args: []const Value) ztcl.Error!Value {
+    const usage_diff = "ztk::debug diff name ?-image? ?-tolerance n?";
+    if (args.len < 1) return it.wrongArgs(usage_diff);
+    const name = try it.str(args[0]);
+    var want_image = false;
+    var tolerance: u8 = 0;
+    var k: usize = 1;
+    while (k < args.len) : (k += 1) {
+        const opt = try it.str(args[k]);
+        if (std.mem.eql(u8, opt, "-image")) {
+            want_image = true;
+        } else if (std.mem.eql(u8, opt, "-tolerance")) {
+            k += 1;
+            if (k >= args.len) return it.wrongArgs(usage_diff);
+            tolerance = @intCast(std.math.clamp(try it.int(args[k]), 0, 255));
+        } else return it.fail("bad option \"{s}\": must be -image or -tolerance", .{opt});
+    }
+    const old = app.dbg.marks.get(name) orelse return it.fail("no mark \"{s}\"", .{name});
+    const top_path = try it.alloc().dupe(u8, old.top);
+    try app.flush();
+    const w = try widgetOf(it, app, top_path);
+    // The flush can run a script that replaces the mark.
+    const mark = app.dbg.marks.get(name) orelse return it.fail("no mark \"{s}\"", .{name});
+    const now = try diff_mod.capture(it, app, w, top_path);
+    defer now.free(app.gpa);
+    return diff_mod.compare(it, app.gpa, mark, now, tolerance, want_image);
 }
