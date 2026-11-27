@@ -67,6 +67,9 @@ An app for other people needs a Developer ID signature and a notarization from A
 ## Window state
 
 `wm attributes .w -fullscreen 1` takes the window to the full screen of macOS (a space of its own, with the animation of the system), and `-fullscreen 0` brings it back. `-topmost 1` keeps it above the windows of other apps, at the level of floating panels. `ztk::animate` reads Reduce motion of the Accessibility settings at the start and again when it changes, and shows each end state at once while it is on.
+## Drops from other apps
+
+A window that takes drops (`ztk::dnd`) gets the files of Finder and the text of other apps: the view registers for file URLs and plain text, as the window accepts them, and each phase of the drag (enter, over, leave, drop) is a `drop` event. The files are host paths. A drag that has no kind that the window takes shows no drop, and the app finds the widget at the point. A drag out of a window comes with the drag source of ztk#62.
 
 ## Direct APIs of macOS
 
