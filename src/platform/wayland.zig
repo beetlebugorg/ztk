@@ -146,7 +146,7 @@ const Pop = struct {
 };
 
 /// An offer of data from another client: its MIME type of text, if any.
-const Offer = struct { id: u32, text_type: ?usize = null };
+const Offer = struct { id: u32, text_type: ?usize = null, uris: bool = false };
 
 pub const Options = struct {
     /// XDG_RUNTIME_DIR and WAYLAND_DISPLAY.
@@ -204,6 +204,15 @@ pub const Wayland = struct {
     motion_read: bool = false,
     /// The state of `wm attributes` that the backend sent.
     win_state: plat.WindowState = .{},
+    /// The version of `wl_data_device_manager`.
+    data_version: u32 = 0,
+    /// The kinds of drops that the main window accepts, and the drag of
+    /// another app over it: its offer, the MIME type, and the data of the
+    /// last drop, which lives until the next poll.
+    drop_types: plat.DropTypes = .{},
+    drag_offer: u32 = 0,
+    drag_mime: ?[]const u8 = null,
+    drop_data: []u8 = &.{},
     pointer: u32 = 0,
     keyboard: u32 = 0,
     cursor_device: u32 = 0,
@@ -325,6 +334,7 @@ pub const Wayland = struct {
         if (w.surface != 0) w.destroy(w.surface, 0);
         w.conn.deinit();
         w.gpa.free(w.source_text);
+        w.gpa.free(w.drop_data);
         w.offers.deinit(w.gpa);
         w.ime_preedit.deinit(w.gpa);
         w.ime_commit.deinit(w.gpa);
@@ -356,6 +366,7 @@ pub const Wayland = struct {
         .textInput = vTextInput,
         .setWindowState = vSetWindowState,
         .reducedMotion = vReducedMotion,
+        .dropTypes = vDropTypes,
     };
 
     /// With a file chooser portal: `tk_getOpenFile` and the others use it.
@@ -650,7 +661,8 @@ pub const Wayland = struct {
         } else if (std.mem.eql(u8, i, "wp_cursor_shape_manager_v1")) {
             w.cursor_mgr = try w.bind(name, i, I.cursor_mgr, 1, 0);
         } else if (std.mem.eql(u8, i, "wl_data_device_manager")) {
-            w.data_mgr = try w.bind(name, i, I.data_mgr, @min(version, 3), 0);
+            w.data_version = @min(version, 3);
+            w.data_mgr = try w.bind(name, i, I.data_mgr, w.data_version, 0);
             w.makeDevices();
         } else if (std.mem.eql(u8, i, "zwp_linux_dmabuf_v1") and version >= 3) {
             // Version 3 sends the modifiers as events. Version 4 moves them to a feedback table.
@@ -821,6 +833,11 @@ pub const Wayland = struct {
 
     fn vPoll(ptr: *anyopaque, gpa: std.mem.Allocator, out: *std.ArrayListUnmanaged(Event)) anyerror!void {
         const w = self(ptr);
+        // The data of the last drop lived until this poll.
+        if (w.events.items.len == 0) {
+            w.gpa.free(w.drop_data);
+            w.drop_data = &.{};
+        }
         w.flush();
         // A read that does not block gets events that wait on the socket.
         _ = w.readWait(0) catch w.lost();
@@ -1112,8 +1129,24 @@ pub const Wayland = struct {
                 const id = a.uint();
                 w.offers.append(w.gpa, .{ .id = id }) catch w.destroyOffer(id);
             },
-            // The offer of a drag ends with leave or drop: the drop of files is not part of this backend.
-            2, 4 => w.dropOffers(null),
+            1 => w.onDragEnter(a),
+            3 => if (w.drag_offer != 0) {
+                _ = a.uint();
+                const x = a.fixed();
+                const y = a.fixed();
+                if (w.window) |win| w.push(.{ .drop = .{ .window = win, .phase = .over, .x = x, .y = y } });
+            },
+            // The offer of a drag ends with leave or drop.
+            2 => {
+                if (w.drag_offer != 0) if (w.window) |win| w.push(.{ .drop = .{ .window = win, .phase = .leave } });
+                w.drag_offer = 0;
+                w.dropOffers(null);
+            },
+            4 => {
+                if (w.drag_offer != 0) w.onDrop();
+                w.drag_offer = 0;
+                w.dropOffers(null);
+            },
             5 => {
                 const id = a.uint();
                 if (w.selection) |s| if (s.id != id) w.destroyOffer(s.id);
@@ -1127,6 +1160,89 @@ pub const Wayland = struct {
         }
     }
 
+    // ---- Drops from other apps ----
+
+    fn vDropTypes(ptr: *anyopaque, win: *Window, types: plat.DropTypes) void {
+        const w = self(ptr);
+        if (popOf(win) != null) return;
+        w.drop_types = types;
+    }
+
+    /// A drag enters a surface: accept a MIME type of the kinds of the main
+    /// window, or none.
+    fn onDragEnter(w: *Wayland, a: *wire.Args) void {
+        const serial = a.uint();
+        const surface = a.uint();
+        const x = a.fixed();
+        const y = a.fixed();
+        const id = a.uint();
+        w.drag_offer = 0;
+        w.drag_mime = null;
+        if (id == 0) return;
+        const offer = for (w.offers.items) |o| {
+            if (o.id == id) break o;
+        } else return;
+        const win = w.window orelse return;
+        if (surface == w.surface) {
+            if (w.drop_types.files and offer.uris) {
+                w.drag_mime = "text/uri-list";
+            } else if (w.drop_types.text) if (offer.text_type) |rank| {
+                w.drag_mime = text_types[rank];
+            };
+        }
+        w.req(id, 0, .{ serial, wire.Str{ .s = w.drag_mime } });
+        if (w.drag_mime == null) return;
+        // Version 3: the action is copy.
+        if (w.data_version >= 3) w.req(id, 4, .{ @as(u32, 1), @as(u32, 1) });
+        w.flush();
+        w.drag_offer = id;
+        w.push(.{ .drop = .{ .window = win, .phase = .enter, .x = x, .y = y } });
+    }
+
+    /// Reads the data of a drop through a pipe and gives the drop event.
+    fn onDrop(w: *Wayland) void {
+        const win = w.window orelse return;
+        const mime = w.drag_mime orelse return;
+        var fds: [2]i32 = .{ -1, -1 };
+        if (@as(isize, @bitCast(linux.pipe2(&fds, .{ .CLOEXEC = true }))) < 0) return;
+        defer _ = linux.close(fds[0]);
+        // The send closes the write end after the flush.
+        w.req(w.drag_offer, 1, .{ wire.Str{ .s = mime }, wire.Fd{ .fd = fds[1] } });
+        w.flush();
+        var data: std.ArrayListUnmanaged(u8) = .empty;
+        defer data.deinit(w.gpa);
+        var buf: [4096]u8 = undefined;
+        while (data.items.len < 64 << 20) {
+            var pfd = [1]linux.pollfd{.{ .fd = fds[0], .events = linux.POLL.IN, .revents = 0 }};
+            if (@as(isize, @bitCast(linux.poll(&pfd, 1, 2000))) <= 0) break;
+            const rc = linux.read(fds[0], &buf, buf.len);
+            if (@as(isize, @bitCast(rc)) <= 0) break;
+            data.appendSlice(w.gpa, buf[0..rc]) catch break;
+        }
+        if (w.data_version >= 3) w.req(w.drag_offer, 3, .{});
+        w.gpa.free(w.drop_data);
+        w.drop_data = &.{};
+        const files = std.mem.eql(u8, mime, "text/uri-list");
+        w.drop_data = (if (files) uriListPaths(w.gpa, data.items) else w.gpa.dupe(u8, data.items)) catch return;
+        w.push(.{ .drop = .{ .window = win, .phase = .drop, .files = if (files) w.drop_data else "", .text = if (files) "" else w.drop_data } });
+    }
+
+    /// The paths of the `file://` URIs of a `text/uri-list`, separated by 0.
+    /// The lines end with CR LF, and a line that starts with `#` is a comment.
+    fn uriListPaths(gpa: std.mem.Allocator, list: []const u8) ![]u8 {
+        var out: std.ArrayListUnmanaged(u8) = .empty;
+        errdefer out.deinit(gpa);
+        var it = std.mem.tokenizeAny(u8, list, "\r\n");
+        while (it.next()) |line| {
+            if (line[0] == '#') continue;
+            const p = try portal.uriPath(gpa, line) orelse continue;
+            defer gpa.free(p);
+            if (out.items.len > 0) try out.append(gpa, 0);
+            try out.appendSlice(gpa, p);
+        }
+        return out.toOwnedSlice(gpa);
+    }
+
     /// Destroys the offers that wait, except one.
     fn dropOffers(w: *Wayland, keep: ?u32) void {
         for (w.offers.items) |o| if (keep == null or o.id != keep.?) w.destroyOffer(o.id);
@@ -1134,6 +1250,12 @@ pub const Wayland = struct {
     }
 
     fn onOfferType(w: *Wayland, id: u32, mime: []const u8) void {
+        if (std.mem.eql(u8, mime, "text/uri-list")) {
+            for (w.offers.items) |*o| if (o.id == id) {
+                o.uris = true;
+            };
+            return;
+        }
         const rank = for (text_types, 0..) |t, i| {
             if (std.mem.eql(u8, t, mime)) break i;
         } else return;
@@ -1816,4 +1938,11 @@ pub const Wayland = struct {
 test {
     _ = wire;
     _ = xkb;
+}
+
+test "wayland: a uri-list gives the paths of its file URIs" {
+    const t = std.testing;
+    const got = try Wayland.uriListPaths(t.allocator, "# a comment\r\nfile:///tmp/a%20b.txt\r\nhttps://x.org/y\r\nfile:///srv/c\r\n");
+    defer t.allocator.free(got);
+    try t.expectEqualStrings("/tmp/a b.txt\x00/srv/c", got);
 }
