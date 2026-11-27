@@ -25,17 +25,29 @@ const Widget = widget.Widget;
 const state_words = [_][]const u8{ "active", "disabled", "normal" };
 
 /// A subset of the options of `wish`, in the order of `wish`.
+/// The words of `-compound`, in the order of the message of `wish`.
+pub const compound_words = [_][]const u8{ "bottom", "center", "left", "none", "right", "top" };
+
 pub const specs = [_]Spec{
+    .{ .name = "-activebackground", .db_name = "activeBackground", .db_class = "Foreground", .type = .color, .default = "#ececec" },
+    .{ .name = "-activeforeground", .db_name = "activeForeground", .db_class = "Background", .type = .color, .default = "#000000" },
     .{ .name = "-anchor", .db_name = "anchor", .db_class = "Anchor", .type = .anchor, .default = "center" },
     .{ .name = "-background", .db_name = "background", .db_class = "Background", .type = .color, .default = "#d9d9d9", .from_style = true, .style_prop = .background },
     .{ .name = "-bd", .type = .synonym, .target = "-borderwidth" },
     .{ .name = "-bg", .type = .synonym, .target = "-background" },
+    .{ .name = "-bitmap", .db_name = "bitmap", .db_class = "Bitmap", .type = .string, .allow_empty = true },
     .{ .name = "-borderwidth", .db_name = "borderWidth", .db_class = "BorderWidth", .type = .pixels, .default = "0", .from_style = true, .style_prop = .border_width },
+    .{ .name = "-compound", .db_name = "compound", .db_class = "Compound", .type = .word, .default = "none", .words = &compound_words },
     .{ .name = "-cursor", .db_name = "cursor", .db_class = "Cursor", .type = .string, .allow_empty = true },
+    .{ .name = "-disabledforeground", .db_name = "disabledForeground", .db_class = "DisabledForeground", .type = .color, .default = "#a3a3a3" },
     .{ .name = "-fg", .type = .synonym, .target = "-foreground" },
     .{ .name = "-font", .db_name = "font", .db_class = "Font", .type = .font, .default = "TkDefaultFont" },
     .{ .name = "-foreground", .db_name = "foreground", .db_class = "Foreground", .type = .color, .default = "#000000", .from_style = true },
     .{ .name = "-height", .db_name = "height", .db_class = "Height", .type = .int, .default = "0" },
+    .{ .name = "-highlightbackground", .db_name = "highlightBackground", .db_class = "HighlightBackground", .type = .color, .default = "#d9d9d9" },
+    .{ .name = "-highlightcolor", .db_name = "highlightColor", .db_class = "HighlightColor", .type = .color, .default = "#000000" },
+    .{ .name = "-highlightthickness", .db_name = "highlightThickness", .db_class = "HighlightThickness", .type = .pixels, .default = "0" },
+    .{ .name = "-image", .db_name = "image", .db_class = "Image", .type = .image, .allow_empty = true },
     .{ .name = "-justify", .db_name = "justify", .db_class = "Justify", .type = .justify, .default = "center" },
     .{ .name = "-padx", .db_name = "padX", .db_class = "Pad", .type = .pixels, .default = "0" },
     .{ .name = "-pady", .db_name = "padY", .db_class = "Pad", .type = .pixels, .default = "0" },
@@ -44,7 +56,9 @@ pub const specs = [_]Spec{
     .{ .name = "-takefocus", .db_name = "takeFocus", .db_class = "TakeFocus", .type = .string, .default = "0" },
     .{ .name = "-text", .db_name = "text", .db_class = "Text", .type = .string, .allow_empty = true },
     .{ .name = "-textvariable", .db_name = "textVariable", .db_class = "Variable", .type = .variable, .allow_empty = true },
+    .{ .name = "-underline", .db_name = "underline", .db_class = "Underline", .type = .int, .default = "-1" },
     .{ .name = "-width", .db_name = "width", .db_class = "Width", .type = .int, .default = "0" },
+    .{ .name = "-wraplength", .db_name = "wrapLength", .db_class = "WrapLength", .type = .pixels, .default = "0" },
 };
 
 pub const class: widget.Class = .{
@@ -224,7 +238,9 @@ const image_gap = 4;
 /// The size of the image and the text together, and the size of each one.
 fn contentSize(w: *Widget, st: *const style_mod.Style) struct { all: geom.Size, img: geom.Size, txt: geom.Size, show_text: bool, show_image: bool } {
     const app = w.app;
-    var txt = paint.textSize(app, text(w), st.font);
+    const shown_text = wrapped(w, st);
+    defer if (shown_text.owned) app.gpa.free(shown_text.text);
+    var txt = paint.textSize(app, shown_text.text, st.font);
     var wd = options.get(w, "-width").value;
     const ht = options.get(w, "-height").value;
     // The `-width` of a `ttk` widget is a string, as in Tk.
@@ -266,7 +282,9 @@ pub fn paintLabel(w: *Widget, b: *scene.Builder) anyerror!void {
     const justify: options.Justify = if (ju == .justify) ju.justify else .center;
     const rect = paint.contentRect(w, st);
     const cs = contentSize(w, st);
-    if (!cs.show_image) return paint.label(w, b, rect, text(w), st, anchor, justify);
+    const shown_text = wrapped(w, st);
+    defer if (shown_text.owned) w.app.gpa.free(shown_text.text);
+    if (!cs.show_image) return paint.label(w, b, rect, shown_text.text, st, anchor, justify);
     // The block of the image and the text goes to the anchor, and each part has its place in it.
     const blk = anchored(rect, cs.all, anchor);
     const c = compoundOf(w);
@@ -292,7 +310,23 @@ pub fn paintLabel(w: *Widget, b: *scene.Builder) anyerror!void {
         else => {},
     }
     if (photoOf(w)) |ph| try drawPhoto(b, &w.app.atlas, ph, img_at.x, img_at.y, st.opacity);
-    if (cs.show_text) try paint.label(w, b, txt_at, text(w), st, .center, justify);
+    if (cs.show_text) try paint.label(w, b, txt_at, shown_text.text, st, .center, justify);
+}
+
+/// The text of the widget with a line break where a line gets longer
+/// than `-wraplength`. With no `-wraplength`, the text is the text of
+/// the widget and is not owned.
+fn wrapped(w: *const Widget, st: *const style_mod.Style) struct { text: []const u8, owned: bool } {
+    const t = text(w);
+    const slot = options.maybe(w, "-wraplength") orelse return .{ .text = t, .owned = false };
+    const limit: i32 = switch (slot.value) {
+        .pixels => |p| p,
+        .int => |n| @intCast(std.math.clamp(n, 0, 1 << 20)),
+        else => 0,
+    };
+    if (limit <= 0) return .{ .text = t, .owned = false };
+    const out = paint.wrapText(w.app, w.app.gpa, t, st.font, limit) catch return .{ .text = t, .owned = false };
+    return .{ .text = out, .owned = true };
 }
 
 /// A rectangle of a size at an anchor in a rectangle.

@@ -31,11 +31,21 @@ pub const EventType = enum(u8) {
     leave = 8,
     focus_in = 9,
     focus_out = 10,
+    expose = 12,
+    visibility = 15,
+    create = 16,
     destroy = 17,
     unmap = 18,
     map = 19,
+    reparent = 21,
     configure = 22,
+    gravity = 24,
+    circulate = 26,
+    property = 28,
+    colormap = 32,
     virtual = 35,
+    activate = 36,
+    deactivate = 37,
     mouse_wheel = 38,
 };
 
@@ -190,6 +200,18 @@ const type_names = [_]TypeName{
     .{ .name = "Map", .t = .map },
     .{ .name = "Unmap", .t = .unmap },
     .{ .name = "MouseWheel", .t = .mouse_wheel },
+    // Event types of X11 that ztk accepts in a pattern. Visibility comes
+    // after Map; the others never come.
+    .{ .name = "Visibility", .t = .visibility },
+    .{ .name = "Expose", .t = .expose },
+    .{ .name = "Create", .t = .create },
+    .{ .name = "Reparent", .t = .reparent },
+    .{ .name = "Gravity", .t = .gravity },
+    .{ .name = "Circulate", .t = .circulate },
+    .{ .name = "Property", .t = .property },
+    .{ .name = "Colormap", .t = .colormap },
+    .{ .name = "Activate", .t = .activate },
+    .{ .name = "Deactivate", .t = .deactivate },
 };
 
 fn findMod(name: []const u8) ?ModName {
@@ -361,6 +383,16 @@ fn writePattern(w: *std.Io.Writer, p: Pattern) !void {
         .configure => "Configure",
         .mouse_wheel => "MouseWheel",
         .virtual => "",
+        .visibility => "Visibility",
+        .expose => "Expose",
+        .create => "Create",
+        .reparent => "Reparent",
+        .gravity => "Gravity",
+        .circulate => "Circulate",
+        .property => "Property",
+        .colormap => "Colormap",
+        .activate => "Activate",
+        .deactivate => "Deactivate",
     };
     try w.writeAll(type_text);
     if (p.detail != 0) {
@@ -473,6 +505,18 @@ pub const Table = struct {
         return true;
     }
 
+    fn virtualRank(p: Pattern, ev: *const WidgetEvent) ?u32 {
+        if (p.type != .virtual or ev.type == .virtual) return null;
+        const app = ev.widget.app;
+        var best: ?u32 = null;
+        for (app.virtual_events.items) |d| {
+            if (!std.mem.eql(u8, d.name, p.virtual) or !fits(d.pattern, ev)) continue;
+            const r = rank(d.pattern) & ~@as(u32, 1);
+            if (best == null or r > best.?) best = r;
+        }
+        return best;
+    }
+
     fn rank(p: Pattern) u32 {
         const mods: u16 = @bitCast(p.mods);
         return (@as(u32, @intFromBool(p.detail != 0)) << 16) | (@as(u32, p.count) << 12) | (@as(u32, @popCount(mods)) << 4) | @as(u32, @intFromBool(p.type != .virtual));
@@ -483,8 +527,10 @@ pub const Table = struct {
         var best: ?*Entry = null;
         var best_rank: u32 = 0;
         for (l.items) |*e| {
-            if (!fits(e.pattern, ev)) continue;
-            const r = rank(e.pattern);
+            // A binding of a virtual event that `event add` defined matches
+            // a physical event of one of its sequences, with the rank of
+            // that sequence below a physical binding of equal rank.
+            const r = if (fits(e.pattern, ev)) rank(e.pattern) else virtualRank(e.pattern, ev) orelse continue;
             // The newest entry wins a tie, so `>=` and a forward walk.
             if (best == null or r >= best_rank) {
                 best = e;
@@ -692,6 +738,15 @@ pub fn runTags(app: *App, table: *Table, tags: []const []const u8, ev: *const Wi
 }
 
 // ---- The commands ----
+
+/// A sequence of a virtual event from `event add`.
+pub const VirtualDef = struct { name: []u8, pattern: Pattern, text: []u8 };
+
+pub fn freeVirtual(gpa: std.mem.Allocator, d: VirtualDef) void {
+    gpa.free(d.name);
+    gpa.free(d.text);
+    if (d.pattern.virtual.len > 0) gpa.free(d.pattern.virtual);
+}
 
 pub fn cmdBind(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
     const app = App.of(it);

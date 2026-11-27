@@ -60,7 +60,7 @@ pub const specs = [_]Spec{
     .{ .name = "-fg", .type = .synonym, .target = "-foreground" },
     .{ .name = "-font", .db_name = "font", .db_class = "Font", .type = .font, .default = "TkFixedFont" },
     .{ .name = "-foreground", .db_name = "foreground", .db_class = "Foreground", .type = .color, .default = "#000000", .from_style = true },
-    .{ .name = "-height", .db_name = "height", .db_class = "Height", .type = .int, .default = "24" },
+    .{ .name = "-height", .db_name = "height", .db_class = "Height", .type = .pixels, .default = "24" },
     .{ .name = "-highlightbackground", .db_name = "highlightBackground", .db_class = "HighlightBackground", .type = .color, .default = "#d9d9d9" },
     .{ .name = "-highlightcolor", .db_name = "highlightColor", .db_class = "HighlightColor", .type = .color, .default = "#000000" },
     .{ .name = "-highlightthickness", .db_name = "highlightThickness", .db_class = "HighlightThickness", .type = .pixels, .default = "1" },

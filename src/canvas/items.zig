@@ -393,10 +393,8 @@ pub fn parse(a: *Attr, field: Field, text: []const u8, scaling: f64, names: Name
         },
         .anchor => {
             const words = [_][]const u8{ "n", "ne", "e", "se", "s", "sw", "w", "nw", "center" };
-            var found: ?usize = null;
-            for (words, 0..) |w, i| if (std.mem.eql(u8, w, text)) {
-                found = i;
-            };
+            _ = words;
+            const found = @import("../options.zig").anchorIndex(text);
             a.anchor = @enumFromInt(found orelse return std.fmt.bufPrint(buf, "bad anchor position \"{s}\": must be n, ne, e, se, s, sw, w, nw, or center", .{text}) catch "bad");
         },
         .justify => {

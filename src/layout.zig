@@ -37,6 +37,9 @@ pub const Manager = struct {
     has_content: ?*const fn (container: *const Widget) bool = null,
     /// True when the content sets the requested size of the container.
     propagates: ?*const fn (container: *const Widget) bool = null,
+    /// The container of a managed widget. It differs from the parent
+    /// after `-in`.
+    container_of: ?*const fn (w: *const Widget) ?*Widget = null,
 };
 
 /// The space that the border and the padding of a container take, in
@@ -97,9 +100,24 @@ pub fn setMapped(w: *Widget, mapped: bool) void {
     w.toplevel().dirty.paint = true;
 }
 
+/// Makes the requested size of a widget current now, as Tk does when a
+/// widget is configured: `winfo reqwidth` right after a widget is made
+/// gives its size.
+pub fn measureNow(w: *Widget) void {
+    measureNode(w);
+}
+
 fn measureNode(w: *Widget) void {
     if (!w.dirty.measure) return;
-    for (w.children.items) |c| measureNode(c);
+    // A widget that is packed `-in` a sibling marks that sibling again
+    // when its size changes, so the loop measures the children again.
+    var rounds: u8 = 0;
+    while (rounds < 8) : (rounds += 1) {
+        for (w.children.items) |c| measureNode(c);
+        var again = false;
+        for (w.children.items) |c| again = again or c.dirty.measure;
+        if (!again) break;
+    }
     w.dirty.measure = false;
     const old = w.req;
     var size: geom.Size = .{};
@@ -112,6 +130,16 @@ fn measureNode(w: *Widget) void {
             p.dirty.measure = true;
             p.dirty.layout = true;
         }
+        // The container after `-in` can be a deeper widget than the
+        // parent: the path from it up to the parent needs a measure.
+        if (w.manager) |m| if (m.container_of) |f| if (f(w)) |c| if (c != w.parent) {
+            c.dirty.layout = true;
+            var x: ?*Widget = c;
+            while (x) |y| : (x = y.parent) {
+                if (y == w.parent) break;
+                y.dirty.measure = true;
+            }
+        };
     }
 }
 

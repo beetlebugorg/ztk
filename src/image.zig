@@ -31,8 +31,14 @@ pub const Photo = struct {
     /// A number of this photo alone, so the image page of the atlas never
     /// gives it the place of a photo that was deleted.
     serial: u32 = 0,
+    /// A bitmap image keeps its options, and its pixels are made from them.
+    bitmap: ?*Bitmap = null,
 
     fn deinit(p: *Photo, gpa: std.mem.Allocator) void {
+        if (p.bitmap) |b| {
+            for (&b.opts) |o| gpa.free(o);
+            gpa.destroy(b);
+        }
         gpa.free(p.name);
         gpa.free(p.pixels);
         gpa.free(p.file);
@@ -54,6 +60,143 @@ pub const Photo = struct {
         p.height = h;
     }
 };
+
+/// The options of a bitmap image, in the order of `bitmap_opts`.
+pub const Bitmap = struct {
+    opts: [6][]u8 = .{ &.{}, &.{}, &.{}, &.{}, &.{}, &.{} },
+};
+
+const bitmap_opts = [_][]const u8{ "-background", "-data", "-file", "-foreground", "-maskdata", "-maskfile" };
+
+/// The bits of an XBM text: width, height, and one bit for each pixel,
+/// rows from the top, the low bit first in each byte.
+const Xbm = struct { w: u32, h: u32, bits: []const u8 };
+
+fn parseXbm(a: std.mem.Allocator, text: []const u8) ?Xbm {
+    var w: ?u32 = null;
+    var h: ?u32 = null;
+    var lines = std.mem.splitScalar(u8, text, '\n');
+    while (lines.next()) |line| {
+        if (!std.mem.startsWith(u8, std.mem.trim(u8, line, " \t"), "#define")) continue;
+        var words = std.mem.tokenizeAny(u8, line, " \t\r");
+        _ = words.next();
+        const name = words.next() orelse continue;
+        const num = std.fmt.parseInt(u32, words.next() orelse continue, 0) catch continue;
+        if (std.mem.endsWith(u8, name, "_width")) w = num;
+        if (std.mem.endsWith(u8, name, "_height")) h = num;
+    }
+    const wd = w orelse return null;
+    const ht = h orelse return null;
+    if (wd == 0 or ht == 0 or wd > 4096 or ht > 4096) return null;
+    const brace = std.mem.indexOfScalar(u8, text, '{') orelse return null;
+    const n = (wd + 7) / 8 * ht;
+    const bits = a.alloc(u8, n) catch return null;
+    var k: usize = 0;
+    var toks = std.mem.tokenizeAny(u8, text[brace + 1 ..], " \t\r\n,};");
+    while (toks.next()) |t| {
+        if (k == n) break;
+        bits[k] = @truncate(std.fmt.parseInt(u16, t, 0) catch return null);
+        k += 1;
+    }
+    if (k != n) return null;
+    return .{ .w = wd, .h = ht, .bits = bits };
+}
+
+fn xbmBit(x: Xbm, col: usize, row: usize) bool {
+    const stride = (x.w + 7) / 8;
+    return (x.bits[row * stride + col / 8] >> @intCast(col % 8)) & 1 != 0;
+}
+
+/// Makes the pixels of a bitmap image from its options: a set bit has
+/// the foreground, a clear bit has the background or no color, and a
+/// clear bit of the mask has no color.
+fn renderBitmap(app: *App, it: *ztcl.Interp, p: *Photo) ztcl.Error!void {
+    const b = p.bitmap.?;
+    const a = it.alloc();
+    const src = try bitmapText(it, b.opts[1], b.opts[2]);
+    const mask_src = try bitmapText(it, b.opts[4], b.opts[5]);
+    var xbm: Xbm = .{ .w = 0, .h = 0, .bits = &.{} };
+    if (src.len > 0) xbm = parseXbm(a, src) orelse return it.fail("format error in bitmap data", .{});
+    var mask: ?Xbm = null;
+    if (mask_src.len > 0) {
+        mask = parseXbm(a, mask_src) orelse return it.fail("format error in bitmap data", .{});
+        if (mask.?.w != xbm.w or mask.?.h != xbm.h) return it.fail("bitmap and mask have different sizes", .{});
+    }
+    const fg = if (b.opts[3].len > 0) (geom.Color.parseTk(b.opts[3]) orelse return it.fail("unknown color name \"{s}\"", .{b.opts[3]})) else geom.Color{ .r = 0, .g = 0, .b = 0 };
+    const bg: ?geom.Color = if (b.opts[0].len > 0) (geom.Color.parseTk(b.opts[0]) orelse return it.fail("unknown color name \"{s}\"", .{b.opts[0]})) else null;
+    const px = try app.gpa.alloc(u8, @as(usize, xbm.w) * xbm.h * 4);
+    for (0..xbm.h) |row| for (0..xbm.w) |col| {
+        const o = (row * xbm.w + col) * 4;
+        const on = xbmBit(xbm, col, row);
+        const shown = if (mask) |m| xbmBit(m, col, row) else true;
+        const c: ?geom.Color = if (!shown) null else if (on) fg else bg;
+        if (c) |cc| {
+            px[o] = cc.r;
+            px[o + 1] = cc.g;
+            px[o + 2] = cc.b;
+            px[o + 3] = 255;
+        } else @memset(px[o .. o + 4], 0);
+    };
+    app.gpa.free(p.pixels);
+    p.pixels = px;
+    p.width = xbm.w;
+    p.height = xbm.h;
+    changed(app, p);
+}
+
+/// The XBM text of -data, or of the file of -file when -data is empty.
+fn bitmapText(it: *ztcl.Interp, data: []const u8, file: []const u8) ztcl.Error![]const u8 {
+    if (data.len > 0) return data;
+    if (file.len == 0) return "";
+    const words = [_]Value{ .{ .str = "::ztk::priv::readbinary" }, .{ .str = file } };
+    return binaryBytes(it, try it.eval(try it.str(try ztcl.value.newList(it.alloc(), &words))));
+}
+
+fn configureBitmap(app: *App, it: *ztcl.Interp, p: *Photo, args: []const Value) ztcl.Error!void {
+    const b = p.bitmap.?;
+    if (args.len % 2 != 0) return it.fail("value for \"{s}\" missing", .{try it.str(args[args.len - 1])});
+    var k: usize = 0;
+    while (k < args.len) : (k += 2) {
+        const name = try it.str(args[k]);
+        const i = for (bitmap_opts, 0..) |o, i| {
+            if (std.mem.eql(u8, o, name)) break i;
+        } else return it.fail("unknown option \"{s}\"", .{name});
+        const v = try app.gpa.dupe(u8, try it.str(args[k + 1]));
+        app.gpa.free(b.opts[i]);
+        b.opts[i] = v;
+    }
+    try renderBitmap(app, it, p);
+}
+
+/// The command of one bitmap image: cget and configure.
+fn cmdBitmap(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
+    const app = App.of(it);
+    const name = try it.str(argv[0]);
+    const p = app.images.find(name) orelse return it.fail("invalid command name \"{s}\"", .{name});
+    if (argv.len < 2) return it.fail("wrong # args: should be \"{s} option ?arg ...?\"", .{name});
+    const sub = try it.str(argv[1]);
+    const a = it.alloc();
+    const b = p.bitmap.?;
+    if (std.mem.eql(u8, sub, "cget")) {
+        if (argv.len != 3) return it.fail("wrong # args: should be \"{s} cget option\"", .{name});
+        const o = try it.str(argv[2]);
+        for (bitmap_opts, 0..) |n, i| if (std.mem.eql(u8, n, o)) return .{ .str = try a.dupe(u8, b.opts[i]) };
+        return it.fail("unknown option \"{s}\"", .{o});
+    }
+    if (std.mem.eql(u8, sub, "configure")) {
+        if (argv.len == 2) {
+            const items = try a.alloc(Value, bitmap_opts.len);
+            for (bitmap_opts, items, 0..) |n, *slot, i| {
+                const row = [_]Value{ .{ .str = n }, .{ .str = "" }, .{ .str = "" }, .{ .str = "" }, .{ .str = try a.dupe(u8, b.opts[i]) } };
+                slot.* = try ztcl.value.newList(a, &row);
+            }
+            return ztcl.value.wrapList(a, items);
+        }
+        try configureBitmap(app, it, p, argv[2..]);
+        return Value.empty;
+    }
+    return it.fail("bad option \"{s}\": must be cget or configure", .{sub});
+}
 
 pub const Registry = struct {
     list: std.ArrayListUnmanaged(*Photo) = .empty,
@@ -96,11 +239,58 @@ fn changed(app: *App, p: *Photo) void {
 const photo_opts = "-data, -file, -format, -gamma, -height, -palette, or -width";
 
 fn loadPng(app: *App, it: *ztcl.Interp, p: *Photo, bytes: []const u8) ztcl.Error!void {
-    const img = png.decode(app.gpa, bytes) catch return it.fail("couldn't recognize image data", .{});
+    const gif = @import("gif.zig");
+    const img = (if (gif.isGif(bytes)) gif.decodeGif(app.gpa, bytes) else if (gif.isPpm(bytes)) gif.decodePpm(app.gpa, bytes) else png.decode(app.gpa, bytes)) catch return it.fail("couldn't recognize image data", .{});
     app.gpa.free(p.pixels);
     p.pixels = img.pixels;
     p.width = img.width;
     p.height = img.height;
+}
+
+/// True when a list is rows of color names, as `put` takes them.
+fn colorRows(it: *ztcl.Interp, rows: []const Value) bool {
+    if (rows.len == 0) return false;
+    const first = it.list(rows[0]) catch return false;
+    if (first.len == 0) return false;
+    const t = it.str(first[0]) catch return false;
+    return geom.Color.parseTk(t) != null;
+}
+
+/// Decodes image data: base64 text or the bytes of a file, in PNG, GIF,
+/// or PPM. The caller frees `pixels` with the gpa of the App.
+fn decodeData(app: *App, it: *ztcl.Interp, text: []const u8) ztcl.Error!?@import("render/renderer.zig").Image {
+    const gif = @import("gif.zig");
+    const dec = std.base64.standard.Decoder;
+    const clean = try it.alloc().alloc(u8, text.len);
+    var n: usize = 0;
+    for (text) |c| if (!std.ascii.isWhitespace(c)) {
+        clean[n] = c;
+        n += 1;
+    };
+    var bytes: []const u8 = undefined;
+    if (dec.calcSizeForSlice(clean[0..n])) |size| {
+        const buf = try it.alloc().alloc(u8, size);
+        if (dec.decode(buf, clean[0..n])) |_| {
+            bytes = buf;
+        } else |_| bytes = try binaryBytes(it, .{ .str = text });
+    } else |_| bytes = try binaryBytes(it, .{ .str = text });
+    const r = if (gif.isGif(bytes)) gif.decodeGif(app.gpa, bytes) else if (gif.isPpm(bytes)) gif.decodePpm(app.gpa, bytes) else png.decode(app.gpa, bytes);
+    return r catch null;
+}
+
+/// The bytes of a binary string of Tcl: each character below 256 is one
+/// byte. The string keeps the characters as UTF-8.
+fn binaryBytes(it: *ztcl.Interp, v: Value) ztcl.Error![]const u8 {
+    const t = try it.str(v);
+    const out = try it.alloc().alloc(u8, t.len);
+    var n: usize = 0;
+    var view = std.unicode.Utf8View.initUnchecked(t);
+    var iter = view.iterator();
+    while (iter.nextCodepoint()) |cp| {
+        out[n] = @truncate(cp);
+        n += 1;
+    }
+    return out[0..n];
 }
 
 fn configurePhoto(app: *App, it: *ztcl.Interp, p: *Photo, args: []const Value) ztcl.Error!void {
@@ -124,14 +314,17 @@ fn configurePhoto(app: *App, it: *ztcl.Interp, p: *Photo, args: []const Value) z
             const c: u32 = @intCast(std.math.clamp(n, 0, 8192));
             if (name[1] == 'w') p.set_w = c else p.set_h = c;
         } else if (std.mem.eql(u8, name, "-format") or std.mem.eql(u8, name, "-gamma") or std.mem.eql(u8, name, "-palette")) {
-            // Accepted and ignored: the stand-in reads PNG only.
+            // Accepted and ignored: the decoder finds the format from the data.
         } else return it.fail("bad option \"{s}\": must be {s}", .{ name, photo_opts });
     }
     switch (load) {
         .none => {},
         .file => {
-            const bytes = app.readFile(p.file, it.alloc()) catch return it.fail("couldn't open \"{s}\": no such file or directory", .{p.file});
-            try loadPng(app, it, p, bytes);
+            // The file comes through `open`, so the file capability and
+            // --root of the program apply, as for any file of the script.
+            const words = [_]Value{ .{ .str = "::ztk::priv::readbinary" }, .{ .str = p.file } };
+            const v = try it.eval(try it.str(try ztcl.value.newList(it.alloc(), &words)));
+            try loadPng(app, it, p, try binaryBytes(it, v));
         },
         .data => {
             const dec = std.base64.standard.Decoder;
@@ -141,9 +334,11 @@ fn configurePhoto(app: *App, it: *ztcl.Interp, p: *Photo, args: []const Value) z
                 clean[n] = c;
                 n += 1;
             };
-            const size = dec.calcSizeForSlice(clean[0..n]) catch return it.fail("couldn't recognize image data", .{});
+            // -data is base64 text, or the bytes of the file as a binary
+            // string, as in Tk 8.6.
+            const size = dec.calcSizeForSlice(clean[0..n]) catch return loadPng(app, it, p, try binaryBytes(it, .{ .str = p.data }));
             const bytes = try it.alloc().alloc(u8, size);
-            dec.decode(bytes, clean[0..n]) catch return it.fail("couldn't recognize image data", .{});
+            dec.decode(bytes, clean[0..n]) catch return loadPng(app, it, p, try binaryBytes(it, .{ .str = p.data }));
             try loadPng(app, it, p, bytes);
         },
     }
@@ -172,6 +367,37 @@ fn cmdPhoto(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
     if (argv.len < 2) return it.fail("wrong # args: should be \"{s} option ?arg ...?\"", .{name});
     const sub = try it.str(argv[1]);
     const a = it.alloc();
+    if (std.mem.eql(u8, sub, "read")) {
+        // `read file ?-format f? ?-to x y? ?-shrink?`: the image of the file
+        // goes at -to, and the photo grows to hold it.
+        if (argv.len < 3) return it.fail("wrong # args: should be \"{s} read fileName ?-option value ...?\"", .{name});
+        var to: [2]i64 = .{ 0, 0 };
+        var k: usize = 3;
+        while (k < argv.len) : (k += 1) {
+            const o = try it.str(argv[k]);
+            if (std.mem.eql(u8, o, "-format")) {
+                k += 1;
+            } else if (std.mem.eql(u8, o, "-to")) {
+                if (k + 2 >= argv.len) return it.fail("the \"-to\" option requires two values", .{});
+                to = .{ try it.int(argv[k + 1]), try it.int(argv[k + 2]) };
+                k += 2;
+            } else if (std.mem.eql(u8, o, "-shrink")) {} else return it.fail("bad option \"{s}\": must be -format, -from, -shrink, or -to", .{o});
+        }
+        const words = [_]Value{ .{ .str = "::ztk::priv::readbinary" }, argv[2] };
+        const bytes = try binaryBytes(it, try it.eval(try it.str(try ztcl.value.newList(a, &words))));
+        const gif = @import("gif.zig");
+        const img = (if (gif.isGif(bytes)) gif.decodeGif(app.gpa, bytes) else if (gif.isPpm(bytes)) gif.decodePpm(app.gpa, bytes) else png.decode(app.gpa, bytes)) catch
+            return it.fail("couldn't recognize data in image file \"{s}\"", .{try it.str(argv[2])});
+        defer app.gpa.free(img.pixels);
+        try growTo(app, p, to[0] + img.width, to[1] + img.height);
+        for (0..img.height) |yy| for (0..img.width) |xx| {
+            const o = (yy * img.width + xx) * 4;
+            const px = img.pixels[o..][0..4];
+            setPx(p, to[0] + @as(i64, @intCast(xx)), to[1] + @as(i64, @intCast(yy)), .{ .r = px[0], .g = px[1], .b = px[2], .a = px[3] });
+        };
+        changed(app, p);
+        return Value.empty;
+    }
     if (std.mem.eql(u8, sub, "blank")) {
         @memset(p.pixels, 0);
         changed(app, p);
@@ -200,10 +426,16 @@ fn cmdPhoto(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
     if (std.mem.eql(u8, sub, "put")) {
         // `put color -to x1 y1 ?x2 y2?`, or `put {{row colors} ...} ?-to x y?`.
         if (argv.len < 3) return it.fail("wrong # args: should be \"{s} put data ?-option value ...?\"", .{name});
-        const rows = try it.list(argv[2]);
         var to: [4]i64 = .{ 0, 0, -1, -1 };
+        var format: ?[]const u8 = null;
         var k: usize = 3;
         while (k < argv.len) : (k += 1) {
+            if (std.mem.eql(u8, try it.str(argv[k]), "-format")) {
+                if (k + 1 >= argv.len) return it.fail("value for \"-format\" missing", .{});
+                format = try it.str(argv[k + 1]);
+                k += 1;
+                continue;
+            }
             if (!std.mem.eql(u8, try it.str(argv[k]), "-to")) return it.fail("bad option \"{s}\": must be -format or -to", .{try it.str(argv[k])});
             var n: usize = 0;
             while (k + 1 < argv.len and n < 4) : (n += 1) {
@@ -212,6 +444,24 @@ fn cmdPhoto(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
                 k += 1;
             }
         }
+        // Image data (PNG, GIF, or PPM, as base64 or bytes) goes at -to x y.
+        // Data that is not a list of colors is image data, as in Tk.
+        const as_list = it.list(argv[2]) catch null;
+        const is_colors = format == null and as_list != null and colorRows(it, as_list.?);
+        if (!is_colors) {
+            const img = (try decodeData(app, it, try it.str(argv[2]))) orelse return it.fail("couldn't recognize image data", .{});
+            defer app.gpa.free(img.pixels);
+            try growTo(app, p, to[0] + img.width, to[1] + img.height);
+            for (0..img.height) |yy| for (0..img.width) |xx| {
+                const o = (yy * img.width + xx) * 4;
+                const px = img.pixels[o..][0..4];
+                if (px[3] == 0) continue;
+                setPx(p, to[0] + @as(i64, @intCast(xx)), to[1] + @as(i64, @intCast(yy)), .{ .r = px[0], .g = px[1], .b = px[2], .a = px[3] });
+            };
+            changed(app, p);
+            return Value.empty;
+        }
+        const rows = as_list.?;
         // One color fills the -to rectangle.
         const single = rows.len == 1 and (try it.list(rows[0])).len == 1;
         if (single) {
@@ -266,7 +516,8 @@ pub fn cmdImage(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztc
     if (std.mem.eql(u8, sub, "create")) {
         if (argv.len < 3) return it.wrongArgs("image create type ?name? ?-option value ...?");
         const ty = try it.str(argv[2]);
-        if (!std.mem.eql(u8, ty, "photo")) return it.fail("image type \"{s}\" doesn't exist", .{ty});
+        const is_bitmap = std.mem.eql(u8, ty, "bitmap");
+        if (!std.mem.eql(u8, ty, "photo") and !is_bitmap) return it.fail("image type \"{s}\" doesn't exist", .{ty});
         var rest = argv[3..];
         var name: []const u8 = undefined;
         var buf: [32]u8 = undefined;
@@ -295,13 +546,15 @@ pub fn cmdImage(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztc
         const p = try gpa.create(Photo);
         reg.serials +%= 1;
         p.* = .{ .name = try gpa.dupe(u8, name), .serial = reg.serials };
-        configurePhoto(app, it, p, rest) catch |e| {
+        if (is_bitmap) p.bitmap = try gpa.create(Bitmap);
+        if (is_bitmap) p.bitmap.?.* = .{};
+        (if (is_bitmap) configureBitmap(app, it, p, rest) else configurePhoto(app, it, p, rest)) catch |e| {
             p.deinit(gpa);
             gpa.destroy(p);
             return e;
         };
         try reg.list.append(gpa, p);
-        try it.register(p.name, cmdPhoto);
+        try it.register(p.name, if (is_bitmap) cmdBitmap else cmdPhoto);
         return .{ .str = try a.dupe(u8, name) };
     }
     if (std.mem.eql(u8, sub, "delete")) {
@@ -327,7 +580,7 @@ pub fn cmdImage(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztc
     }
     if (std.mem.eql(u8, sub, "types")) {
         if (argv.len != 2) return it.wrongArgs("image types");
-        return .{ .str = "photo" };
+        return .{ .str = "bitmap photo" };
     }
     const one = [_][]const u8{ "width", "height", "type", "inuse" };
     for (one) |o| if (std.mem.eql(u8, sub, o)) {
@@ -336,7 +589,7 @@ pub fn cmdImage(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztc
         const p = reg.find(n) orelse return it.fail("image \"{s}\" doesn't exist", .{n});
         if (o[0] == 'w') return .{ .int = p.width };
         if (o[0] == 'h') return .{ .int = p.height };
-        if (o[0] == 't') return .{ .str = "photo" };
+        if (o[0] == 't') return .{ .str = if (p.bitmap != null) "bitmap" else "photo" };
         return .{ .int = 0 };
     };
     return it.fail("bad option \"{s}\": must be create, delete, height, inuse, names, type, types, or width", .{sub});

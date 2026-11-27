@@ -162,9 +162,10 @@ proc tk_dialog {w title text bitmap default args} {
     foreach s $args { lappend items $i $s; incr i }
     ::ztk::dialog::Buttons $w $items $default
     frame $w.top
-    ttk::label $w.top.msg -text $text -justify left -anchor w -wraplength 320
-    ::ztk::class $w.top.msg add dialog-message
-    pack $w.top.msg -side top -anchor w -fill x
+    # The message is $w.msg, as in Tk, so a script can configure it.
+    ttk::label $w.msg -text $text -justify left -anchor w -wraplength 320
+    ::ztk::class $w.msg add dialog-message
+    pack $w.msg -in $w.top -side top -anchor w -fill x
     pack $w.top -side top -fill both -expand 1 -padx 18 -pady {18 4}
     bind $w <Key-Return> {
         set f [focus]

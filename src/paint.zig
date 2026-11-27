@@ -198,6 +198,50 @@ pub fn textSize(app: *App, text: []const u8, desc: font_mod.FontDesc) geom.Size 
     return .{ .w = width, .h = num.px(@as(i64, lines) * m.line_height) };
 }
 
+/// The text with a line break where a line gets wider than `limit`
+/// logical pixels. A break goes at a space when the line has one, and
+/// else between two characters. The caller frees the result with `gpa`.
+pub fn wrapText(app: *App, gpa: std.mem.Allocator, text: []const u8, desc: font_mod.FontDesc, limit: i32) ![]u8 {
+    var out: std.ArrayListUnmanaged(u8) = .empty;
+    errdefer out.deinit(gpa);
+    const font = measureFont(app, desc) orelse return gpa.dupe(u8, text);
+    var lines = std.mem.splitScalar(u8, text, '\n');
+    var first_line = true;
+    while (lines.next()) |line_in| {
+        if (!first_line) try out.append(gpa, '\n');
+        first_line = false;
+        var line = line_in;
+        while (shape.measure(&app.fonts, font, line) > limit) {
+            // The longest start of the line that fits, at a space.
+            var cut: usize = 0;
+            var last_space: ?usize = null;
+            var i: usize = 0;
+            while (i < line.len) {
+                const n = std.unicode.utf8ByteSequenceLength(line[i]) catch 1;
+                const next = @min(i + n, line.len);
+                if (shape.measure(&app.fonts, font, line[0..next]) > limit) break;
+                if (line[i] == ' ') last_space = i;
+                i = next;
+                cut = i;
+            }
+            if (last_space) |sp| {
+                if (sp > 0) {
+                    try out.appendSlice(gpa, line[0..sp]);
+                    try out.append(gpa, '\n');
+                    line = line[sp + 1 ..];
+                    continue;
+                }
+            }
+            if (cut == 0) cut = @min(line.len, std.unicode.utf8ByteSequenceLength(line[0]) catch 1);
+            try out.appendSlice(gpa, line[0..cut]);
+            try out.append(gpa, '\n');
+            line = line[cut..];
+        }
+        try out.appendSlice(gpa, line);
+    }
+    return out.toOwnedSlice(gpa);
+}
+
 /// The width of the character "0", for the option `-width` of text widgets.
 pub fn zeroWidth(app: *App, desc: font_mod.FontDesc) i32 {
     const font = measureFont(app, desc) orelse return 0;

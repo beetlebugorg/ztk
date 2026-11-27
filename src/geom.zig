@@ -125,6 +125,8 @@ pub const Color = struct {
                 return .{ .r = entry[1][0], .g = entry[1][1], .b = entry[1][2] };
             }
         }
+        // The other color names of Tk, such as SkyBlue2 and grey50.
+        if (@import("tkcolors.zig").find(text)) |c| return .{ .r = c[0], .g = c[1], .b = c[2] };
         return null;
     }
 

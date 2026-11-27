@@ -644,7 +644,7 @@ pub fn applyOptions(w: *const Widget, st: *Style) void {
                 st.padding.bottom = st.padding.top;
             }
         } else if (std.mem.eql(u8, n, "-font")) {
-            if (font_mod.Fonts.parseTk(slot.text, st.font, w.app.scaling)) |d| st.font = d;
+            if (@import("fontcmd.zig").parse(w.app, slot.text, st.font)) |d| st.font = d;
         } else if (std.mem.eql(u8, n, "-relief")) {
             if (slot.value == .relief) switch (slot.value.relief) {
                 .flat => st.border_width = .{ 0, 0, 0, 0 },

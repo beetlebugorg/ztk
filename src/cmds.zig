@@ -19,6 +19,7 @@ const bind = @import("bind.zig");
 const dispatch = @import("dispatch.zig");
 const focus = @import("focus.zig");
 const geom = @import("geom.zig");
+const options = @import("options.zig");
 const App = app_mod.App;
 const Value = ztcl.Value;
 
@@ -84,6 +85,9 @@ pub fn register(app: *App) !void {
     try @import("ttk/combobox.zig").register(app);
     try @import("ttk/notebook.zig").register(app);
     try @import("ttk/treeview.zig").register(app);
+    try it.register("font", @import("fontcmd.zig").cmdFont);
+    try it.register("option", @import("optiondb.zig").cmdOption);
+    try @import("fontcmd.zig").init(app);
     try it.register("clipboard", @import("clipboard.zig").command);
     try @import("canvas/canvas.zig").register(app);
     try it.register("tk", wm.cmdTk);
@@ -96,6 +100,7 @@ pub fn register(app: *App) !void {
     app.root.?.mapped = true;
     app.root.?.geom = .{ .w = win.size.w, .h = win.size.h };
     try @import("dialogs.zig").register(app);
+    _ = try it.eval(@embedFile("library/tk.tcl"));
 }
 
 /// `ztk::limit ?-compute units? ?-memory bytes? script`: runs the script in
@@ -147,7 +152,12 @@ fn cmdLimit(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
 /// gives a script no host access. The capability is off until a script
 /// uses it, because a compact of the memory needs no capability.
 fn cmdInterp(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
-    try it.allow(@intFromEnum(ztcl.interp.Capability.interp));
+    // With `--allow interp`, the capability is on before this command
+    // replaced the real one: the bit goes off, so `allow` puts the real
+    // command back.
+    const bit = @intFromEnum(ztcl.interp.Capability.interp);
+    it.capabilities &= ~@as(@TypeOf(it.capabilities), bit);
+    try it.allow(bit);
     return it.callWords(argv);
 }
 
@@ -172,7 +182,25 @@ fn cmdDestroy(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.
 
 const winfo_options = "cells, children, class, colormapfull, depth, geometry, height, id, ismapped, manager, name, parent, pointerx, pointery, pointerxy, reqheight, reqwidth, rootx, rooty, screen, screencells, screendepth, screenheight, screenwidth, screenmmheight, screenmmwidth, screenvisual, server, toplevel, viewable, visual, visualid, vrootheight, vrootwidth, vrootx, vrooty, width, x, y, atom, atomname, containing, interps, pathname, exists, fpixels, pixels, rgb, or visualsavailable";
 
-const Winfo = enum { children, exists, parent, class, name, toplevel, manager, x, y, width, height, reqwidth, reqheight, rootx, rooty, ismapped, viewable, geometry, rgb };
+const Winfo = enum { children, exists, parent, class, name, toplevel, manager, x, y, width, height, reqwidth, reqheight, rootx, rooty, ismapped, viewable, geometry, rgb, cells, colormapfull, depth, id, pointerx, pointery, pointerxy, screen, screencells, screendepth, screenheight, screenwidth, screenmmheight, screenmmwidth, screenvisual, server, visual, visualid, vrootheight, vrootwidth, vrootx, vrooty, atom, atomname, containing, interps, pathname, fpixels, pixels, visualsavailable };
+
+/// The size of the screen that `winfo` gives: the size of a common
+/// monitor, or the root window when it is larger.
+fn screenSize(app: *App) geom.Size {
+    var s: geom.Size = .{ .w = 1920, .h = 1080 };
+    if (app.root) |r| {
+        s.w = @max(s.w, r.geom.w);
+        s.h = @max(s.h, r.geom.h);
+    }
+    return s;
+}
+
+/// The words after `-displayof window`, for the subcommands of winfo
+/// that take that option.
+fn afterDisplayof(it: *ztcl.Interp, words: []const Value) ztcl.Error![]const Value {
+    if (words.len >= 2 and std.mem.eql(u8, try it.str(words[0]), "-displayof")) return words[2..];
+    return words;
+}
 
 fn cmdWinfo(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
     const app = App.of(it);
@@ -192,6 +220,59 @@ fn cmdWinfo(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
         const vals = [_]Value{ .{ .int = @as(i64, c.r) * 257 }, .{ .int = @as(i64, c.g) * 257 }, .{ .int = @as(i64, c.b) * 257 } };
         return try ztcl.value.newList(it.alloc(), &vals);
     }
+    const a0 = it.alloc();
+    switch (which) {
+        .fpixels, .pixels => {
+            if (argv.len != 4) return it.fail("wrong # args: should be \"winfo {s} window number\"", .{sub});
+            const p = try it.str(argv[2]);
+            if (app.lookup(p) == null) return it.fail("bad window path name \"{s}\"", .{p});
+            const t = std.mem.trim(u8, try it.str(argv[3]), " ");
+            const px = options.parsePixels(t, app.scaling) orelse return it.fail("bad screen distance \"{s}\"", .{t});
+            return if (which == .pixels) .{ .int = px } else .{ .double = @floatFromInt(px) };
+        },
+        .containing => {
+            const rest = try afterDisplayof(it, argv[2..]);
+            if (rest.len != 2) return it.wrongArgs("winfo containing ?-displayof window? rootX rootY");
+            const x = try it.int(rest[0]);
+            const y = try it.int(rest[1]);
+            const root = app.root orelse return Value.empty;
+            if (x < 0 or y < 0 or x >= root.geom.w or y >= root.geom.h) return Value.empty;
+            const w = dispatch.widgetAt(root, @intCast(x), @intCast(y));
+            return .{ .str = try a0.dupe(u8, w.path) };
+        },
+        .interps => {
+            const rest = try afterDisplayof(it, argv[2..]);
+            if (rest.len != 0) return it.wrongArgs("winfo interps ?-displayof window?");
+            return try ztcl.value.newList(a0, &.{.{ .str = try a0.dupe(u8, app.app_name) }});
+        },
+        .atom => {
+            const rest = try afterDisplayof(it, argv[2..]);
+            if (rest.len != 1) return it.wrongArgs("winfo atom ?-displayof window? name");
+            // A stable number for each name, as an X server gives.
+            return .{ .int = 1000 + @as(i64, std.hash.Crc32.hash(try it.str(rest[0])) % 100000) };
+        },
+        .atomname, .pathname => {
+            const rest = try afterDisplayof(it, argv[2..]);
+            if (rest.len != 1) return it.fail("wrong # args: should be \"winfo {s} ?-displayof window? id\"", .{sub});
+            const id = try it.str(rest[0]);
+            if (which == .pathname) {
+                var wi = app.widgets.valueIterator();
+                while (wi.next()) |w| {
+                    const mine = try std.fmt.allocPrint(a0, "0x{x}", .{@intFromPtr(w.*) & 0xffffff});
+                    if (std.mem.eql(u8, mine, id)) return .{ .str = try a0.dupe(u8, w.*.path) };
+                }
+                return it.fail("window id \"{s}\" doesn't exist in this application", .{id});
+            }
+            return it.fail("no atom exists with id \"{s}\"", .{id});
+        },
+        .visualsavailable => {
+            if (argv.len != 3 and argv.len != 4) return it.wrongArgs("winfo visualsavailable window ?includeids?");
+            const p = try it.str(argv[2]);
+            if (app.lookup(p) == null) return it.fail("bad window path name \"{s}\"", .{p});
+            return try ztcl.value.newList(a0, &.{.{ .str = "truecolor 24" }});
+        },
+        else => {},
+    }
     if (argv.len != 3) return it.fail("wrong # args: should be \"winfo {s} window\"", .{sub});
     const path = try it.str(argv[2]);
     if (which == .exists) return .{ .int = @intFromBool(app.find(path) != null) };
@@ -199,7 +280,28 @@ fn cmdWinfo(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
     const w = app.lookup(path) orelse return it.fail("bad window path name \"{s}\"", .{path});
     const a = it.alloc();
     switch (which) {
-        .exists, .rgb => unreachable,
+        .exists, .rgb, .fpixels, .pixels, .containing, .interps, .atom, .atomname, .pathname, .visualsavailable => unreachable,
+        .cells, .screencells => return .{ .int = 256 },
+        .colormapfull => return .{ .int = 0 },
+        .depth, .screendepth => return .{ .int = 24 },
+        .id => return .{ .str = try std.fmt.allocPrint(a, "0x{x}", .{@intFromPtr(w) & 0xffffff}) },
+        .pointerx, .pointery, .pointerxy => {
+            const p = app.dispatch.pointer;
+            if (which == .pointerx) return .{ .int = p.x };
+            if (which == .pointery) return .{ .int = p.y };
+            return try ztcl.value.newList(a, &.{ .{ .int = p.x }, .{ .int = p.y } });
+        },
+        .screen => return .{ .str = ":0.0" },
+        .server => return .{ .str = "ztk" },
+        .visual, .screenvisual => return .{ .str = "truecolor" },
+        .visualid => return .{ .str = "0x21" },
+        .screenwidth, .vrootwidth => return .{ .int = screenSize(app).w },
+        .screenheight, .vrootheight => return .{ .int = screenSize(app).h },
+        .vrootx, .vrooty => return .{ .int = 0 },
+        .screenmmwidth, .screenmmheight => {
+            const px: f64 = @floatFromInt(if (which == .screenmmwidth) screenSize(app).w else screenSize(app).h);
+            return .{ .int = @intFromFloat(@round(px / app.scaling / 72.0 * 25.4)) };
+        },
         .children => {
             const items = try a.alloc(Value, w.children.items.len);
             for (w.children.items, items) |c, *slot| slot.* = .{ .str = try a.dupe(u8, c.path) };
@@ -214,18 +316,25 @@ fn cmdWinfo(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
         .y => return .{ .int = w.geom.y },
         .width => return .{ .int = w.geom.w },
         .height => return .{ .int = w.geom.h },
-        .reqwidth => return .{ .int = w.req.w },
-        .reqheight => return .{ .int = w.req.h },
+        .reqwidth, .reqheight => {
+            app.ensureStyle(w);
+            @import("layout.zig").measureNow(w);
+            return .{ .int = if (which == .reqwidth) w.req.w else w.req.h };
+        },
         .rootx, .rooty => {
             var v: i32 = 0;
             var x: ?*widget.Widget = w;
             while (x) |p| : (x = p.parent) v +|= if (which == .rootx) p.geom.x else p.geom.y;
             return .{ .int = v };
         },
-        .ismapped => return .{ .int = @intFromBool(w.mapped) },
+        // A withdrawn or iconic toplevel is not mapped, as in Tk.
+        .ismapped => return .{ .int = @intFromBool(w.mapped and !(w.isToplevel() and (app.wmOf(w).withdrawn or app.wmOf(w).iconic))) },
         .viewable => {
             var x: ?*widget.Widget = w;
-            while (x) |p| : (x = p.parent) if (!p.mapped) return .{ .int = 0 };
+            while (x) |p| : (x = p.parent) {
+                if (!p.mapped) return .{ .int = 0 };
+                if (p.isToplevel()) return .{ .int = @intFromBool(!app.wmOf(p).withdrawn and !app.wmOf(p).iconic) };
+            }
             return .{ .int = @intFromBool(!app.wm.withdrawn) };
         },
         .geometry => return .{ .str = try std.fmt.allocPrint(a, "{d}x{d}+{d}+{d}", .{ w.geom.w, w.geom.h, w.geom.x, w.geom.y }) },

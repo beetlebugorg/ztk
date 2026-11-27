@@ -537,7 +537,12 @@ pub fn dropCell(s: *Widget) void {
     }
 }
 
-pub const manager: layout.Manager = .{ .name = "grid", .measure = measure, .arrange = arrange, .forget = forgetAtDelete, .release = release, .has_content = hasContent, .propagates = propagates };
+pub const manager: layout.Manager = .{ .name = "grid", .measure = measure, .arrange = arrange, .forget = forgetAtDelete, .release = release, .has_content = hasContent, .propagates = propagates, .container_of = containerWidget };
+
+fn containerWidget(w: *const Widget) ?*Widget {
+    const c = cellOf(w) orelse return null;
+    return c.in;
+}
 
 fn propagates(w: *const Widget) bool {
     const c = containerOf(w) orelse return true;
@@ -993,8 +998,8 @@ fn anchorCmd(it: *ztcl.Interp, app: *App, args: []const Value) ztcl.Error!Value 
         return .{ .str = @tagName(an) };
     }
     const text = try strOf(it, args[1]);
-    const an = std.meta.stringToEnum(options.Anchor, text) orelse
-        return it.fail("bad anchor \"{s}\": must be n, ne, e, se, s, sw, w, nw, or center", .{text});
+    const an: options.Anchor = @enumFromInt(options.anchorIndex(text) orelse
+        return it.fail("bad anchor \"{s}\": must be n, ne, e, se, s, sw, w, nw, or center", .{text}));
     const c = try ensureContainer(w);
     if (c.anchor != an) {
         c.anchor = an;

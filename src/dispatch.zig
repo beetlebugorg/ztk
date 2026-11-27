@@ -39,6 +39,8 @@ pub const State = struct {
     cursor: ?Cursor = null,
     /// The window of that shape.
     cursor_win: ?*const anyopaque = null,
+    /// The last position of the pointer, in the coordinates of its toplevel.
+    pointer: struct { x: i32 = 0, y: i32 = 0 } = .{},
 
     /// A widget that is deleted must not stay in the state.
     pub fn forget(s: *State, w: *const Widget) void {
@@ -65,7 +67,8 @@ pub fn widgetAt(top: *Widget, x: i32, y: i32) *Widget {
         while (i > 0) {
             i -= 1;
             const c = cur.children.items[i];
-            if (!c.mapped) continue;
+            // A child toplevel is a window of its own.
+            if (!c.mapped or c.isToplevel()) continue;
             if (px >= c.geom.x and py >= c.geom.y and px < c.geom.x +| c.geom.w and py < c.geom.y +| c.geom.h) {
                 found = c;
                 break;
@@ -80,7 +83,7 @@ fn rootOrigin(w: *const Widget) struct { x: i32, y: i32 } {
     var y: i32 = 0;
     var p: ?*const Widget = w;
     while (p) |n| : (p = n.parent) {
-        if (n.parent == null) break;
+        if (n.parent == null or n.isToplevel()) break;
         x +|= n.geom.x;
         y +|= n.geom.y;
     }
@@ -109,6 +112,7 @@ fn pointerEvent(app: *App, t: bind.EventType, w: *Widget, x: f32, y: f32, mods: 
     const o = rootOrigin(w);
     const ix: i32 = num.pxFloor(x);
     const iy: i32 = num.pxFloor(y);
+    app.dispatch.pointer = .{ .x = ix, .y = iy };
     return .{
         .type = t,
         .widget = w,
@@ -375,8 +379,78 @@ fn genOption(name: []const u8) ?[]const u8 {
     return found;
 }
 
-/// `event option ?arg ...?`. Only `generate` works. `add`, `delete`, and
-/// `info` give an error.
+/// `event add|delete|info`: the sequences of the virtual events. A
+/// sequence is one event pattern, as in `bind`.
+fn virtualCmd(app: *App, it: *ztcl.Interp, sub: []const u8, args: []const Value) ztcl.Error!Value {
+    const gpa = app.gpa;
+    const a = it.alloc();
+    const list = &app.virtual_events;
+    if (std.mem.eql(u8, sub, "info")) {
+        if (args.len > 1) return it.wrongArgs("event info ?<<virtual>>?");
+        var out: std.ArrayListUnmanaged(Value) = .empty;
+        if (args.len == 0) {
+            for (list.items) |d| {
+                var seen = false;
+                for (out.items) |v| if (std.mem.eql(u8, v.str[2 .. v.str.len - 2], d.name)) {
+                    seen = true;
+                };
+                if (!seen) try out.append(a, .{ .str = try std.fmt.allocPrint(a, "<<{s}>>", .{d.name}) });
+            }
+        } else {
+            const name = try virtualName(it, try it.str(args[0]));
+            for (list.items) |d| if (std.mem.eql(u8, d.name, name)) try out.append(a, .{ .str = try a.dupe(u8, d.text) });
+        }
+        return ztcl.value.wrapList(a, out.items);
+    }
+    if (args.len < 1) return it.fail("wrong # args: should be \"event {s} virtual ?sequence ...?\"", .{sub});
+    const name = try virtualName(it, try it.str(args[0]));
+    if (std.mem.eql(u8, sub, "delete")) {
+        var k: usize = 0;
+        while (k < list.items.len) {
+            const d = list.items[k];
+            var hit = std.mem.eql(u8, d.name, name);
+            if (hit and args.len > 1) {
+                hit = false;
+                for (args[1..]) |v| if (std.mem.eql(u8, try it.str(v), d.text)) {
+                    hit = true;
+                };
+            }
+            if (hit) {
+                bind.freeVirtual(gpa, d);
+                _ = list.orderedRemove(k);
+            } else k += 1;
+        }
+        return Value.empty;
+    }
+    if (args.len < 2) return it.wrongArgs("event add <<virtual>> sequence ?sequence ...?");
+    for (args[1..]) |v| {
+        const text = try it.str(v);
+        const pat = try bind.parsePattern(it, text);
+        if (pat.type == .virtual) return it.fail("virtual event not allowed in definition of another virtual event", .{});
+        var dup = false;
+        for (list.items) |d| if (std.mem.eql(u8, d.name, name) and std.mem.eql(u8, d.text, text)) {
+            dup = true;
+        };
+        if (dup) continue;
+        const n = try gpa.dupe(u8, name);
+        errdefer gpa.free(n);
+        const t = try gpa.dupe(u8, text);
+        errdefer gpa.free(t);
+        var p = pat;
+        p.virtual = "";
+        try list.append(gpa, .{ .name = n, .pattern = p, .text = t });
+    }
+    return Value.empty;
+}
+
+fn virtualName(it: *ztcl.Interp, text: []const u8) ztcl.Error![]const u8 {
+    if (text.len < 5 or !std.mem.startsWith(u8, text, "<<") or !std.mem.endsWith(u8, text, ">>"))
+        return it.fail("virtual event \"{s}\" is badly formed", .{text});
+    return text[2 .. text.len - 2];
+}
+
+/// `event option ?arg ...?`: generate, and the virtual events of
+/// `virtualCmd`.
 pub fn cmdEvent(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
     const app = App.of(it);
     app.enter();
@@ -384,7 +458,7 @@ pub fn cmdEvent(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztc
     if (argv.len < 2) return it.wrongArgs("event option ?arg1 arg2 ...?");
     const sub = try it.str(argv[1]);
     if (std.mem.eql(u8, sub, "add") or std.mem.eql(u8, sub, "delete") or std.mem.eql(u8, sub, "info")) {
-        return it.fail("event {s} is not supported in this stage", .{sub});
+        return virtualCmd(app, it, sub, argv[2..]);
     }
     if (!std.mem.eql(u8, sub, "generate")) return it.fail("bad option \"{s}\": must be add, delete, generate, or info", .{sub});
     if (argv.len < 4) return it.fail("wrong # args: should be \"event generate window event ?-option value ...?\"", .{});

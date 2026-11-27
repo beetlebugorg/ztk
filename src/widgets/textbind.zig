@@ -185,10 +185,27 @@ fn deleteSel(w: *Widget) bool {
     return true;
 }
 
+/// Runs an edit through the command of the widget, for a widget whose
+/// command an app wrapped: `path insert insert text` or `path delete`.
+fn viaCommand(w: *Widget, words: []const Value) ztcl.Error!void {
+    const it = w.app.it;
+    const a = it.alloc();
+    const all = try a.alloc(Value, words.len + 1);
+    all[0] = .{ .str = try a.dupe(u8, w.path) };
+    @memcpy(all[1..], words);
+    _ = try it.eval(try it.str(try ztcl.value.newList(a, all)));
+}
+
 fn insertTyped(w: *Widget, s: []const u8) ztcl.Error!void {
     if (s.len == 0 or !normal(w)) return;
     // A control character of a key with Control has no text to insert.
     if (s.len == 1 and s[0] < 0x20 and s[0] != '\n' and s[0] != '\t') return;
+    if (widget.commandWrapped(w)) {
+        if (insideSel(w, insertPos(w))) try viaCommand(w, &.{ .{ .str = "delete" }, .{ .str = "sel.first" }, .{ .str = "sel.last" } });
+        try viaCommand(w, &.{ .{ .str = "insert" }, .{ .str = "insert" }, .{ .str = s } });
+        if (w.alive()) textview.see(w, insertPos(w));
+        return;
+    }
     const d = text.data(w);
     // A typed text that replaces the selection is one compound action
     // with the delete, as `tk::TextInsert` makes it.
@@ -264,6 +281,15 @@ fn cmdText(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Err
             try insertTyped(w, try it.str(argv[3]));
         },
         .backspace, .delete => if (normal(w)) {
+            if (widget.commandWrapped(w)) {
+                if (insideSel(w, insertPos(w))) {
+                    try viaCommand(w, &.{ .{ .str = "delete" }, .{ .str = "sel.first" }, .{ .str = "sel.last" } });
+                } else if (act == .backspace) {
+                    try viaCommand(w, &.{ .{ .str = "delete" }, .{ .str = "insert-1c" } });
+                } else try viaCommand(w, &.{ .{ .str = "delete" }, .{ .str = "insert" } });
+                if (w.alive()) textview.see(w, insertPos(w));
+                return Value.empty;
+            }
             if (insideSel(w, insertPos(w)) and deleteSel(w)) {} else {
                 const p = insertPos(w);
                 if (act == .backspace) {

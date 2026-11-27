@@ -54,6 +54,7 @@ ztk [flags] script.tcl [arguments]
 | `--scale N` | With `--headless`: the scale of the window. |
 | `--exit-after-frames N` | Exits after N frames. |
 | `--dark` | Uses the dark color scheme. |
+| `--windowingsystem NAME` | Sets the result of `tk windowingsystem`: `x11`, `win32`, `aqua`, or `ztk` (the default). A Tk app that tests for `x11`, `win32`, or `aqua` can then choose its path. The look of ztk does not change. |
 | `--allow a,b` | Turns on more capabilities of ztcl, with the names of the `ztcl` runner: `package`, `interp`, `clock`, `event`, `socket`, `exec`, `random`, `env`, `sqlite`, and `thread`. `hotkey` lets `ztk::hotkey` add global shortcuts. |
 | `--root DIR` | Keeps the file commands in one folder, which a script sees as `/`. With no `--root`, they use the real paths of the host. |
 | `--cpu` | Uses the CPU renderer on Wayland. |

@@ -10,3 +10,5 @@ tests/golden/*.diff.png
 # The Zig package folder and the built docs site.
 zig-pkg/
 /site/
+# The release archives of the apps that tools/fetch-apps.sh downloads.
+.apps-src/

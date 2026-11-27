@@ -214,6 +214,17 @@ pub fn nearest(w: *Widget, x: i64, y: i64) Pos {
     const xoff: i64 = @intFromFloat(@round(d.vx.pos));
     // A point outside the content counts as the nearest point of the content.
     const cy = std.math.clamp(y, c.y, c.y + @max(c.h, 1) - 1);
+    // The lines from the top of the window to the point get their real
+    // heights first: a change of the tags since the last paint leaves
+    // estimates, and an estimate can give the wrong line.
+    {
+        const n = d.buf.lineCount();
+        var l = lineAt(w, @max(yoff, 0));
+        const want = cy - c.y + yoff;
+        while (l < n and lineY(w, l) <= want) : (l += 1) {
+            _ = layoutLine(w, l, a) catch break;
+        }
+    }
     const ty = std.math.clamp(cy - c.y + yoff, 0, @max(total(w) - 1, 0));
     const line = lineAt(w, ty);
     const para = layoutLine(w, line, a) catch return .{ .line = line };

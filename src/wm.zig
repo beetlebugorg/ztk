@@ -25,10 +25,32 @@ pub const State = struct {
     withdrawn: bool = false,
     /// The requested size of `.` at the last window size request.
     last_req: geom.Size = .{},
+    /// The position of `wm geometry +x+y`, which `wm geometry` gives back.
+    pos: geom.Point = .{},
+    iconic: bool = false,
+    /// The values of the subcommands that the window manager of ztk
+    /// stores and gives back but does not use: iconname, group,
+    /// transient, attributes, and the others. The keys are static, and
+    /// the values are owned.
+    props: std.StringArrayHashMapUnmanaged([]u8) = .empty,
 
     pub fn deinit(s: *State, gpa: std.mem.Allocator) void {
         gpa.free(s.title);
         if (s.delete_script) |d| gpa.free(d);
+        for (s.props.values()) |v| gpa.free(v);
+        s.props.deinit(gpa);
+    }
+
+    pub fn prop(s: *const State, key: []const u8) []const u8 {
+        return s.props.get(key) orelse "";
+    }
+
+    pub fn setProp(s: *State, gpa: std.mem.Allocator, key: []const u8, v: []const u8) !void {
+        const copy = try gpa.dupe(u8, v);
+        errdefer gpa.free(copy);
+        const gop = try s.props.getOrPut(gpa, key);
+        if (gop.found_existing) gpa.free(gop.value_ptr.*);
+        gop.value_ptr.* = copy;
     }
 };
 
@@ -103,7 +125,7 @@ pub fn cmdWm(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.E
         return Value.empty;
     }
     if (eq(name, "geometry")) {
-        if (args.len == 0) return .{ .str = try std.fmt.allocPrint(a, "{d}x{d}+0+0", .{ w.geom.w, w.geom.h }) };
+        if (args.len == 0) return .{ .str = try std.fmt.allocPrint(a, "{d}x{d}+{d}+{d}", .{ w.geom.w, w.geom.h, st.pos.x, st.pos.y }) };
         if (args.len > 1) return it.fail("wrong # args: should be \"wm geometry window ?newGeometry?\"", .{});
         const t = try it.str(args[0]);
         if (t.len == 0) {
@@ -111,6 +133,16 @@ pub fn cmdWm(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.E
             w.invalidate(.{ .style = false, .measure = true, .layout = true, .paint = true });
             return Value.empty;
         }
+        // A position alone, such as +300+300, moves the window and
+        // keeps its size.
+        if (t[0] == '+' or t[0] == '-') {
+            const p = parsePosition(t) orelse return it.fail("bad geometry specifier \"{s}\"", .{t});
+            st.pos = p;
+            return Value.empty;
+        }
+        if (std.mem.indexOfAny(u8, t, "+-")) |k| if (parsePosition(t[k..])) |p| {
+            st.pos = p;
+        };
         const size = parseGeometry(t) orelse return it.fail("bad geometry specifier \"{s}\"", .{t});
         st.geometry = .{ .w = std.math.clamp(size.w, 1, app_mod.max_window), .h = std.math.clamp(size.h, 1, app_mod.max_window) };
         app.setTopSize(w, st.geometry.?);
@@ -153,17 +185,136 @@ pub fn cmdWm(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.E
     if (eq(name, "withdraw") or eq(name, "deiconify")) {
         if (args.len != 0) return it.fail("wrong # args: should be \"wm {s} window\"", .{name});
         st.withdrawn = eq(name, "withdraw");
+        if (!st.withdrawn) st.iconic = false;
         w.invalidate(.{ .style = false, .measure = false, .layout = false, .paint = true });
         return Value.empty;
     }
     if (eq(name, "state")) {
-        if (args.len == 0) return .{ .str = if (st.withdrawn) "withdrawn" else "normal" };
+        if (args.len == 0) return .{ .str = if (st.withdrawn) "withdrawn" else if (st.iconic) "iconic" else "normal" };
         const t = try it.str(args[0]);
-        if (eq(t, "normal")) st.withdrawn = false else if (eq(t, "withdrawn")) st.withdrawn = true else return it.fail("wm state {s} is not supported in this stage", .{t});
+        // The headless and direct backends have no icons: an iconic or
+        // zoomed window stays on the screen, and `wm state` gives the state.
+        st.iconic = false;
+        if (eq(t, "normal") or eq(t, "zoomed")) st.withdrawn = false else if (eq(t, "withdrawn")) st.withdrawn = true else if (eq(t, "iconic") or eq(t, "icon")) {
+            st.iconic = true;
+        } else return it.fail("bad argument \"{s}\": must be normal, iconic, withdrawn, or zoomed", .{t});
         w.invalidate(.{ .style = false, .measure = false, .layout = false, .paint = true });
         return Value.empty;
     }
-    return it.fail("wm {s} is not supported in this stage", .{name});
+    if (eq(name, "iconify")) {
+        if (args.len != 0) return it.fail("wrong # args: should be \"wm iconify window\"", .{});
+        st.iconic = true;
+        return Value.empty;
+    }
+    if (eq(name, "stackorder")) {
+        if (args.len != 0) return it.fail("wm stackorder with a comparison is not supported", .{});
+        var out: std.ArrayListUnmanaged(Value) = .empty;
+        if (app.root) |r| if (!app.wm.withdrawn) try out.append(a, .{ .str = r.path });
+        for (app.tops.items) |t| if (!app.wmOf(t).withdrawn) try out.append(a, .{ .str = try a.dupe(u8, t.path) });
+        return ztcl.value.wrapList(a, out.items);
+    }
+    if (eq(name, "frame")) return .{ .str = try std.fmt.allocPrint(a, "0x{x}", .{@intFromPtr(w) & 0xffffff}) };
+    if (eq(name, "manage") or eq(name, "forget")) return Value.empty;
+    if (eq(name, "attributes")) return attributes(app, st, args);
+    if (eq(name, "overrideredirect")) {
+        if (args.len == 0) return .{ .int = @intFromBool(options.parseBool(st.prop("overrideredirect")) orelse false) };
+        const t = try it.str(args[0]);
+        const b = options.parseBool(t) orelse return it.fail("expected boolean value but got \"{s}\"", .{t});
+        try st.setProp(app.gpa, "overrideredirect", if (b) "1" else "0");
+        return Value.empty;
+    }
+    if (eq(name, "focusmodel")) {
+        if (args.len == 0) return .{ .str = try a.dupe(u8, if (st.prop("focusmodel").len > 0) st.prop("focusmodel") else "passive") };
+        const t = try it.str(args[0]);
+        if (!eq(t, "active") and !eq(t, "passive")) return it.fail("bad argument \"{s}\": must be active or passive", .{t});
+        try st.setProp(app.gpa, "focusmodel", t);
+        return Value.empty;
+    }
+    if (eq(name, "transient")) {
+        if (args.len == 0) return .{ .str = try a.dupe(u8, st.prop("transient")) };
+        const t = try it.str(args[0]);
+        if (t.len > 0 and app.find(t) == null) return it.fail("bad window path name \"{s}\"", .{t});
+        try st.setProp(app.gpa, "transient", t);
+        return Value.empty;
+    }
+    // The other subcommands store one value and give it back: iconname,
+    // iconbitmap, iconmask, iconphoto, iconposition, iconwindow, group,
+    // client, command, colormapwindows, positionfrom, sizefrom, aspect,
+    // and grid.
+    const key: []const u8 = names[which];
+    if (args.len == 0) return .{ .str = try a.dupe(u8, st.prop(key)) };
+    if (eq(name, "iconphoto") or eq(name, "aspect") or eq(name, "grid") or eq(name, "iconposition") or eq(name, "iconbitmap")) {
+        var words = args;
+        if (words.len > 0 and eq(try it.str(words[0]), "-default")) words = words[1..];
+        try st.setProp(app.gpa, key, try it.str(try ztcl.value.newList(a, words)));
+        return Value.empty;
+    }
+    if (args.len != 1) return it.fail("wrong # args: should be \"wm {s} window ?value?\"", .{name});
+    try st.setProp(app.gpa, key, try it.str(args[0]));
+    return Value.empty;
+}
+
+/// `wm attributes window ?option? ?value option value ...?`: -alpha,
+/// -fullscreen, -topmost, -type, and -zoomed, stored for the window.
+fn attributes(app: *App, st: *State, args: []const Value) ztcl.Error!Value {
+    const it = app.it;
+    const a = it.alloc();
+    const keys = [_][]const u8{ "-alpha", "-fullscreen", "-topmost", "-type", "-zoomed" };
+    const defaults = [_][]const u8{ "1.0", "0", "0", "", "0" };
+    const index = struct {
+        fn of(k: []const u8) ?usize {
+            for (keys, 0..) |n, i| if (eq(n, k)) return i;
+            return null;
+        }
+    };
+    if (args.len == 0) {
+        var out = try a.alloc(Value, keys.len * 2);
+        for (keys, defaults, 0..) |k, d, i| {
+            const v = st.prop(k);
+            out[2 * i] = .{ .str = k };
+            out[2 * i + 1] = .{ .str = try a.dupe(u8, if (v.len > 0 or eq(k, "-type")) v else d) };
+        }
+        return ztcl.value.wrapList(a, out);
+    }
+    if (args.len == 1) {
+        const k = try it.str(args[0]);
+        const i = index.of(k) orelse return it.fail("bad attribute \"{s}\": must be -alpha, -fullscreen, -topmost, -type, or -zoomed", .{k});
+        const v = st.prop(keys[i]);
+        return .{ .str = try a.dupe(u8, if (v.len > 0 or i == 3) v else defaults[i]) };
+    }
+    if (args.len % 2 != 0) return it.fail("wrong # args: should be \"wm attributes window ?-option value ...?\"", .{});
+    var k: usize = 0;
+    while (k < args.len) : (k += 2) {
+        const name = try it.str(args[k]);
+        const i = index.of(name) orelse return it.fail("bad attribute \"{s}\": must be -alpha, -fullscreen, -topmost, -type, or -zoomed", .{name});
+        st.setProp(app.gpa, keys[i], try it.str(args[k + 1])) catch return it.memError();
+    }
+    return Value.empty;
+}
+
+/// Parses the position of a geometry: +x+y, -x-y, or a mix. A minus
+/// counts from the right or the bottom; ztk keeps the number as given.
+fn parsePosition(text: []const u8) ?geom.Point {
+    var vals: [2]i32 = .{ 0, 0 };
+    var i: usize = 0;
+    for (&vals) |*v| {
+        if (i >= text.len or (text[i] != '+' and text[i] != '-')) return null;
+        const neg = text[i] == '-';
+        i += 1;
+        // Tk accepts "+-10", a negative position from the left.
+        var neg2 = false;
+        if (i < text.len and (text[i] == '-' or text[i] == '+')) {
+            neg2 = text[i] == '-';
+            i += 1;
+        }
+        const start = i;
+        while (i < text.len and text[i] >= '0' and text[i] <= '9') i += 1;
+        if (i == start) return null;
+        const n = std.fmt.parseInt(i32, text[start..i], 10) catch return null;
+        v.* = if (neg != neg2) -n else n;
+    }
+    if (i != text.len) return null;
+    return .{ .x = vals[0], .y = vals[1] };
 }
 
 fn eq(a: []const u8, b: []const u8) bool {
