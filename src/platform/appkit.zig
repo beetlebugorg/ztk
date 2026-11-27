@@ -207,6 +207,8 @@ pub const AppKit = struct {
         .target = vTarget,
         .setCursor = vSetCursor,
         .appearance = vAppearance,
+        .reducedMotion = vReducedMotion,
+        .setWindowState = vSetWindowState,
         .clipboardSet = vClipboardSet,
         .clipboardGet = vClipboardGet,
         .textInput = vTextInput,
@@ -935,6 +937,13 @@ pub const AppKit = struct {
         // Options 0 and a null context: the observer reads the new value itself.
         objc.call(fn (Id, Sel, Id, Id, usize, ?*anyopaque) callconv(.c) void, a.app, "addObserver:forKeyPath:options:context:", .{ o, key, 0, null });
         objc.call(fn (Id, Sel, Id, Sel, Id, ?Id) callconv(.c) void, notificationCenter(), "addObserver:selector:name:object:", .{ o, objc.sel("ztkColors:"), NSSystemColorsDidChangeNotification, null });
+        // A change of Reduce motion in the settings of Accessibility is an
+        // `appearance` event too: the core reads `reducedMotion` again.
+        const ws = objc.call(fn (Class, Sel) callconv(.c) Id, objc.class("NSWorkspace").?, "sharedWorkspace", .{});
+        const wsc = objc.call(fn (Id, Sel) callconv(.c) Id, ws, "notificationCenter", .{});
+        const name = objc.nsString("NSWorkspaceAccessibilityDisplayOptionsDidChangeNotification");
+        defer objc.release(name);
+        objc.call(fn (Id, Sel, Id, Sel, Id, ?Id) callconv(.c) void, wsc, "addObserver:selector:name:object:", .{ o, objc.sel("ztkColors:"), name, null });
         a.observer = o;
     }
 
@@ -944,6 +953,26 @@ pub const AppKit = struct {
         if (a.wins.items.len == 0) return;
         for (a.events.items) |e| if (e == .appearance) return;
         a.push(.{ .appearance = .{ .window = &a.wins.items[0].window } });
+    }
+
+    /// The setting Reduce motion of Accessibility.
+    fn vReducedMotion(_: *anyopaque) bool {
+        const ws = objc.call(fn (Class, Sel) callconv(.c) Id, objc.class("NSWorkspace").?, "sharedWorkspace", .{});
+        return objc.call(fn (Id, Sel) callconv(.c) bool, ws, "accessibilityDisplayShouldReduceMotion", .{});
+    }
+
+    /// `wm attributes -fullscreen` and `-topmost`. Full screen is the full
+    /// screen of macOS, a space of its own with an animation, which
+    /// `toggleFullScreen:` starts only when the state differs. Topmost is
+    /// the floating level of panels.
+    fn vSetWindowState(_: *anyopaque, win: *Window, st: plat.WindowState) void {
+        const w = winOf(win);
+        const full_mask: usize = 1 << 14; // NSWindowStyleMaskFullScreen
+        const mask = objc.call(fn (Id, Sel) callconv(.c) usize, w.ns_window, "styleMask", .{});
+        if ((mask & full_mask != 0) != st.fullscreen)
+            objc.call(fn (Id, Sel, ?Id) callconv(.c) void, w.ns_window, "toggleFullScreen:", .{null});
+        // NSFloatingWindowLevel 3, NSNormalWindowLevel 0.
+        objc.call(fn (Id, Sel, isize) callconv(.c) void, w.ns_window, "setLevel:", .{@as(isize, if (st.topmost) 3 else 0)});
     }
 
     fn vAppearance(ptr: *anyopaque) plat.Appearance {
