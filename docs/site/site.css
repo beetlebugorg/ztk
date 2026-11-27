@@ -378,6 +378,10 @@ figure.chart { margin: 0; }
 .live-demo .ld-inspect input[type="color"] { width: 28px; padding: 0; margin-right: 4px; vertical-align: middle; }
 .live-demo .ld-iopts td:nth-child(2) { display: flex; }
 .live-demo .ld-inspect input.bad { border-color: var(--warn); }
+.live-demo .ld-console { margin-top: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--code-bg); }
+.live-demo .ld-console[hidden] { display: none; }
+.live-demo .ld-console pre { margin: 0; padding: 6px 10px; height: 11em; overflow: auto; font: 12.5px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.live-demo .ld-console input { display: block; box-sizing: border-box; width: 100%; font: 13px var(--mono); color: var(--text); background: var(--surface); border: 0; border-top: 1px solid var(--line); border-radius: 0 0 8px 8px; padding: 6px 10px; }
 /* The panel has one height for all tabs, so a change of tab moves nothing. */
 .live-demo .ld-inspect:not(.sheet) { height: min(440px, calc(100vh - 16px)); }
 .live-demo .ld-inspect.sheet { height: 60vh; }

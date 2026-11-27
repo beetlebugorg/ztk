@@ -155,4 +155,6 @@ timeout 180 node "$root/tests/toy-keys.mjs" "$browser" "$work/profile-keys" "htt
 # The panel of Inspect: in view and off its widget, at three widths.
 timeout 180 node "$root/tests/inspect.mjs" "$browser" "$work/profile-inspect" "http://127.0.0.1:$port/widgets/basic/" \
     --use-angle=swiftshader --enable-unsafe-swiftshader || fail=1
+timeout 180 node "$root/tests/debug-form.mjs" "$browser" "$work/profile-form" "http://127.0.0.1:$port/debugging/form/" \
+    --use-angle=swiftshader --enable-unsafe-swiftshader || fail=1
 exit "$fail"

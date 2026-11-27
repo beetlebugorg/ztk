@@ -24,7 +24,9 @@
 // change of an option in the table configures the widget and writes the
 // option into the line of the code that set it, or else the line that
 // makes the widget. X-ray and the boxes of Inspect read the widgets with
-// winfo, so they work for each snippet with no hook in ztk.
+// winfo, so they work for each snippet with no hook in ztk. The console
+// under the window runs Tcl commands in the window and shows the output
+// of puts.
 //
 // The page draws the frames itself (the option loop: false of start()),
 // and only while the snippet is on the screen. It measures the CPU time
@@ -313,11 +315,54 @@ class Demo {
     stress.setAttribute("aria-pressed", "false");
     toggle("X-ray", "Show the box of each widget and the cells of each grid", "xray");
     toggle("Inspect", "Point at a widget to see its options; click it to edit them", "inspecting");
+    // The console: Tcl commands in the running window, for ztk::debug.
+    const con = button("Console", "Type Tcl commands, such as ztk::debug explain, into the running window", () => {
+      this.consoleBox.hidden = !this.consoleBox.hidden;
+      con.setAttribute("aria-pressed", String(!this.consoleBox.hidden));
+      if (!this.consoleBox.hidden) this.consoleInput.focus();
+    });
     this.hud = document.createElement("span");
     this.hud.className = "ld-hud";
     this.hud.setAttribute("aria-live", "off");
     bar.appendChild(this.hud);
     this.err = this.fig.querySelector(".ld-err");
+    this.consoleBox = document.createElement("div");
+    this.consoleBox.className = "ld-console";
+    this.consoleBox.hidden = !params.has("console");
+    con.setAttribute("aria-pressed", String(!this.consoleBox.hidden));
+    this.consoleOut = document.createElement("pre");
+    this.consoleOut.setAttribute("role", "log");
+    this.consoleOut.setAttribute("aria-label", "The output of the console");
+    this.consoleInput = document.createElement("input");
+    this.consoleInput.setAttribute("aria-label", "A Tcl command for the running window");
+    this.consoleInput.placeholder = "ztk::debug explain .path -option";
+    this.consoleInput.spellcheck = false;
+    this.consoleInput.autocapitalize = "off";
+    const history = [];
+    let back = 0;
+    this.consoleInput.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        if (!history.length) return;
+        e.preventDefault();
+        back = Math.max(0, Math.min(history.length, back + (e.key === "ArrowUp" ? 1 : -1)));
+        this.consoleInput.value = back ? history[history.length - back] : "";
+        return;
+      }
+      if (e.key !== "Enter" || !this.h) return;
+      const cmd = this.consoleInput.value;
+      if (!cmd.trim()) return;
+      history.push(cmd);
+      back = 0;
+      this.consoleInput.value = "";
+      this.say(`% ${cmd}`);
+      const r = this.h.eval(cmd);
+      if (r.result !== "" || !r.ok) this.say(r.ok ? r.result : `error: ${r.result}`);
+      this.h.frame(performance.now());
+      this.overlay();
+      if (this.picked) this.pick(this.picked);
+    });
+    this.consoleBox.append(this.consoleOut, this.consoleInput);
+    this.err.after(this.consoleBox);
     this.panel = document.createElement("div");
     this.panel.className = "ld-inspect";
     this.panel.hidden = true;
@@ -326,6 +371,16 @@ class Demo {
     const again = () => this.place();
     addEventListener("scroll", again, { passive: true });
     addEventListener("resize", again, { passive: true });
+  }
+
+  // Adds text to the output of the console. It keeps the last 400 lines.
+  say(text) {
+    const out = this.consoleOut;
+    if (!out) return;
+    const lines = (out.textContent ? out.textContent + "\n" : "") + text.replace(/\n$/, "");
+    const all = lines.split("\n");
+    out.textContent = all.slice(-400).join("\n");
+    out.scrollTop = out.scrollHeight;
   }
 
   link() {
@@ -356,7 +411,8 @@ class Demo {
     view.appendChild(frame);
     let h;
     try {
-      const opts = { module, width: this.W, height: this.H, loop: false, renderer: this.renderer };
+      // The output of puts goes to the console of the snippet.
+      const opts = { module, width: this.W, height: this.H, loop: false, renderer: this.renderer, log: (t) => this.say(t) };
       if (params.get("livescale")) opts.scale = Number(params.get("livescale"));
       h = await m.start(canvas, opts);
     } catch (e) {
