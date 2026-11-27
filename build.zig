@@ -39,7 +39,7 @@ fn vulkanC(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builti
 }
 
 /// The backends of one build of the ztk module, and the Vulkan renderer.
-const Config = struct { backends: []const u8, vulkan: bool };
+const Config = struct { backends: []const u8, vulkan: bool, drop: []const u8 = "", ztcl_drop: []const u8 = "" };
 
 /// The full GUI backend of each platform: Wayland, X11, and the direct
 /// backend with Vulkan on Linux, AppKit with Metal on macOS, and Win32
@@ -67,7 +67,7 @@ const Built = struct {
 
 /// `public`: other packages import the module as "ztk".
 fn addZtk(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, cfg: Config, shaders: Shaders, public: bool) Built {
-    const ztcl = b.dependency("ztcl", .{ .target = target, .optimize = optimize }).module("ztcl");
+    const ztcl = b.dependency("ztcl", .{ .target = target, .optimize = optimize, .drop = cfg.ztcl_drop }).module("ztcl");
     const is_linux = target.result.os.tag == .linux;
     const is_macos = target.result.os.tag == .macos;
     // The Wayland and X11 code exists for Linux only.
@@ -79,6 +79,7 @@ fn addZtk(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin
     const opts = b.addOptions();
     opts.addOptionPathUntracked("repo_root", b.path("."));
     opts.addOption(bool, "vulkan", vulkan_on);
+    opts.addOption([]const u8, "drop", cfg.drop);
     opts.addOption(bool, "wayland", wayland_on);
     opts.addOption(bool, "appkit", appkit_on);
 
@@ -149,6 +150,27 @@ fn addProgram(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.bui
     return exe;
 }
 
+const features_table = @import("src/features_table.zig");
+
+const Drop = struct { ztk: []const u8, ztcl: []const u8 };
+
+/// Splits a drop list: the names of src/features_table.zig stay in ztk,
+/// and the rest go to ztcl, whose build checks them. A kept terminal
+/// keeps the `vt` module of ztcl.
+fn splitDrop(b: *std.Build, list: []const u8) Drop {
+    var ztk_list: std.ArrayList(u8) = .empty;
+    var ztcl_list: std.ArrayList(u8) = .empty;
+    const keep_vt = !features_table.listHas(list, "terminal");
+    var parts = std.mem.tokenizeScalar(u8, list, ',');
+    while (parts.next()) |p| {
+        const into = if (features_table.index(p) != null) &ztk_list else &ztcl_list;
+        if (into == &ztcl_list and keep_vt and std.mem.eql(u8, p, "vt")) continue;
+        if (into.items.len > 0) into.append(b.allocator, ',') catch @panic("OOM");
+        into.appendSlice(b.allocator, p) catch @panic("OOM");
+    }
+    return .{ .ztk = ztk_list.items, .ztcl = ztcl_list.items };
+}
+
 /// The targets of `ztk bundle --target`, and of `zig build runtimes`.
 const runtime_targets = [_][]const u8{ "x86_64-linux", "aarch64-linux", "x86_64-macos", "aarch64-macos", "x86_64-windows", "aarch64-windows" };
 
@@ -160,7 +182,11 @@ pub fn build(b: *std.Build) void {
     const backends = b.option([]const u8, "backends", "The backends to build, separated by commas: wayland, direct, appkit, headless (default: wayland, direct, and headless on Linux, appkit and headless on macOS, headless elsewhere)") orelse full.backends;
     const vulkan_on = b.option(bool, "vulkan", "Build the Vulkan renderer (default: true on Linux)") orelse full.vulkan;
     const strip = b.option(bool, "strip", "Remove the debug sections from the program");
-    const cfg: Config = .{ .backends = backends, .vulkan = vulkan_on };
+    // `-Ddrop=a,b` leaves out features: the widget classes of
+    // src/features_table.zig, and the features of ztcl, which go to the
+    // ztcl dependency. It is the build of `ztk bundle --strip`.
+    const drop = splitDrop(b, b.option([]const u8, "drop", "The features of ztk and ztcl to leave out, separated by commas (docs/strip.md)") orelse "");
+    const cfg: Config = .{ .backends = backends, .vulkan = vulkan_on, .drop = drop.ztk, .ztcl_drop = drop.ztcl };
     const shaders: Shaders = .{
         .vert = shader(b, "vertex", "src/render/shaders/quad.vert", "quad.vert.spv"),
         .frag = shader(b, "fragment", "src/render/shaders/quad.frag", "quad.frag.spv"),
@@ -188,7 +214,10 @@ pub fn build(b: *std.Build) void {
             if (!found) continue;
         }
         const rt = b.resolveTargetQuery(std.Target.Query.parse(.{ .arch_os_abi = name }) catch unreachable);
-        const rexe = addProgram(b, rt, .ReleaseFast, fullConfig(rt.result), true, shaders);
+        var rcfg = fullConfig(rt.result);
+        rcfg.drop = drop.ztk;
+        rcfg.ztcl_drop = drop.ztcl;
+        const rexe = addProgram(b, rt, .ReleaseFast, rcfg, true, shaders);
         const inst = b.addInstallArtifact(rexe, .{ .dest_dir = .{ .override = .{ .custom = b.fmt("lib/ztk/runtime/{s}", .{name}) } } });
         runtimes.dependOn(&inst.step);
     }
@@ -200,7 +229,8 @@ pub fn build(b: *std.Build) void {
         wasm_opts.addOption([]const u8, "repo_root", ".");
         wasm_opts.addOption(bool, "vulkan", false);
         wasm_opts.addOption(bool, "wayland", false);
-        const wasm_ztcl = b.dependency("ztcl", .{ .target = wasm_target, .optimize = .fast }).module("ztcl");
+        wasm_opts.addOption([]const u8, "drop", drop.ztk);
+        const wasm_ztcl = b.dependency("ztcl", .{ .target = wasm_target, .optimize = .fast, .drop = drop.ztcl }).module("ztcl");
         const wasm_mod = b.createModule(.{
             .root_source_file = b.path("src/web.zig"),
             .target = wasm_target,

@@ -180,7 +180,7 @@ pub fn main(init: std.process.Init) !void {
     const own_app = ztk.appbin.own(io, arena) catch |e| fail(err, "ztk: cannot read the app in this program: {s}\n", .{@errorName(e)});
     if (own_app != null) rest = args[1..];
     if (own_app == null and args.len > 1 and std.mem.eql(u8, args[1], "bundle")) {
-        const code = ztk.bundle.run(io, arena, args[2..], err) catch |e| fail(err, "ztk bundle: {s}\n", .{@errorName(e)});
+        const code = ztk.bundle.run(io, arena, init.environ_map, args[2..], err) catch |e| fail(err, "ztk bundle: {s}\n", .{@errorName(e)});
         err.flush() catch {};
         std.process.exit(code);
     }

@@ -327,7 +327,8 @@ fn commonDir(x: []const u8, y: []const u8) []const u8 {
 }
 
 /// Runs `ztk bundle`. `args` are the words after `bundle`. Gives the exit code.
-pub fn run(io: Io, a: std.mem.Allocator, args: []const [:0]const u8, err: *Io.Writer) !u8 {
+pub fn run(io: Io, a: std.mem.Allocator, env: *const std.process.Environ.Map, args: []const [:0]const u8, err: *Io.Writer) !u8 {
+    var strip: ztcl.stripbuild.Flags = .{};
     var output: ?[]const u8 = null;
     var name: ?[]const u8 = null;
     var id: ?[]const u8 = null;
@@ -345,6 +346,7 @@ pub fn run(io: Io, a: std.mem.Allocator, args: []const [:0]const u8, err: *Io.Wr
     while (i < args.len) : (i += 1) {
         const arg: []const u8 = args[i];
         const value: ?[]const u8 = if (i + 1 < args.len) args[i + 1] else null;
+        if (try strip.parse(a, args, &i)) continue;
         const slot: ?*?[]const u8 = if (std.mem.eql(u8, arg, "-o")) &output else if (std.mem.eql(u8, arg, "--target")) &target else if (std.mem.eql(u8, arg, "--name")) &name else if (std.mem.eql(u8, arg, "--id")) &id else if (std.mem.eql(u8, arg, "--icon")) &icon else if (std.mem.eql(u8, arg, "--runner")) &runner else null;
         if (slot) |s| {
             s.* = value orelse return usageError(err, "ztk bundle: {s} needs a value\n", .{arg});
@@ -372,10 +374,19 @@ pub fn run(io: Io, a: std.mem.Allocator, args: []const [:0]const u8, err: *Io.Wr
     if (!is_app) {
         const tg = target orelse ztcl.buildnative.hostTarget();
         if (desktop and !std.mem.endsWith(u8, tg, "-linux")) return usageError(err, "ztk bundle: --desktop is for a Linux target, and the target is {s}\n", .{tg});
-        const status = try single(io, a, err, out_path, tg, runner, allow, files.items, .{ .name = name, .version = version, .icon = icon, .console = console });
+        const win: WinOpts = .{ .name = name, .version = version, .icon = icon, .console = console };
+        if (strip.on) {
+            if ((strip.check or strip.profile) and !std.mem.eql(u8, tg, ztcl.buildnative.hostTarget()))
+                return usageError(err, "ztk bundle: --check and --profile run the program, so they need the target of this computer\n", .{});
+            runner = try stripRuntime(io, a, env, &strip, tg, runner, allow, files.items, win, err) orelse return 1;
+        } else if (strip.check or strip.profile or strip.keep.items.len > 0 or strip.drop.items.len > 0 or strip.trust) {
+            return usageError(err, "ztk bundle: --keep, --drop-module, --trust-scan, --check, and --profile need --strip\n", .{});
+        }
+        const status = try single(io, a, err, out_path, tg, runner, allow, files.items, win);
         if (status != 0 or !desktop) return status;
         return desktopFiles(io, a, err, out_path, name, icon);
     }
+    if (strip.on) return usageError(err, "ztk bundle: --strip makes one program file: leave out .app\n", .{});
     if (target) |tg| if (!std.mem.endsWith(u8, tg, "-macos")) {
         return usageError(err, "ztk bundle: a .app folder is for a macOS target. Leave out .app for one program file of {s}.\n", .{tg});
     };
@@ -526,6 +537,54 @@ fn collect(io: Io, a: std.mem.Allocator, paths: []const []const u8) ![]appbin.Fi
     return out.items;
 }
 
+const strip_tool: ztcl.stripbuild.Tool = .{
+    .name = "ztk bundle",
+    .src_env = "ZTK_SRC",
+    .manifest = "ztk-strip.txt",
+    .program = "ztk",
+    .ztk = true,
+    .extra = &@import("features.zig").table,
+};
+
+/// The binaries of `--check` and `--profile`.
+const TestCtx = struct {
+    io: Io,
+    a: std.mem.Allocator,
+    target: []const u8,
+    runner: ?[]const u8,
+    allow: []const u8,
+    win: WinOpts,
+    err: *Io.Writer,
+
+    fn build(c: TestCtx, runtime: ?[]const u8, entries: []const ztcl.wasmbundle.Entry, path: []const u8) anyerror!bool {
+        var files: std.ArrayList(appbin.File) = .empty;
+        // The first script runs: the main script of the app.
+        for (entries) |e| if (e.kind == .script) try files.append(c.a, .{ .name = e.name, .data = e.data });
+        for (entries) |e| if (e.kind != .script) try files.append(c.a, .{ .name = e.name, .data = e.data });
+        var discard: Io.Writer.Allocating = .init(c.a);
+        const code = try singleFiles(c.io, c.a, &discard.writer, path, c.target, runtime orelse c.runner, c.allow, files.items, c.win);
+        if (code != 0) try c.err.writeAll(discard.written());
+        return code == 0;
+    }
+};
+
+/// Builds the stripped ztk program of `target` (`docs/strip.md`) and
+/// gives its path, or null after a message.
+fn stripRuntime(io: Io, a: std.mem.Allocator, env: *const std.process.Environ.Map, strip: *ztcl.stripbuild.Flags, target: []const u8, runner: ?[]const u8, allow: []const u8, paths: []const []const u8, win: WinOpts, err: *Io.Writer) !?[]const u8 {
+    const files = try collect(io, a, paths);
+    var entries: std.ArrayList(ztcl.wasmbundle.Entry) = .empty;
+    for (files, 0..) |f, k| try entries.append(a, .{ .kind = if (k == 0) .script else .file, .name = f.name, .data = f.data });
+    const bn = ztcl.buildnative;
+    var file: []const u8 = "ztk";
+    for (bn.targets) |tg| if (std.mem.eql(u8, tg.name, target)) {
+        if (std.mem.endsWith(u8, tg.file, ".exe")) file = "ztk.exe";
+    };
+    const full = try runtimePath(io, a, target, file, runner);
+    const ctx: TestCtx = .{ .io = io, .a = a, .target = target, .runner = runner, .allow = allow, .win = win, .err = err };
+    const r = try ztcl.stripbuild.run(strip_tool, io, a, env, strip, .{ .target = target, .wasm = false, .allow = allow, .jit = true, .full_runtime = full }, entries.items, ctx, TestCtx.build, err) orelse return null;
+    return r.runtime;
+}
+
 /// The ztk program of `target`: `runner`, else
 /// `lib/ztk/runtime/TARGET/FILE` next to this program, else this program
 /// for the target of this computer.
@@ -580,6 +639,10 @@ fn windowsProgram(io: Io, a: std.mem.Allocator, runtime: []const u8, out_path: [
 const WinOpts = struct { name: ?[]const u8, version: []const u8, icon: ?[]const u8, console: bool };
 
 fn single(io: Io, a: std.mem.Allocator, err: *Io.Writer, out_path: []const u8, target: []const u8, runner: ?[]const u8, allow: []const u8, paths: []const []const u8, win: WinOpts) !u8 {
+    return singleFiles(io, a, err, out_path, target, runner, allow, try collect(io, a, paths), win);
+}
+
+fn singleFiles(io: Io, a: std.mem.Allocator, err: *Io.Writer, out_path: []const u8, target: []const u8, runner: ?[]const u8, allow: []const u8, files: []const appbin.File, win: WinOpts) !u8 {
     const bn = ztcl.buildnative;
     var file: ?[]const u8 = null;
     for (bn.targets) |tg| if (std.mem.eql(u8, tg.name, target)) {
@@ -592,7 +655,6 @@ fn single(io: Io, a: std.mem.Allocator, err: *Io.Writer, out_path: []const u8, t
         try err.print("ztk bundle: the ztk program of {s}: {s}: {s}. Give it with --runner.\n", .{ target, rt_path, @errorName(e) });
         return 1;
     };
-    const files = try collect(io, a, paths);
     // A Windows program gets its icon, its manifest, and its version as
     // resources, and the GUI subsystem unless --console, before the app
     // goes in its slot.
