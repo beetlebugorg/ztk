@@ -64,14 +64,14 @@ test "tray: the tasks of ztk::win::jumplist parse from dicts" {
     const winapi = @import("../winapi.zig");
     try t.expectEqualStrings("ztk::win::jumplist is only on Windows", try h.evalError("ztk::win::jumplist {title New args --new}"));
     const v = try h.it.eval("list {title New args --new description {A new window} iconindex 2} {title Open}");
-    const tasks = try winapi.parseTasks(&h.it, try h.it.readList(v));
+    const tasks = try winapi.parseTasks(&h.it, try h.it.list(v));
     try t.expectEqual(@as(usize, 2), tasks.len);
     try t.expectEqualStrings("--new", tasks[0].args);
     try t.expectEqualStrings("A new window", tasks[0].description);
     try t.expectEqual(@as(i32, 2), tasks[0].icon_index);
     try t.expectEqualStrings("Open", tasks[1].title);
     const bad = try h.it.eval("list {args --x}");
-    try t.expectError(error.TclError, winapi.parseTasks(&h.it, try h.it.readList(bad)));
+    try t.expectError(error.TclError, winapi.parseTasks(&h.it, try h.it.list(bad)));
 }
 
 test "tray: ztk::win::thumbbar is only on Windows, and a click runs the script of its button" {

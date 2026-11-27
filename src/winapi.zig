@@ -55,7 +55,7 @@ pub fn cmdBackdrop(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) 
 pub fn parseTasks(it: *ztcl.Interp, items: []const Value) ztcl.Error![]plat.JumpTask {
     const tasks = try it.alloc().alloc(plat.JumpTask, items.len);
     for (items, tasks) |v, *t| {
-        const l = try it.readList(v);
+        const l = try it.list(v);
         if (l.len % 2 != 0) return it.fail("a task is a dict of title, args, description, icon, and iconindex", .{});
         t.* = .{ .title = "" };
         var k: usize = 0;
@@ -104,7 +104,7 @@ pub fn cmdThumbBar(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) 
     var buttons: [plat.max_thumb_buttons]plat.ThumbButton = undefined;
     var scripts: [plat.max_thumb_buttons][]const u8 = @splat("");
     for (items, 0..) |v, i| {
-        const l = try it.readList(v);
+        const l = try it.list(v);
         if (l.len % 2 != 0) return it.fail("a button is a dict of image, tooltip, command, and disabled", .{});
         buttons[i] = .{ .icon = .{ .width = 0, .height = 0, .pixels = &.{} } };
         var k: usize = 0;

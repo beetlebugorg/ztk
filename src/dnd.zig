@@ -60,7 +60,7 @@ pub fn cmdDropTarget(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd
         var types: plat.DropTypes = .{ .files = true, .text = true };
         if (argv.len == 4) {
             types = .{};
-            for (try it.readList(argv[3])) |v| {
+            for (try it.list(argv[3])) |v| {
                 const name = try it.str(v);
                 if (std.mem.eql(u8, name, "DND_Files")) {
                     types.files = true;
@@ -193,7 +193,7 @@ pub fn cmdDnd(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.
         const opt = try it.str(argv[i]);
         const v = argv[i + 1];
         if (std.mem.eql(u8, opt, "-files")) {
-            const l = try it.readList(v);
+            const l = try it.list(v);
             const files = try it.alloc().alloc([]const u8, l.len);
             for (l, files) |x, *f| f.* = try it.str(x);
             d.files = files;
