@@ -269,12 +269,50 @@ fn copyTree(io: Io, a: std.mem.Allocator, src: []const u8, dest_root: Io.Dir, de
     }
 }
 
-/// The path of an embedded file in `app/`: the path as given when it is
-/// relative and stays in the folder, else its last part.
-fn embedPath(p: []const u8) []const u8 {
-    const trimmed = std.mem.trimEnd(u8, p, "/");
-    if (safeRelative(trimmed)) return trimmed;
-    return std.fs.path.basename(trimmed);
+/// The names in `app/` of the main script and of each other file or
+/// folder. The names are relative to the deepest folder that has the
+/// folder of the main script and each file and folder, so a path relative
+/// to the main script in the source tree is the same path in the app. A
+/// folder that is that root gives the name "" (its files go in at the
+/// top). A path on another Windows drive gets its last part.
+fn layout(io: Io, a: std.mem.Allocator, paths: []const []const u8) ![]const []const u8 {
+    const cwd_path = try std.process.currentPathAlloc(io, a);
+    const abs = try a.alloc([]const u8, paths.len);
+    for (paths, abs) |p, *slot| slot.* = try std.fs.path.resolve(a, &.{ cwd_path, p });
+    // The folder of each entry: the parent of a file, a folder itself.
+    var root: []const u8 = std.fs.path.dirname(abs[0]) orelse abs[0];
+    for (abs[1..]) |p| {
+        const dir = if (isDir(io, p)) p else std.fs.path.dirname(p) orelse p;
+        root = commonDir(root, dir);
+    }
+    const names = try a.alloc([]const u8, paths.len);
+    for (abs, names, paths) |p, *slot, given| {
+        const rel = try std.fs.path.relativeAlloc(a, cwd_path, null, root, p);
+        const clean = try std.mem.replaceOwned(u8, a, rel, "\\", "/");
+        slot.* = if (clean.len == 0 or safeRelative(clean)) clean else std.fs.path.basename(std.mem.trimEnd(u8, given, "/\\"));
+    }
+    return names;
+}
+
+fn isDir(io: Io, p: []const u8) bool {
+    var d = Io.Dir.cwd().openDir(io, p, .{}) catch return false;
+    d.close(io);
+    return true;
+}
+
+/// The longest folder path that is a prefix of `x` and of `y` at a
+/// separator. Both paths are absolute and resolved.
+fn commonDir(x: []const u8, y: []const u8) []const u8 {
+    var end: usize = 0;
+    var k: usize = 0;
+    while (k < x.len and k < y.len and x[k] == y[k]) : (k += 1) {
+        if (std.fs.path.isSep(x[k])) end = k;
+    }
+    // The whole of the shorter path is a folder when the other path goes on with a separator there.
+    if ((k == x.len and (k == y.len or std.fs.path.isSep(y[k]))) or (k == y.len and std.fs.path.isSep(x[k]))) end = k;
+    // A root ("/" or "C:\") keeps its separator.
+    if (end == 0 or (end == 2 and x.len > 2 and x[1] == ':')) end += 1;
+    return x[0..@min(end, x.len)];
 }
 
 /// Runs `ztk bundle`. `args` are the words after `bundle`. Gives the exit code.
@@ -354,10 +392,11 @@ pub fn run(io: Io, a: std.mem.Allocator, args: []const [:0]const u8, err: *Io.Wr
     const exe_path = try std.fs.path.join(a, &.{ "Contents/MacOS", app_name });
     try app.writeFile(io, .{ .sub_path = exe_path, .data = exe, .flags = .{ .permissions = exe_permissions } });
 
-    const main_name = std.fs.path.basename(files.items[0]);
-    try cwd.copyFile(files.items[0], app, try std.fs.path.join(a, &.{ "Contents/Resources/app", main_name }), io, .{});
-    for (files.items[1..]) |f| {
-        try copyTree(io, a, f, app, try std.fs.path.join(a, &.{ "Contents/Resources/app", embedPath(f) }));
+    const names = try layout(io, a, files.items);
+    const main_name = names[0];
+    try cwd.copyFile(files.items[0], app, try std.fs.path.join(a, &.{ "Contents/Resources/app", main_name }), io, .{ .make_path = true });
+    for (files.items[1..], names[1..]) |f, n| {
+        try copyTree(io, a, f, app, try std.fs.path.join(a, &.{ "Contents/Resources/app", n }));
     }
     const conf = try std.fmt.allocPrint(a, "main={s}\nallow={s}\n", .{ main_name, allow });
     try app.writeFile(io, .{ .sub_path = "Contents/Resources/ztk.conf", .data = conf });
@@ -405,13 +444,13 @@ const entitlements =
 /// `chmod +x`.
 const exe_permissions: Io.File.Permissions = if (@import("builtin").os.tag == .windows) .default_file else .fromMode(0o755);
 
-/// Reads the files of an app for `appbin`: the main script by its last
-/// part, and each other file or folder below its `embedPath`.
+/// Reads the files of an app for `appbin`, each below its name from
+/// `layout`.
 fn collect(io: Io, a: std.mem.Allocator, paths: []const []const u8) ![]appbin.File {
     const cwd = Io.Dir.cwd();
     var out: std.ArrayList(appbin.File) = .empty;
-    for (paths, 0..) |p, k| {
-        const name = if (k == 0) std.fs.path.basename(p) else embedPath(p);
+    const names = try layout(io, a, paths);
+    for (paths, names) |p, name| {
         var dir = cwd.openDir(io, p, .{ .iterate = true }) catch |e| switch (e) {
             error.NotDir => {
                 try out.append(a, .{ .name = name, .data = try cwd.readFileAlloc(io, p, a, .limited(256 << 20)) });
@@ -425,7 +464,8 @@ fn collect(io: Io, a: std.mem.Allocator, paths: []const []const u8) ![]appbin.Fi
         while (try walker.next(io)) |entry| {
             if (entry.kind != .file) continue;
             const rel = try std.mem.replaceOwned(u8, a, entry.path, "\\", "/");
-            try out.append(a, .{ .name = try std.fmt.allocPrint(a, "{s}/{s}", .{ name, rel }), .data = try dir.readFileAlloc(io, entry.path, a, .limited(256 << 20)) });
+            const full = if (name.len == 0) rel else try std.fmt.allocPrint(a, "{s}/{s}", .{ name, rel });
+            try out.append(a, .{ .name = full, .data = try dir.readFileAlloc(io, entry.path, a, .limited(256 << 20)) });
         }
     }
     return out.items;
@@ -524,9 +564,39 @@ test "bundle: names and paths" {
     const id = try defaultId(t.allocator, "My App 2");
     defer t.allocator.free(id);
     try t.expectEqualStrings("org.ztk.myapp2", id);
-    try t.expectEqualStrings("lib/x.tcl", embedPath("lib/x.tcl"));
-    try t.expectEqualStrings("x.tcl", embedPath("/tmp/x.tcl"));
-    try t.expectEqualStrings("lib", embedPath("../lib/"));
+    try t.expectEqualStrings("/a/b", commonDir("/a/b/c", "/a/b/d"));
+    try t.expectEqualStrings("/a", commonDir("/a/bc", "/a/bd"));
+    try t.expectEqualStrings("/a/b", commonDir("/a/b", "/a/b/c"));
+    try t.expectEqualStrings("/a/b", commonDir("/a/b/c", "/a/b"));
+    try t.expectEqualStrings("/", commonDir("/x", "/y"));
     try t.expect(isMachO(&.{ 0xcf, 0xfa, 0xed, 0xfe }));
     try t.expect(!isMachO("\x7fELF"));
+}
+
+test "bundle: each file keeps its path relative to the main script" {
+    var tmp = t.tmpDir(.{});
+    defer tmp.cleanup();
+    const io = t.io;
+    try tmp.dir.createDirPath(io, "a/css");
+    try tmp.dir.createDirPath(io, "b");
+    for ([_][]const u8{ "a/main.tcl", "a/x.css", "a/css/y.css", "b/z.tcl" }) |p| try tmp.dir.writeFile(io, .{ .sub_path = p, .data = "" });
+    var arena_state = std.heap.ArenaAllocator.init(t.allocator);
+    defer arena_state.deinit();
+    const a = arena_state.allocator();
+    const base = try tmp.dir.realPathFileAlloc(io, ".", a);
+    const p = struct {
+        fn f(al: std.mem.Allocator, root: []const u8, rel: []const u8) []const u8 {
+            return std.fs.path.join(al, &.{ root, rel }) catch unreachable;
+        }
+    }.f;
+    const one = try layout(io, a, &.{ p(a, base, "a/main.tcl"), p(a, base, "a/x.css"), p(a, base, "a/css") });
+    try t.expectEqualStrings("main.tcl", one[0]);
+    try t.expectEqualStrings("x.css", one[1]);
+    try t.expectEqualStrings("css", one[2]);
+    const two = try layout(io, a, &.{ p(a, base, "a/main.tcl"), p(a, base, "b/z.tcl") });
+    try t.expectEqualStrings("a/main.tcl", two[0]);
+    try t.expectEqualStrings("b/z.tcl", two[1]);
+    // The folder of the main script as a folder argument: its files go in at the top.
+    const three = try layout(io, a, &.{ p(a, base, "a/main.tcl"), p(a, base, "a") });
+    try t.expectEqualStrings("", three[1]);
 }
