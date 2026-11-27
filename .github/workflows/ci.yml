@@ -107,6 +107,9 @@ jobs:
           if [ "$RUNNER_OS" = Linux ]; then ulimit -v 6000000; fi
           printf 'puts [expr {6 * 7}]\n' > "$RUNNER_TEMP/t.tcl"
           test "$(zig build run -- --headless "$RUNNER_TEMP/t.tcl" | tr -d '\r')" = 42
+      - name: Run a bundled app headless
+        if: hashFiles('build.zig') != '' && runner.os == 'Linux'
+        run: sh tests/bundle-headless.sh
 
   test-macos:
     # The core, the headless backend, and the AppKit backend with Metal on

@@ -285,6 +285,11 @@ pub fn main(init: std.process.Init) !void {
         root_dir = app.root;
     }
     if (mcp) headless = true;
+    // ZTK_HEADLESS=1 is the headless switch of a bundled app, which reads
+    // no flag. It works for each run of ztk.
+    if (init.environ_map.get("ZTK_HEADLESS")) |v| {
+        if (std.mem.eql(u8, v, "1")) headless = true;
+    }
     const path = script orelse {
         try err.writeAll(usage);
         err.flush() catch {};
@@ -353,7 +358,7 @@ pub fn main(init: std.process.Init) !void {
         platform = mac.?.platform();
     } else if (ztk.wayland_enabled) {
         if (init.environ_map.get("WAYLAND_DISPLAY") == null) {
-            fail(err, "ztk: no Wayland display. Use --headless, or run in a Wayland session.\n", .{});
+            fail(err, "ztk: no Wayland display. Use --headless or ZTK_HEADLESS=1, or run in a Wayland session.\n", .{});
         }
         wl = ztk.wayland.Wayland.init(init.gpa, .{
             .runtime_dir = init.environ_map.get("XDG_RUNTIME_DIR"),
