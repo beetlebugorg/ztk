@@ -129,6 +129,8 @@ pub const AppKit = struct {
     /// The windows that are open, for the events of the whole program.
     wins: std.ArrayListUnmanaged(*Win) = .empty,
     /// The observer of the appearance, an object of a class made at run time.
+    /// The frame at once of a window in a live resize (`setLiveResize`).
+    live_resize: ?plat.LiveResize = null,
     /// The text engine of the system, made at the first use.
     coretext: ?*coretext.CoreText = null,
     observer: ?Id = null,
@@ -203,6 +205,7 @@ pub const AppKit = struct {
     const vtable: Platform.VTable = .{
         .deinit = vDeinit,
         .textSystem = vTextSystem,
+        .setLiveResize = vSetLiveResize,
         .createWindow = vCreateWindow,
         .destroyWindow = vDestroyWindow,
         .setTitle = vSetTitle,
@@ -624,6 +627,10 @@ pub const AppKit = struct {
         const ev = nextEvent(a.app, until);
         a.waiting = false;
         if (ev) |e| a.dispatch(e);
+    }
+
+    fn vSetLiveResize(ptr: *anyopaque, hook: plat.LiveResize) void {
+        self(ptr).live_resize = hook;
     }
 
     fn vTextSystem(ptr: *anyopaque) ?@import("../text/system.zig").System {
@@ -1308,6 +1315,13 @@ pub const AppKit = struct {
         if (size.w == w.window.size.w and size.h == w.window.size.h) return;
         w.window.size = size;
         w.owner.push(.{ .resize = .{ .window = &w.window, .size = size } });
+        // While the user drags the edge, AppKit runs its own loop and the
+        // loop of ztk waits: the content draws here, at each new size, or
+        // the old image stays at the top left until the mouse goes up.
+        if (w.owner.live_resize) |hook| {
+            if (objc.call(fn (Id, Sel) callconv(.c) bool, w.ns_window, "inLiveResize", .{}))
+                hook.call(hook.ctx, &w.window, size);
+        }
     }
 
     fn onBecomeKey(delegate: Id, _: Sel, _: Id) callconv(.c) void {

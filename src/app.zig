@@ -287,7 +287,17 @@ pub const App = struct {
         app.followMotion();
         app.style_root = root_dir;
         app.loop = loop.Loop.init(app, app.platform.clock());
+        app.platform.setLiveResize(.{ .ctx = app, .call = liveResize });
         return app;
+    }
+
+    /// A window at a new size during the live resize of the system: the
+    /// resize, then one frame at once, inside the loop of the system.
+    fn liveResize(ctx: *anyopaque, w: *platform_mod.Window, size: geom.Size) void {
+        const app: *App = @ptrCast(@alignCast(ctx));
+        app.handleEvent(.{ .resize = .{ .window = w, .size = size } });
+        const top = app.topOfWindow(w) orelse return;
+        _ = app.frame(top) catch |e| app.frameError(e);
     }
 
     /// Adds the commands, the root widget, the render thread, and the theme.
