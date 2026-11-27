@@ -10,21 +10,25 @@ Each step runs in CI: `tests/replay.sh` runs its script and its check in `ztk --
 
 The same game as four layers: the canvas, the items on it, the scale, and the loop. Drag the slider, or press Explode, to pull the layers apart. A dashed arrow shows what drives what: the scale moves the paddle item through `-variable pos`, and the loop moves the ball with `box`, which sets the coordinates of an item. Hover a layer to mark its code. With reduced motion, Explode goes to the end at once.
 
-<!-- live wide: 830x380 -->
+<!-- showcase: 900x430; narrow: 420x420 -->
 ```tcl
 # Backspin, taken apart: drag the slider, or press Explode. Hover a layer to see its code.
+# The page sets ::ztk_narrow to 1 on a phone.
 set ink {#1d1a33 #f2e6c4 #ef5b5b #ffcf5c #3a3560}
 set bg #f7f5ff
-canvas .c -width 560 -height 340 -bg $bg -highlightthickness 0
-text .code -width 30 -height 19 -font {TkFixedFont 9} -wrap none -relief flat -background #1d1a33 -foreground #b9b4dc -padx 8 -pady 8
-ttk::frame .bar
+. configure -background $bg
+# A page shows the piece narrow on a phone: no code panel, and short labels.
+set narrow [expr {[info exists ::ztk_narrow] && $::ztk_narrow}]
+canvas .c -width [expr {$narrow ? 420 : 580}] -height 340 -bg $bg -highlightthickness 0
+text .code -width 34 -height 17 -font {TkFixedFont 11} -wrap none -relief flat -background #1d1a33 -foreground #b9b4dc -padx 8 -pady 8
+frame .bar -background $bg
 ttk::button .bar.go -text Explode -command toggle -width 10
 ttk::scale .bar.e -from 0 -to 1 -variable e -command spread -length 240
-ttk::label .bar.hint -text "Hover a layer"
+label .bar.hint -text "Hover a layer" -font {TkDefaultFont 12} -background $bg -foreground #4b4670
 pack .bar -side bottom -fill x -padx 8 -pady 6
-pack .bar.go .bar.e .bar.hint -side left -padx 6
-pack .c -side left
-pack .code -side left -fill y
+pack .bar.go .bar.e -side left -padx 6
+pack .c -side left -fill both -expand 1
+if {!$narrow} { pack .bar.hint -side left -padx 6; pack .code -side left -fill y }
 .code tag configure on -background #3a3560 -foreground #ffcf5c
 
 # The layers, from the bottom: the name, the code lines, and what the
@@ -41,7 +45,7 @@ foreach {id name a b} $layers { lappend code "# $name" $a $b "" }
 .code configure -state disabled
 
 # A point of a card: u across, v deep, on the plane at height z.
-proc iso {u v z} { list [expr {92 + $u * 0.95 + $v * 0.8}] [expr {176 + $v * 0.4 - $u * 0.24 - $z}] }
+proc iso {u v z} { list [expr {($::narrow ? 34 : 92) + $u * 0.95 + $v * 0.8}] [expr {176 + $v * 0.4 - $u * 0.24 - $z}] }
 proc quad {u0 v0 u1 v1 z} { concat [iso $u0 $v0 $z] [iso $u1 $v0 $z] [iso $u1 $v1 $z] [iso $u0 $v1 $z] }
 
 set z0 {court 0 items 0 paddle 0 loop 0}
@@ -67,18 +71,19 @@ card paddle ""
 card loop ""
 .c itemconfigure loop.card -fill "" -outline ""
 .c create polygon [quad 70 30 130 90 0] -fill "" -outline #ef5b5b -width 2 -dash {6 4} -tags {loop layer}
-.c create text {*}[iso 100 60 0] -text "16ms" -fill #ef5b5b -font {TkFixedFont 9 bold} -tags {loop layer}
+.c create text {*}[iso 100 60 0] -text "16ms" -fill #ef5b5b -font {TkFixedFont 11 bold} -tags {loop layer}
 
 # The labels at the right, with a leader line to each layer, and the
 # lines of what drives what.
 foreach {id name a b} $layers {
     .c create line 0 0 0 0 -fill #8b86b8 -tags [list $id.lead lead]
-    .c create text 0 0 -text $name -anchor w -fill #1d1a33 -font {TkDefaultFont 10 bold} -tags [list $id.label label]
+    if {$narrow} { set name [lindex [split $name :] 0] }
+    .c create text 0 0 -text $name -anchor w -fill #1d1a33 -font {TkDefaultFont 13 bold} -tags [list $id.label label]
 }
 .c create line 0 0 0 0 -fill #6d5ce8 -width 2 -arrow last -dash {5 3} -tags {drive1 drive}
-.c create text 0 0 -text "-variable pos" -fill #6d5ce8 -font {TkFixedFont 9} -anchor ne -tags {drive1t drive}
+.c create text 0 0 -text "-variable pos" -fill #6d5ce8 -font {TkFixedFont 11} -anchor ne -tags {drive1t drive}
 .c create line 0 0 0 0 -fill #ef5b5b -width 2 -arrow last -dash {5 3} -tags {drive2 drive}
-.c create text 0 0 -text "box, coords" -fill #ef5b5b -font {TkFixedFont 9} -anchor w -tags {drive2t drive}
+.c create text 0 0 -text "box, coords" -fill #ef5b5b -font {TkFixedFont 11} -anchor w -tags {drive2t drive}
 .c lower court
 
 # Place each layer at the height of the explode value e, from 0 (built)
@@ -97,8 +102,9 @@ proc spread {args} {
         lassign [dict get {court {200 60 r} items {200 60 r} paddle {-26 4 l} loop {130 60 r}} $id] u v side
         lassign [iso $u $v $want] x y
         if {$side eq "r"} {
-            .c coords $id.lead $x $y 392 $y
-            .c coords $id.label 398 $y
+            set lx [expr {$::narrow ? 318 : 392}]
+            .c coords $id.lead $x $y $lx $y
+            .c coords $id.label [expr {$lx + 6}] $y
             .c itemconfigure $id.label -anchor w
         } else {
             .c coords $id.lead $x $y $x [expr {$y - 22}]
@@ -113,7 +119,12 @@ proc spread {args} {
     lassign [iso -20 120 [dict get $at paddle]] x0 y0
     lassign [iso 9 70 [dict get $at items]] x1 y1
     .c coords drive1 $x0 $y0 $x1 $y1
-    .c coords drive1t [expr {$x0 - 6}] [expr {$y0 + 4}]
+    if {$::narrow} {
+        .c coords drive1t [expr {$x0 + 10}] [expr {$y0 + 2}]
+        .c itemconfigure drive1t -anchor nw
+    } else {
+        .c coords drive1t [expr {$x0 - 6}] [expr {$y0 + 4}]
+    }
     lassign [iso 130 90 [dict get $at loop]] x0 y0
     lassign [iso 128 68 [dict get $at items]] x1 y1
     .c coords drive2 $x0 $y0 $x1 $y1
