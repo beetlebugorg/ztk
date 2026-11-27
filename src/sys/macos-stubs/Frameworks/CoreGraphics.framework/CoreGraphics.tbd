@@ -8,5 +8,9 @@ install-name:    '/System/Library/Frameworks/CoreGraphics.framework/Versions/A/C
 current-version: 1
 exports:
   - targets:     [ x86_64-macos, arm64-macos, arm64e-macos ]
-    symbols:     [ _kCGColorSpaceSRGB, _CGColorSpaceCreateWithName, _CGColorSpaceRelease ]
+    symbols:     [ _kCGColorSpaceSRGB, _CGColorSpaceCreateWithName, _CGColorSpaceRelease,
+                   _CGColorSpaceCreateDeviceGray, _CGBitmapContextCreate, _CGContextRelease,
+                   _CGContextSetGrayFillColor, _CGContextTranslateCTM, _CGContextScaleCTM,
+                   _CGContextSetShouldSmoothFonts, _CGContextSetAllowsFontSubpixelPositioning,
+                   _CGContextSetShouldSubpixelPositionFonts, _CGContextSetShouldSubpixelQuantizeFonts ]
 ...

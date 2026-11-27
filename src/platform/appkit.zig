@@ -36,6 +36,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const objc = @import("../sys/objc.zig");
+const coretext = @import("coretext.zig");
 const geom = @import("../geom.zig");
 const event = @import("../event.zig");
 const plat = @import("platform.zig");
@@ -128,6 +129,8 @@ pub const AppKit = struct {
     /// The windows that are open, for the events of the whole program.
     wins: std.ArrayListUnmanaged(*Win) = .empty,
     /// The observer of the appearance, an object of a class made at run time.
+    /// The text engine of the system, made at the first use.
+    coretext: ?*coretext.CoreText = null,
     observer: ?Id = null,
     /// The clipboard: the general pasteboard.
     clip: Pasteboard,
@@ -167,6 +170,7 @@ pub const AppKit = struct {
     }
 
     pub fn deinit(a: *AppKit) void {
+        if (a.coretext) |c| c.deinit();
         a.freeTexts(&a.texts_given);
         a.freeTexts(&a.texts_new);
         a.texts_given.deinit(a.gpa);
@@ -198,6 +202,7 @@ pub const AppKit = struct {
 
     const vtable: Platform.VTable = .{
         .deinit = vDeinit,
+        .textSystem = vTextSystem,
         .createWindow = vCreateWindow,
         .destroyWindow = vDestroyWindow,
         .setTitle = vSetTitle,
@@ -600,6 +605,13 @@ pub const AppKit = struct {
         const ev = nextEvent(a.app, until);
         a.waiting = false;
         if (ev) |e| a.dispatch(e);
+    }
+
+    fn vTextSystem(ptr: *anyopaque) ?@import("../text/system.zig").System {
+        const a = self(ptr);
+        if (a.coretext == null) a.coretext = coretext.CoreText.init(a.gpa);
+        const c = a.coretext orelse return null;
+        return c.backend();
     }
 
     fn vPoll(ptr: *anyopaque, gpa: std.mem.Allocator, out: *std.ArrayListUnmanaged(Event)) anyerror!void {

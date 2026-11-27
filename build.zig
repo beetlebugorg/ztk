@@ -90,6 +90,7 @@ pub fn build(b: *std.Build) void {
         ztk.linkFramework("Metal", .{});
         ztk.linkFramework("QuartzCore", .{});
         ztk.linkFramework("CoreGraphics", .{});
+        ztk.linkFramework("CoreText", .{});
         ztk.linkFramework("AppKit", .{});
     }
     ztk.addAnonymousImport("inter_regular", .{ .root_source_file = b.path("assets/fonts/Inter-Regular.ttf") });
