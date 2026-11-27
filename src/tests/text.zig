@@ -4,7 +4,7 @@
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
-const geom = @import("../geom.zig");
+const geom = @import("../base/geom.zig");
 const scene_mod = @import("../scene.zig");
 const cpu = @import("../render/cpu.zig");
 const testing_h = @import("../testing.zig");

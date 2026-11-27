@@ -6,7 +6,7 @@
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
-const Image = @import("render/renderer.zig").Image;
+const Image = @import("../render/renderer.zig").Image;
 
 pub fn isGif(bytes: []const u8) bool {
     return bytes.len >= 6 and (std.mem.eql(u8, bytes[0..6], "GIF87a") or std.mem.eql(u8, bytes[0..6], "GIF89a"));

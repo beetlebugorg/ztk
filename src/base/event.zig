@@ -3,7 +3,7 @@
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const geom = @import("geom.zig");
-const Window = @import("platform/platform.zig").Window;
+const Window = @import("../platform/platform.zig").Window;
 
 pub const Mods = packed struct(u16) {
     shift: bool = false,

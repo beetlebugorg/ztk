@@ -25,8 +25,8 @@
 
 const std = @import("std");
 const ztcl = @import("ztcl");
-const num = @import("../num.zig");
-const geom = @import("../geom.zig");
+const num = @import("../base/num.zig");
+const geom = @import("../base/geom.zig");
 const widget = @import("../widget.zig");
 const anim = @import("../anim.zig");
 const options = @import("../options.zig");
@@ -36,7 +36,7 @@ const path = @import("../path.zig");
 const bind = @import("../bind.zig");
 const layout = @import("../layout.zig");
 const scroll = @import("../scroll.zig");
-const easing = @import("../easing.zig");
+const easing = @import("../base/easing.zig");
 const shape = @import("../text/shape.zig");
 const font_mod = @import("../text/font.zig");
 const image_mod = @import("../image.zig");

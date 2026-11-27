@@ -26,7 +26,7 @@ Measured on 2026-11-25 on an x64 PC with Windows 11 (build 26200) and Zig 0.16.0
 | 7 | Input methods with the Text Services Framework (`textInput`, `preedit`, `commit`) | Unit tests that call the text store with the calls of an input method, and check the events |
 | 8 | The dark mode and the accent color (`appearance`) | Unit tests of the registry values and of `WM_SETTINGCHANGE` |
 
-PR 6 and PR 7 use the entries and the events that the macOS PRs 7 and 8 add. Whichever backend is first adds them to `src/platform/platform.zig` and `src/event.zig`.
+PR 6 and PR 7 use the entries and the events that the macOS PRs 7 and 8 add. Whichever backend is first adds them to `src/platform/platform.zig` and `src/base/event.zig`.
 
 ## The platform interface on Windows
 

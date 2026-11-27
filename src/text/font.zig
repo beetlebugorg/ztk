@@ -10,7 +10,7 @@
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
-const num = @import("../num.zig");
+const num = @import("../base/num.zig");
 const ttf = @import("ttf.zig");
 const system_mod = @import("system.zig");
 pub const System = system_mod.System;

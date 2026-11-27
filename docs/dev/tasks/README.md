@@ -122,7 +122,7 @@ it.frame, it.global, it.ns            // set frame = &global and ns = "" for a c
 | `Class` | `src/widget.zig` | The table of a widget class |
 | `Loop` | `src/loop.zig` | Timers, idle work, and the wait |
 | `Platform`, `Window` | `src/platform/platform.zig` | The backend interface |
-| `Event` | `src/event.zig` | One input event |
+| `Event` | `src/base/event.zig` | One input event |
 | `Scene`, `Quad` | `src/scene.zig` | What a frame draws |
 | `Renderer` | `src/render/renderer.zig` | The interface of the CPU and Vulkan renderers |
 | `Style` | `src/style.zig` | The computed style of a widget |

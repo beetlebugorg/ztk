@@ -22,12 +22,12 @@
 
 const std = @import("std");
 const ztcl = @import("ztcl");
-const geom = @import("../geom.zig");
+const geom = @import("../base/geom.zig");
 const widget = @import("../widget.zig");
 const options = @import("../options.zig");
 const paint = @import("../paint.zig");
 const varlink = @import("../varlink.zig");
-const event = @import("../event.zig");
+const event = @import("../base/event.zig");
 const plat = @import("../platform/platform.zig");
 const drawn = @import("menudraw.zig");
 const App = @import("../app.zig").App;

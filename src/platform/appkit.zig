@@ -37,8 +37,8 @@ const std = @import("std");
 const builtin = @import("builtin");
 const objc = @import("../sys/objc.zig");
 const coretext = @import("coretext.zig");
-const geom = @import("../geom.zig");
-const event = @import("../event.zig");
+const geom = @import("../base/geom.zig");
+const event = @import("../base/event.zig");
 const plat = @import("platform.zig");
 const loop = @import("../loop.zig");
 const metal = @import("../render/metal.zig");
@@ -407,7 +407,7 @@ pub const AppKit = struct {
         return macdialog.messageBox(opts, parent);
     }
 
-    fn vColorDialog(_: *anyopaque, _: std.mem.Allocator, opts: *const plat.ColorDialog) ?@import("../geom.zig").Color {
+    fn vColorDialog(_: *anyopaque, _: std.mem.Allocator, opts: *const plat.ColorDialog) ?@import("../base/geom.zig").Color {
         return macdialog.colorDialog(opts);
     }
 

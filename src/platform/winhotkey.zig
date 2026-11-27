@@ -13,7 +13,7 @@
 
 const std = @import("std");
 const w32 = @import("win32.zig");
-const event = @import("../event.zig");
+const event = @import("../base/event.zig");
 const winkeys = @import("winkeys.zig");
 
 extern "user32" fn RegisterHotKey(hwnd: ?w32.HWND, id: i32, mods: u32, vk: u32) callconv(.winapi) i32;

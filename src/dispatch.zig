@@ -11,12 +11,12 @@
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
-const num = @import("num.zig");
+const num = @import("base/num.zig");
 const ztcl = @import("ztcl");
 const bind = @import("bind.zig");
 const grab = @import("grab.zig");
-const event = @import("event.zig");
-const keysym = @import("keysym.zig");
+const event = @import("base/event.zig");
+const keysym = @import("base/keysym.zig");
 const widget_mod = @import("widget.zig");
 const App = @import("app.zig").App;
 const Widget = widget_mod.Widget;

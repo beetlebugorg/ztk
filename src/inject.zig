@@ -29,8 +29,8 @@
 const std = @import("std");
 const ztcl = @import("ztcl");
 const app_mod = @import("app.zig");
-const event = @import("event.zig");
-const keysym = @import("keysym.zig");
+const event = @import("base/event.zig");
+const keysym = @import("base/keysym.zig");
 const App = app_mod.App;
 const Value = ztcl.Value;
 

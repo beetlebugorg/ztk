@@ -12,8 +12,8 @@
 
 const std = @import("std");
 const ztcl = @import("ztcl");
-const geom = @import("geom.zig");
-const easing = @import("easing.zig");
+const geom = @import("base/geom.zig");
+const easing = @import("base/easing.zig");
 const options = @import("options.zig");
 const widget_mod = @import("widget.zig");
 const anim = @import("anim.zig");

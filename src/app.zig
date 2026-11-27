@@ -5,7 +5,7 @@
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
-const num = @import("num.zig");
+const num = @import("base/num.zig");
 const compact = @import("compact.zig");
 const ztcl = @import("ztcl");
 const widget = @import("widget.zig");
@@ -14,7 +14,7 @@ const cmds = @import("cmds.zig");
 const loop = @import("loop.zig");
 const layout = @import("layout.zig");
 const grid = @import("grid.zig");
-const geom = @import("geom.zig");
+const geom = @import("base/geom.zig");
 const paint = @import("paint.zig");
 const scene_mod = @import("scene.zig");
 const wm_mod = @import("wm.zig");
@@ -27,7 +27,7 @@ const dispatch = @import("dispatch.zig");
 const focus_mod = @import("focus.zig");
 const font_mod = @import("text/font.zig");
 const atlas_mod = @import("text/atlas.zig");
-const event = @import("event.zig");
+const event = @import("base/event.zig");
 const platform_mod = @import("platform/platform.zig");
 const Platform = platform_mod.Platform;
 const Widget = widget.Widget;

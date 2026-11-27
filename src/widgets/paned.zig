@@ -29,14 +29,14 @@
 
 const std = @import("std");
 const ztcl = @import("ztcl");
-const num = @import("../num.zig");
-const geom = @import("../geom.zig");
+const num = @import("../base/num.zig");
+const geom = @import("../base/geom.zig");
 const widget = @import("../widget.zig");
 const options = @import("../options.zig");
 const paint = @import("../paint.zig");
 const scene = @import("../scene.zig");
 const anim = @import("../anim.zig");
-const easing = @import("../easing.zig");
+const easing = @import("../base/easing.zig");
 const layout = @import("../layout.zig");
 const grid = @import("../grid.zig");
 const style_mod = @import("../style.zig");

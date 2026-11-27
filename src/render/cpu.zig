@@ -11,7 +11,7 @@
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
-const num = @import("../num.zig");
+const num = @import("../base/num.zig");
 const scene_mod = @import("../scene.zig");
 const r = @import("renderer.zig");
 const Scene = scene_mod.Scene;

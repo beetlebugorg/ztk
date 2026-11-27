@@ -11,13 +11,13 @@
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
-const geom = @import("../geom.zig");
-const event = @import("../event.zig");
+const geom = @import("../base/geom.zig");
+const event = @import("../base/event.zig");
 const plat = @import("platform.zig");
 const sys = @import("../sys/linux.zig");
 const fbdev = @import("fbdev.zig");
 const console = @import("console.zig");
-const num = @import("../num.zig");
+const num = @import("../base/num.zig");
 const evdev = @import("evdev.zig");
 const cpu = @import("../render/cpu.zig");
 const Image = @import("../render/renderer.zig").Image;

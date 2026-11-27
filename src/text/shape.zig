@@ -15,7 +15,7 @@
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
-const num = @import("../num.zig");
+const num = @import("../base/num.zig");
 const font_mod = @import("font.zig");
 const Font = font_mod.Font;
 const Fonts = font_mod.Fonts;

@@ -11,7 +11,7 @@ const ztcl = @import("ztcl");
 const w32 = @import("../platform/win32.zig");
 const be = @import("../platform/windows.zig");
 const App = @import("../app.zig").App;
-const Event = @import("../event.zig").Event;
+const Event = @import("../base/event.zig").Event;
 const host = @import("../sys/host.zig");
 const t = std.testing;
 
@@ -404,7 +404,7 @@ const Seen = struct {
     opened: u32 = 0,
     selected: i32 = -2,
 
-    fn call(ctx: ?*anyopaque, id: plat.MenuId, entry: i32, action: @import("../event.zig").MenuAction) void {
+    fn call(ctx: ?*anyopaque, id: plat.MenuId, entry: i32, action: @import("../base/event.zig").MenuAction) void {
         const s: *Seen = @ptrCast(@alignCast(ctx.?));
         switch (action) {
             .opening => {

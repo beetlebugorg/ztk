@@ -9,8 +9,8 @@
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
-const event = @import("../event.zig");
-const keysym_mod = @import("../keysym.zig");
+const event = @import("../base/event.zig");
+const keysym_mod = @import("../base/keysym.zig");
 
 /// The bits of `NSEventModifierFlags`.
 pub const flag_caps_lock: u64 = 1 << 16;

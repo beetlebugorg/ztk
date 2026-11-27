@@ -43,14 +43,7 @@ src/tests/ tests
 src/platform/platform.zig iface
 
 # base: types with no widget in them.
-src/geom.zig base
-src/num.zig base
-src/event.zig base
-src/keysym.zig base
-src/easing.zig base
-src/png.zig base
-src/gif.zig base
-src/tkcolors.zig base
+src/base/ base
 
 # scene: the quads of a frame and the shapes of a quad.
 src/scene.zig scene
@@ -108,6 +101,8 @@ src/snapshot.zig debug
 
 # bundle: `ztk bundle` and the formats of program files.
 src/bundle.zig bundle
+src/features.zig bundle
+src/features_table.zig bundle
 src/appbin.zig bundle
 src/machosign.zig bundle
 src/peres.zig bundle

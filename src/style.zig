@@ -14,9 +14,9 @@
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
-const num = @import("num.zig");
+const num = @import("base/num.zig");
 const ztcl = @import("ztcl");
-const geom = @import("geom.zig");
+const geom = @import("base/geom.zig");
 const css_parse = @import("css/parse.zig");
 const css_value = @import("css/value.zig");
 const select = @import("css/select.zig");
@@ -29,7 +29,7 @@ const Token = @import("css/token.zig").Token;
 
 pub const Origin = enum(u8) { base, theme, platform, option_db, ttk, app, widget };
 
-const easing = @import("easing.zig");
+const easing = @import("base/easing.zig");
 
 /// The properties that a transition or an animation moves.
 pub const AnimProp = enum(u4) { color, background, border_color, outline_color, caret_color, opacity, radius, shadow, outline, padding, min_size };

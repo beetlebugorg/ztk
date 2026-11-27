@@ -23,9 +23,9 @@
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
-const geom = @import("../geom.zig");
-const event = @import("../event.zig");
-const keysym = @import("../keysym.zig");
+const geom = @import("../base/geom.zig");
+const event = @import("../base/event.zig");
+const keysym = @import("../base/keysym.zig");
 const plat = @import("platform.zig");
 const host = @import("../sys/host.zig");
 const Event = event.Event;

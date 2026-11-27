@@ -1,12 +1,12 @@
 //! The root of the ztk module. It names the parts of the toolkit.
 //! SPDX-License-Identifier: BSD-2-Clause
 
-pub const geom = @import("geom.zig");
+pub const geom = @import("base/geom.zig");
 pub const app = @import("app.zig");
 pub const options = @import("options.zig");
 pub const loop = @import("loop.zig");
-pub const event = @import("event.zig");
-pub const keysym = @import("keysym.zig");
+pub const event = @import("base/event.zig");
+pub const keysym = @import("base/keysym.zig");
 pub const platform = @import("platform/platform.zig");
 pub const headless = @import("platform/headless.zig");
 /// True on the one system that has the framebuffer and the event devices.
@@ -33,7 +33,7 @@ pub const x11 = if (@import("build_options").wayland) @import("platform/x11.zig"
 pub const windows_enabled = @import("builtin").os.tag == .windows;
 pub const windows = if (windows_enabled) @import("platform/windows.zig") else struct {};
 pub const scene = @import("scene.zig");
-pub const png = @import("png.zig");
+pub const png = @import("base/png.zig");
 pub const image = @import("image.zig");
 pub const cpu = @import("render/cpu.zig");
 pub const renderer = @import("render/renderer.zig");
@@ -54,7 +54,7 @@ pub const grid = @import("grid.zig");
 pub const paint = @import("paint.zig");
 pub const wm = @import("wm.zig");
 pub const bind = @import("bind.zig");
-pub const num = @import("num.zig");
+pub const num = @import("base/num.zig");
 pub const dispatch = @import("dispatch.zig");
 pub const focus = @import("focus.zig");
 pub const testing = @import("testing.zig");
@@ -67,8 +67,8 @@ test {
     _ = app;
     _ = widget;
     _ = @import("cmds.zig");
-    _ = @import("gif.zig");
-    _ = @import("tkcolors.zig");
+    _ = @import("base/gif.zig");
+    _ = @import("base/tkcolors.zig");
     _ = @import("optiondb.zig");
     _ = @import("fontcmd.zig");
     _ = @import("widgets/frame.zig");
@@ -214,7 +214,7 @@ test {
     _ = @import("canvas/tags.zig");
     _ = @import("canvas/items.zig");
     _ = @import("path.zig");
-    _ = @import("easing.zig");
+    _ = @import("base/easing.zig");
     _ = @import("tests/review.zig");
     _ = @import("tests/lifetime.zig");
     _ = @import("tests/ttf.zig");
