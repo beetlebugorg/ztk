@@ -72,15 +72,33 @@ export fn ztk_init(w: i32, h: i32, scale: f32, dark: bool, reduce_motion: bool) 
 
 /// Runs a script. Returns 0 for ok and 1 for an error. `ztk_result` has the text.
 export fn ztk_eval(ptr: [*]const u8, len: usize) i32 {
+    return evalText(ptr[0..len], false);
+}
+
+/// Runs the main script of the page as `ztk_eval` does. The debug state
+/// keeps the place of its text, so a command in a proc of the script
+/// gets its line in the script (`fileline` of `ztk::debug why`).
+export fn ztk_eval_main(ptr: [*]const u8, len: usize) i32 {
+    return evalText(ptr[0..len], true);
+}
+
+fn evalText(text: []const u8, main: bool) i32 {
     if (!ready) return 1;
     result_buf.clearRetainingCapacity();
-    if (it.eval(ptr[0..len])) |v| {
+    if (runText(text, main)) |v| {
         result_buf.appendSlice(gpa, it.str(v) catch "") catch {};
         return 0;
     } else |_| {
         result_buf.appendSlice(gpa, it.str(it.result) catch "") catch {};
         return 1;
     }
+}
+
+fn runText(text: []const u8, main: bool) ztcl.Error!ztcl.Value {
+    if (!main) return it.eval(text);
+    const src = try it.alloc().dupe(u8, text);
+    app.dbg.noteText(gpa, src, 1, it.script_name);
+    return it.evalTop(try it.compile(src));
 }
 
 export fn ztk_result_ptr() [*]const u8 {

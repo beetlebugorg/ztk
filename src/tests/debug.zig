@@ -28,6 +28,31 @@ test "debug: the source of a configure call in a proc" {
     try t.expectEqualStrings("-borderwidth", try h.eval("dict get [ztk::debug why .b -bd] option"));
 }
 
+test "debug: the line in the file of a configure call in a proc" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    h.app.it.script_name = "app.tcl";
+    try h.app.runScript(
+        \\ztk::debug sources on
+        \\button .b -text Save
+        \\namespace eval ui {
+        \\    proc lock {w} {
+        \\        if {1} {
+        \\            $w configure -state disabled
+        \\        }
+        \\    }
+        \\}
+        \\ui::lock .b
+    );
+    try t.expectEqualStrings("6 app.tcl 2", try h.eval("set d [ztk::debug why .b -state]; dict with d {list $fileline $file $line}"));
+    try t.expectEqualStrings(".b -state is \"disabled\": set by $w configure -state disabled at line 6 in app.tcl, in proc ui::lock.",
+        try h.eval("lindex [split [ztk::debug explain .b -state] \\n] 0"));
+    // A call from a string that ztk did not keep has no line in the file.
+    _ = try h.eval(".b configure -text Open");
+    try t.expectEqualStrings("0", try h.eval("dict get [ztk::debug why .b -text] fileline"));
+}
+
 test "debug: no record while off, default, style, and variable sources" {
     var h: Harness = undefined;
     try h.init();

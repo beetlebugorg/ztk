@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: BSD-2-Clause
 // Checks the page "Debug a form" in a headless Chromium: the form goes
-// live, and the console gives the answer of the page for bug 1.
+// live, and the console gives the answer of the page for bug 1. Then
+// the Probe tab of Inspect: a probe on line 3 of check records `ok`,
+// and a breakpoint on the same line stops the frames until Continue.
 // Use: node tests/debug-form.mjs <browser> <profile dir> <url of the page> [flag ...]
 // Use: node tests/inspect.mjs <browser> <profile dir> <url of a widget page> [flag ...]
 import { spawn } from "node:child_process";
@@ -52,9 +54,41 @@ const r = await value(`(async () => {
   run("ztk::debug explain .f.save -state");
   return d.consoleOut.textContent;
 })()`);
-const want = "Stack: check ::mail {} write";
-const ok = typeof r === "string" && r.split("\n").includes(want);
-console.log(`${ok ? "ok" : "FAIL"}: the console of the form gives the stack of check: ${JSON.stringify(r)}`);
+const lines = typeof r === "string" ? r.split("\n") : [];
+let ok = true;
+const expect = (what, good, got) => {
+  console.log(`${good ? "ok" : "FAIL"}: ${what}${good ? "" : `: ${JSON.stringify(got)}`}`);
+  ok &&= good;
+};
+expect("the console of the form gives the stack of check", lines.includes("Stack: check ::mail {} write"), r);
+expect("the line of the configure call in check is its line in the code", lines.some((l) => l.endsWith("at line 20, in proc check.")), r);
+const p = await value(`(async () => {
+  const d = ${fig}.ztkDemo;
+  const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+  d.inspecting = true;
+  d.tab = "Probe";
+  d.pick(".f.save");
+  const button = (label) => d.panel.querySelector(\`button[aria-label="\${label}"]\`);
+  const out = { procs: [...d.panel.querySelectorAll("h4")].map((h) => h.textContent) };
+  button("Probe at line 3 of check")?.click();
+  d.h.eval("set ::email ada@example.com; set ::mail x");
+  d.pick(".f.save");
+  out.records = [...d.panel.querySelectorAll("pre")].map((x) => x.textContent).join("\\n");
+  button("Probe at line 3 of check")?.click();
+  button("Breakpoint at line 3 of check")?.click();
+  d.h.eval("set ::mail y");
+  await sleep(300);
+  out.stopped = Boolean(d.stopped) && !d.raf;
+  out.stop = d.panel.querySelector(".ld-istop")?.textContent ?? "";
+  [...d.panel.querySelectorAll(".ld-istop button")].find((b) => b.textContent === "Continue")?.click();
+  await sleep(300);
+  out.going = !d.stopped && Boolean(d.raf);
+  return out;
+})()`);
+expect("the Probe tab has the procs of .f.save", p?.procs?.includes("proc save") && p.procs.includes("proc check"), p?.procs);
+expect("a probe on line 3 of check records ok", /line 3 of check .*ok=1/.test(p?.records ?? ""), p?.records);
+expect("a breakpoint stops the frames", p?.stopped && p.stop.startsWith("Breakpoint at line 3 of check"), p);
+expect("Continue starts the frames again", p?.going, p);
 clearTimeout(timer);
 child.kill();
 process.exit(ok ? 0 : 1);

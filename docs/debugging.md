@@ -20,7 +20,7 @@ puts [ztk::debug why .ok -state]
 The output is one dict:
 
 ```
-option -state value disabled source configure code {$w configure -state disabled} call {.ok configure -state disabled} file app.tcl line 2 proc lock prev normal count 1 seq 3 stack {{lock .ok}}
+option -state value disabled source configure code {$w configure -state disabled} call {.ok configure -state disabled} file app.tcl line 2 fileline 14 proc lock prev normal count 1 seq 3 stack {{lock .ok}}
 ```
 
 | Key | What it has |
@@ -30,6 +30,7 @@ option -state value disabled source configure code {$w configure -state disabled
 | `code` | The source text of the command, before substitution. |
 | `call` | The words of the call with their values. |
 | `file`, `line` | The value of `info script`, and the line of the command in its own script. For a command in a proc, the line counts from the start of the body of the proc. |
+| `fileline` | The line of the command in `file`, also for a command in a proc or in the body of an `if` or a loop. `file` is then the file of the command. It is 0 for a command from a string that ztk did not run as a file, such as `eval $text`. The main script and the code of a live snippet get it. |
 | `proc`, `stack` | The innermost proc, and the words of each proc call, innermost first. A call at the global level has an empty stack. |
 | `prev` | The value before the call. |
 | `count`, `seq` | The count of recorded writes of the option, and the order of the last write among all recorded writes. |

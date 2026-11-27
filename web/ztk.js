@@ -347,8 +347,10 @@ export async function start(firstCanvas, options = {}) {
     try { return f(p, b.length); } finally { ex.ztk_free(p, Math.max(b.length, 1)); }
   };
   const result = () => dec.decode(new Uint8Array(ex.memory.buffer, ex.ztk_result_ptr(), ex.ztk_result_len()));
-  const evalScript = (text) => {
-    const code = withBytes(text, (p, n) => ex.ztk_eval(p, n));
+  // With main true, the debug state keeps the place of the text, for the
+  // line in the script of a command in a proc (ztk_eval_main).
+  const evalScript = (text, main = false) => {
+    const code = withBytes(text, (p, n) => (main ? ex.ztk_eval_main : ex.ztk_eval)(p, n));
     const r = result();
     if (code !== 0) log("error: " + r);
     return { ok: code === 0, result: r };

@@ -20,7 +20,8 @@
 // path, the class, and the manager of the widget under the pointer. A
 // click keeps it and opens a panel with tabs: the options with the
 // source of each value, the bindings, the geometry chain, the scripts
-// and procs behind the widget, and its trace records (ztk::debug). A
+// and procs behind the widget, its trace records (ztk::debug), and the
+// probes and breakpoints of its procs (ztcl::probe). A
 // change of an option in the table configures the widget and writes the
 // option into the line of the code that set it, or else the line that
 // makes the widget. X-ray and the boxes of Inspect read the widgets with
@@ -196,6 +197,12 @@ class Demo {
     this.name = fig.dataset.name || fig.id;
     this.original = fig.querySelector(".ld-code code").textContent;
     this.h = null;
+    // The probes of the Probe tab by "proc line kind", the breakpoints
+    // by probe id, and the record of the breakpoint that stopped the
+    // frames.
+    this.probes = new Map();
+    this.breaks = new Map();
+    this.stopped = null;
     this.first = null;
     this.visible = false;
     this.times = [];
@@ -427,7 +434,7 @@ class Demo {
       frame.remove();
       return this.fail(pre.result);
     }
-    const r = h.eval(this.ta.value);
+    const r = h.eval(this.ta.value, true);
     if (!r.ok) {
       const info = h.eval("set ::errorInfo");
       h.destroy();
@@ -449,6 +456,10 @@ class Demo {
     view.querySelector(".ld-frame").remove();
     frame.style.cssText = "";
     this.h = h;
+    // The probes were in the old instance.
+    this.probes = new Map();
+    this.breaks = new Map();
+    this.stopped = null;
     this.times = [];
     this.err.hidden = true;
     this.err.textContent = "";
@@ -558,6 +569,7 @@ class Demo {
       Layout: () => this.layoutView(path),
       Code: () => this.codeView(path),
       Trace: () => this.traceView(path),
+      Probe: () => this.probeView(path),
     };
     this.tab = views[this.tab] ? this.tab : "Options";
     const show = (name) => {
@@ -585,7 +597,8 @@ class Demo {
   // "line 3 in lock", and the full answer in the title.
   static source(d) {
     const s = d.source;
-    if (s === "configure" || s === "create") return `${s} line ${d.line}${d.proc ? ` in ${d.proc}` : ""}`;
+    // fileline is the line in the code, also inside a proc.
+    if (s === "configure" || s === "create") return `${s} line ${Number(d.fileline) || d.line}${d.proc ? ` in ${d.proc}` : ""}`;
     if (s === "variable") return `-textvariable ${d.variable}`;
     if (d.style) {
       const st = Object.fromEntries(pairs(tclList(d.style)));
@@ -625,7 +638,7 @@ class Demo {
         src.title = d.code ? `${d.code}\n${d.call}` : d.style ? tclList(d.style).join(" ") : d.source;
       }
       // The line of the code that set the value, before the change of the panel replaces the record.
-      const line = d && (d.source === "create" || d.source === "configure") && !d.proc ? Number(d.line) : 0;
+      const line = d && (d.source === "create" || d.source === "configure") ? Number(d.fileline) || (d.proc ? 0 : Number(d.line)) : 0;
       const apply = () => {
         const r = ev(`${path} configure ${opt} ${quote(input.value)}`);
         input.classList.toggle("bad", !r.ok);
@@ -690,23 +703,47 @@ class Demo {
     return box;
   }
 
+  // The script options of the widget (-command and the others) as pairs
+  // of the option and the script, and the procs that the scripts and
+  // the bindings of the widget name, and the procs that set its options.
+  scriptsOf(path) {
+    const ev = (s) => this.h.eval(s);
+    const scripts = [], procs = new Set();
+    const names = (text) => {
+      for (const w of text.split(/[\s;[\]{}]+/)) {
+        if (w && ev(`info procs ${quote(w.startsWith("::") ? w : "::" + w)}`).result) procs.add(w);
+      }
+    };
+    const conf = ev(`${path} configure`);
+    for (const row of conf.ok ? tclList(conf.result) : []) {
+      const f = tclList(row);
+      if (f.length < 5 || !/command$|cmd$/.test(f[0]) || !f[4]) continue;
+      scripts.push([f[0], f[4]]);
+      names(f[4]);
+    }
+    // The procs that set an option of the widget, from the record of
+    // the option sources.
+    const why = ev(`ztk::debug why ${path} -all`);
+    for (const x of why.ok ? tclList(why.result) : []) {
+      const d = Object.fromEntries(pairs(tclList(x)));
+      for (const f of d.stack ? tclList(d.stack) : []) names(tclList(f)[0] ?? "");
+    }
+    const tags = ev(`bind ${quote(path)}`);
+    for (const seq of tags.ok ? tclList(tags.result) : []) names(ev(`bind ${quote(path)} ${quote(seq)}`).result);
+    return { scripts, procs };
+  }
+
   // The scripts of the widget (-command and the other script options),
   // and the body of each proc that a script names.
   codeView(path) {
     const ev = (s) => this.h.eval(s);
     const box = document.createElement("div");
-    const conf = ev(`${path} configure`);
-    const procs = new Set();
-    for (const row of conf.ok ? tclList(conf.result) : []) {
-      const f = tclList(row);
-      if (f.length < 5 || !/command$|cmd$/.test(f[0]) || !f[4]) continue;
+    const { scripts, procs } = this.scriptsOf(path);
+    for (const [opt, script] of scripts) {
       const h = document.createElement("h4");
-      h.textContent = f[0];
+      h.textContent = opt;
       box.appendChild(h);
-      box.appendChild(codeBlock(f[4]));
-      for (const w of f[4].split(/[\s;[\]{}]+/)) {
-        if (w && ev(`info procs ${quote(w.startsWith("::") ? w : "::" + w)}`).result) procs.add(w);
-      }
+      box.appendChild(codeBlock(script));
     }
     for (const p of procs) {
       const h = document.createElement("h4");
@@ -732,6 +769,145 @@ class Demo {
     });
     if (lines.length) box.appendChild(codeBlock(lines.join("\n")));
     return box;
+  }
+
+  // The Probe tab: the lines of each proc behind the widget, each with
+  // a probe and a breakpoint (ztcl::probe), and the records of the
+  // probes. A probe records the local variables at its line and the
+  // program goes on. A breakpoint records the stack with its locals and
+  // stops the frames of the snippet, so no event or timer runs until
+  // Continue. The command that hit the breakpoint runs to its end first,
+  // because the page has one thread.
+  probeView(path) {
+    const ev = (s) => this.h.eval(s);
+    const box = document.createElement("div");
+    if (!ev("package require ztcl::probe").ok) {
+      this.note.textContent = "This build has no ztcl::probe.";
+      return box;
+    }
+    if (this.stopped) box.appendChild(this.stopView());
+    const { procs } = this.scriptsOf(path);
+    for (const p of procs) {
+      const h = document.createElement("h4");
+      h.textContent = `proc ${p}`;
+      box.appendChild(h);
+      const lines = ev(`info body ${quote(p)}`).result.split("\n");
+      const table = document.createElement("table");
+      table.className = "ld-iprobe";
+      lines.forEach((text, i) => {
+        const n = i + 1;
+        if (!text.trim() || /^\s*#/.test(text)) return;
+        const tr = table.insertRow();
+        tr.insertCell().textContent = String(n);
+        for (const kind of ["probe", "break"]) {
+          const td = tr.insertCell();
+          const b = document.createElement("button");
+          b.type = "button";
+          b.textContent = kind === "probe" ? "Probe" : "Break";
+          b.setAttribute("aria-label", `${kind === "probe" ? "Probe" : "Breakpoint"} at line ${n} of ${p}`);
+          const key = `${p} ${n} ${kind}`;
+          b.setAttribute("aria-pressed", String(this.probes.has(key)));
+          b.addEventListener("click", () => {
+            this.setProbe(key, p, n, kind);
+            b.setAttribute("aria-pressed", String(this.probes.has(key)));
+          });
+          td.appendChild(b);
+        }
+        const code = tr.insertCell();
+        code.className = "ld-icode";
+        code.textContent = text;
+      });
+      box.appendChild(table);
+    }
+    if (!procs.size) this.note.textContent = `No proc of ${path} has a probe place: the widget names no proc in its scripts or bindings.`;
+    // The records of the probes, newest first.
+    const ids = [...this.probes.values()];
+    const list = [];
+    for (const id of ids) {
+      const r = ev(`ztcl::probe records -probe ${id} -last 20`);
+      if (r.ok) list.push(...tclList(r.result).map((x) => Object.fromEntries(pairs(tclList(x)))));
+    }
+    list.sort((a, b) => Number(b.seq) - Number(a.seq));
+    if (list.length) {
+      const h = document.createElement("h4");
+      h.textContent = "Records";
+      box.appendChild(h);
+      box.appendChild(codeBlock(list.slice(0, 20).map((d) => `${d.seq.padStart(4)} line ${d.line} of ${tclList(d.proc)[0] ?? ""}  ${Demo.locals(d)}`).join("\n")));
+    } else if (ids.length) {
+      const h = document.createElement("h4");
+      h.textContent = "Records";
+      box.appendChild(h);
+      box.appendChild(codeBlock("No hits yet. Click or type in the window, then open this tab again."));
+    }
+    return box;
+  }
+
+  // Adds or removes the probe or the breakpoint `key`.
+  setProbe(key, proc, line, kind) {
+    const id = this.probes.get(key);
+    if (id) {
+      this.h.eval(`ztcl::probe remove ${id}`);
+      this.probes.delete(key);
+      this.breaks.delete(id);
+      return;
+    }
+    const r = this.h.eval(`ztcl::probe add -proc ${quote(proc)} -line ${line} -locals`);
+    if (!r.ok) { this.note.textContent = r.result; return; }
+    this.probes.set(key, r.result);
+    // The seq of the last record that stopped the snippet.
+    if (kind === "break") this.breaks.set(r.result, 0);
+  }
+
+  // The local variables of the innermost frame of a record.
+  static locals(d) {
+    const st = d.stack ? tclList(d.stack) : [];
+    if (!st.length) return "";
+    const f = tclList(st[0]);
+    return f.length > 1 ? pairs(tclList(f[1])).map(([k, v]) => `${k}=${v}`).join(" ") : "";
+  }
+
+  // The stop of a breakpoint: the line, the stack with the locals of
+  // each frame, and Continue.
+  stopView() {
+    const d = this.stopped;
+    const box = document.createElement("div");
+    box.className = "ld-istop";
+    const h = document.createElement("h4");
+    h.textContent = `Breakpoint at line ${d.line} of ${tclList(d.proc)[0] ?? ""}: the snippet is stopped`;
+    box.appendChild(h);
+    const frames = (d.stack ? tclList(d.stack) : []).map((x) => {
+      const f = tclList(x);
+      const vars = f.length > 1 ? pairs(tclList(f[1])).map(([k, v]) => `  ${k} = ${v}`) : [];
+      return [f[0], ...vars].join("\n");
+    });
+    box.appendChild(codeBlock(frames.join("\n")));
+    const go = document.createElement("button");
+    go.type = "button";
+    go.textContent = "Continue";
+    go.addEventListener("click", () => {
+      this.stopped = null;
+      if (this.picked && this.tab === "Probe") this.pick(this.picked);
+      this.tick();
+    });
+    box.appendChild(go);
+    return box;
+  }
+
+  // After a frame: true when a breakpoint has a new record. The record
+  // goes in `stopped`, and the panel shows it.
+  hitBreak() {
+    for (const [id, seen] of this.breaks) {
+      const r = this.h.eval(`ztcl::probe records -probe ${id} -last 1`);
+      const list = r.ok ? tclList(r.result) : [];
+      if (!list.length) continue;
+      const d = Object.fromEntries(pairs(tclList(list[0])));
+      if (Number(d.seq) <= seen) continue;
+      this.breaks.set(id, Number(d.seq));
+      this.stopped = d;
+      if (this.picked) { this.tab = "Probe"; this.pick(this.picked); }
+      return true;
+    }
+    return false;
   }
 
   // The panel of Inspect opens beside the picked widget: on its right,
@@ -811,13 +987,14 @@ class Demo {
   // The frames: one call of frame() for each animation frame while the
   // snippet is on the screen.
   tick() {
-    if (this.raf || !this.visible || !this.h || this.paused) return;
+    if (this.raf || !this.visible || !this.h || this.paused || this.stopped) return;
     const loop = (t) => {
       this.raf = 0;
       // A toy sets paused (assets/toys.js).
       if (!this.visible || !this.h || this.paused) return;
       const t0 = performance.now();
       const n = this.h.frame(t);
+      if (this.breaks.size && this.hitBreak()) return;
       if (n >= 0) {
         this.times.push(performance.now() - t0);
         if (this.times.length > 120) this.times.shift();

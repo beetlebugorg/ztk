@@ -32,15 +32,21 @@ proc ::ztk::priv::dbg::lines {list} {
     return [join $list \n]
 }
 
-# The text of a source: "line 2 of proc lock" or "line 3".
+# The text of a source: "line 12 in app.tcl, in proc lock",
+# "line 2 of proc lock", or "line 3".
 proc ::ztk::priv::dbg::where {d} {
     set at "line [dict get $d line]"
-    # The file of `info script` is the file of a call at the global
-    # level. The line of a call in a proc counts from the body of the proc.
+    # The last part of the path, with no `file` command: an app can run
+    # with no file capability.
+    set file [expr {[dict get $d file] ne "" ? " in [lindex [split [dict get $d file] /] end]" : ""}]
+    # The line of a call in a proc counts from the body of the proc.
+    # `fileline` is its line in the file, when ztk ran the text of the file.
     if {[dict get $d proc] ne ""} {
+        set fl [expr {[dict exists $d fileline] ? [dict get $d fileline] : 0}]
+        if {$fl > 0} { return "line $fl$file, in proc [dict get $d proc]" }
         append at " of proc [dict get $d proc]"
-    } elseif {[dict get $d file] ne ""} {
-        append at " in [file tail [dict get $d file]]"
+    } else {
+        append at $file
     }
     return $at
 }
