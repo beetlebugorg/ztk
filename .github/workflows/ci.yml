@@ -127,8 +127,13 @@ jobs:
         if: hashFiles('build.zig') != '' && runner.os == 'Linux'
         timeout-minutes: 5
         run: |
-          sudo apt-get install -y xvfb xdotool
+          sudo apt-get install -y xvfb xdotool x11-utils
           sh tests/x11-input.sh
+          sh tests/x11-icon.sh
+      - name: Test the window icon on Wayland
+        if: hashFiles('build.zig') != '' && runner.os == 'Linux'
+        timeout-minutes: 5
+        run: sh tests/wayland-icon.sh
 
   test-arm:
     needs: changes

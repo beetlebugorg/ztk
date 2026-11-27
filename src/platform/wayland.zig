@@ -103,6 +103,8 @@ const I = struct {
     const text_input: u16 = 30;
     const dmabuf: u16 = 31;
     const dmabuf_params: u16 = 32;
+    const icon_mgr: u16 = 33;
+    const icon: u16 = 34;
 };
 
 const shm_argb8888: u32 = 0;
@@ -189,6 +191,11 @@ pub const Wayland = struct {
     data_mgr: u32 = 0,
     ti_mgr: u32 = 0,
     dmabuf: u32 = 0,
+    /// The global of `xdg-toplevel-icon-v1`, or 0 when the compositor has none.
+    icon_mgr: u32 = 0,
+    /// The icon of the toplevel and its buffers, which live until the next icon.
+    icon: u32 = 0,
+    icon_bufs: std.ArrayListUnmanaged(*Buf) = .empty,
     /// The compositor lists XBGR8888 with the linear modifier.
     dmabuf_linear: bool = false,
     /// The GPU path of the main window, with a ring of 3 buffers.
@@ -321,6 +328,8 @@ pub const Wayland = struct {
             _ = linux.close(fd);
         };
         for (w.bufs) |b| if (b) |buf| freeBuf(w, buf);
+        w.dropIcon();
+        w.icon_bufs.deinit(w.gpa);
         if (vk_on) if (w.gpu) |v| {
             for (w.gbufs) |b| if (b) |gb| w.freeGpuBuf(v, gb);
             v.deinit();
@@ -366,6 +375,7 @@ pub const Wayland = struct {
         .createWindow = vCreateWindow,
         .destroyWindow = vDestroyWindow,
         .setTitle = vSetTitle,
+        .setIcon = vSetIcon,
         .requestSize = vRequestSize,
         .setMinSize = vSetMinSize,
         .requestFrame = vRequestFrame,
@@ -684,6 +694,8 @@ pub const Wayland = struct {
         } else if (std.mem.eql(u8, i, "zwp_linux_dmabuf_v1") and version >= 3) {
             // Version 3 sends the modifiers as events. Version 4 moves them to a feedback table.
             w.dmabuf = try w.bind(name, i, I.dmabuf, 3, 0);
+        } else if (std.mem.eql(u8, i, "xdg_toplevel_icon_manager_v1")) {
+            w.icon_mgr = try w.bind(name, i, I.icon_mgr, 1, 0);
         } else if (std.mem.eql(u8, i, "zwp_text_input_manager_v3")) {
             w.ti_mgr = try w.bind(name, i, I.ti_mgr, 1, 0);
             w.makeDevices();
@@ -773,6 +785,61 @@ pub const Wayland = struct {
         while (end > 0 and end < title.len and title[end] & 0xc0 == 0x80) end -= 1;
         w.req(w.toplevel, 2, .{wire.Str{ .s = title[0..end] }});
         w.flush();
+    }
+
+    /// The icon of the toplevel with `xdg-toplevel-icon-v1`: one `wl_shm`
+    /// buffer of ARGB8888 for each photo. The protocol needs a square
+    /// buffer, so a photo that is not square goes in the middle of a clear
+    /// square. The icon applies at the next commit of the surface. A
+    /// compositor without the protocol shows the icon of the `.desktop`
+    /// file of the app id.
+    fn vSetIcon(ptr: *anyopaque, win: *Window, icons: []const plat.TrayIcon, _: bool) void {
+        const w = self(ptr);
+        if (w.icon_mgr == 0 or w.toplevel == 0 or popOf(win) != null) return;
+        w.dropIcon();
+        w.icon = w.new(I.icon, .main, 0) catch return;
+        w.req(w.icon_mgr, 1, .{w.icon});
+        for (icons) |ic| {
+            const side = @max(ic.width, ic.height);
+            if (side == 0) continue;
+            const b = w.makeBuf(side, side, shm_argb8888) catch continue;
+            w.icon_bufs.append(w.gpa, b) catch {
+                w.freeBuf(b);
+                continue;
+            };
+            fillIcon(b.data, side, ic);
+            w.req(w.icon, 2, .{ b.buffer, @as(i32, 1) });
+        }
+        w.req(w.icon_mgr, 2, .{ w.toplevel, w.icon });
+        vRequestFrame(ptr, win);
+        w.flush();
+    }
+
+    /// Copies a photo into a square buffer of `side` pixels: premultiplied
+    /// alpha in the byte order B, G, R, A of ARGB8888, with the photo in
+    /// the middle.
+    fn fillIcon(data: []u8, side: u32, ic: plat.TrayIcon) void {
+        @memset(data, 0);
+        const ox = (side - ic.width) / 2;
+        const oy = (side - ic.height) / 2;
+        for (0..ic.height) |y| for (0..ic.width) |x| {
+            const s = ic.pixels[(y * ic.width + x) * 4 ..][0..4];
+            const d = data[((y + oy) * side + x + ox) * 4 ..][0..4];
+            const a: u32 = s[3];
+            d[0] = @intCast((@as(u32, s[2]) * a + 127) / 255);
+            d[1] = @intCast((@as(u32, s[1]) * a + 127) / 255);
+            d[2] = @intCast((@as(u32, s[0]) * a + 127) / 255);
+            d[3] = s[3];
+        };
+    }
+
+    /// Destroys the icon object and then its buffers, as the protocol
+    /// needs the buffers while the icon exists.
+    fn dropIcon(w: *Wayland) void {
+        w.destroy(w.icon, 0);
+        w.icon = 0;
+        for (w.icon_bufs.items) |b| w.freeBuf(b);
+        w.icon_bufs.clearRetainingCapacity();
     }
 
     fn vRequestSize(ptr: *anyopaque, win: *Window, size: geom.Size) void {

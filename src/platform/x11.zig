@@ -89,6 +89,7 @@ pub const X11 = struct {
     wm_protocols: u32 = 0,
     wm_delete: u32 = 0,
     net_wm_name: u32 = 0,
+    net_wm_icon: u32 = 0,
     utf8_string: u32 = 0,
     xwin: u32 = 0,
     gc: u32 = 0,
@@ -118,6 +119,7 @@ pub const X11 = struct {
         x.wm_delete = try x.atom("WM_DELETE_WINDOW");
         x.net_wm_name = try x.atom("_NET_WM_NAME");
         x.utf8_string = try x.atom("UTF8_STRING");
+        x.net_wm_icon = try x.atom("_NET_WM_ICON");
         return x;
     }
 
@@ -141,6 +143,7 @@ pub const X11 = struct {
         .createWindow = vCreateWindow,
         .destroyWindow = vDestroyWindow,
         .setTitle = vSetTitle,
+        .setIcon = vSetIcon,
         .requestSize = vRequestSize,
         .setMinSize = vSetMinSize,
         .requestFrame = vRequestFrame,
@@ -433,6 +436,42 @@ pub const X11 = struct {
         x.property(x.net_wm_name, x.utf8_string, 8, title) catch {};
         // WM_NAME (39) of type STRING (31), for an old window manager.
         x.property(39, 31, 8, title) catch {};
+    }
+
+    /// `_NET_WM_ICON` of EWMH, type CARDINAL (6), format 32: for each
+    /// image the width, the height, and one word for each pixel, with
+    /// alpha in the top byte and then red, green, and blue. A request has
+    /// at most `max_request` words, so the data goes in parts: the first
+    /// part replaces the property and each next part appends to it.
+    fn vSetIcon(ptr: *anyopaque, _: *Window, icons: []const plat.TrayIcon, _: bool) void {
+        const x = self(ptr);
+        if (icons.len == 0 or x.xwin == 0) return;
+        var n: usize = 0;
+        for (icons) |ic| n += 2 + @as(usize, ic.width) * ic.height;
+        const data = x.gpa.alloc(u32, n) catch return;
+        defer x.gpa.free(data);
+        var k: usize = 0;
+        for (icons) |ic| {
+            data[k] = ic.width;
+            data[k + 1] = ic.height;
+            k += 2;
+            const count = @as(usize, ic.width) * ic.height;
+            for (0..count) |i| {
+                const px = ic.pixels[i * 4 ..][0..4];
+                data[k + i] = @as(u32, px[3]) << 24 | @as(u32, px[0]) << 16 | @as(u32, px[1]) << 8 | px[2];
+            }
+            k += count;
+        }
+        // The request has 6 words before the data.
+        const part: usize = @min(x.max_request, 65535) - 6;
+        var at: usize = 0;
+        var mode: u8 = 0;
+        while (at < n) : (mode = 2) {
+            const end = @min(n, at + part);
+            const units: u32 = @intCast(end - at);
+            _ = x.send(Op.change_property, mode, &.{ x.xwin, x.net_wm_icon, 6, 32, units }, std.mem.sliceAsBytes(data[at..end])) catch return;
+            at = end;
+        }
     }
 
     fn vRequestSize(ptr: *anyopaque, win: *Window, size: geom.Size) void {
