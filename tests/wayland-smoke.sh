@@ -46,3 +46,19 @@ echo "$out"
 echo "$out" | grep -q '^frames: 5$' || { echo "FAIL: popup.tcl: no line 'frames: 5'"; exit 1; }
 if echo "$out" | grep -qi error; then echo "FAIL: popup.tcl printed an error"; exit 1; fi
 echo "PASS: a menu and its cascade opened in xdg_popup surfaces"
+if command -v swaymsg >/dev/null 2>&1; then
+    env XDG_RUNTIME_DIR="$rt" WAYLAND_DISPLAY=wayland-1 timeout 60 "$root/zig-out/bin/ztk" "$root/tests/scripts/fullscreen.tcl" >/dev/null 2>&1 &
+    app=$!
+    sock="$(ls "$rt"/sway-ipc.*.sock 2>/dev/null | head -n 1)"
+    n=0
+    full=0
+    while [ "$n" -lt 30 ] && [ "$full" -eq 0 ]; do
+        sleep 0.1
+        n=$((n + 1))
+        SWAYSOCK="$sock" swaymsg -t get_tree 2>/dev/null | grep -q '"fullscreen_mode": 1' && full=1
+    done
+    kill "$app" 2>/dev/null
+    wait "$app" 2>/dev/null
+    [ "$full" -eq 1 ] || { echo "FAIL: wm attributes -fullscreen 1 gave no full screen window"; exit 1; }
+    echo "PASS: wm attributes -fullscreen 1 made the window full screen (xdg_toplevel.set_fullscreen)"
+fi
