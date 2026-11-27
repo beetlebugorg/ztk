@@ -6,7 +6,7 @@
 //! the value before the write, the file of `info script`, and the call
 //! stack of procs. Each later write of the same option replaces the
 //! record and counts up. While recording is off, an option write reads
-//! one flag of the App and keeps nothing.
+//! one flag of the App and keeps no record.
 //!
 //! `ztk::debug why path ?option?` gives the source of an option. An
 //! option that no call set gives `default`, or `style` for an option
@@ -20,6 +20,11 @@
 //! toplevel: the requested size, the box, the geometry manager and its
 //! `info`, the propagation of the container, and notes that compare the
 //! requested size with the box.
+//!
+//! `ztk::debug trace` keeps the records of `debugtrace.zig`. The hooks
+//! in the event delivery, the layout, the frame, the focus, the grab,
+//! and `Widget.invalidate` test `trace.mask` first and call the
+//! functions here only while the trace is on.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -32,14 +37,31 @@ const style_mod = @import("style.zig");
 const App = app_mod.App;
 const Widget = widget_mod.Widget;
 const Value = ztcl.Value;
+const trace_mod = @import("debugtrace.zig");
+const bind = @import("bind.zig");
+const geom = @import("geom.zig");
 
 pub const State = struct {
-    /// True while option writes keep their source.
+    /// True while an option write calls `note`: the sources or the
+    /// option records of the trace are on.
     sources: bool = false,
+    /// True while option writes keep their source.
+    keep: bool = false,
+    trace: trace_mod.Trace = .{},
     /// The command site of the widget call that runs, for its line.
     site: ?*ztcl.interp.Cmd = null,
-    /// Counts the recorded writes, so two sources can be ordered.
+    /// Counts the recorded writes and the trace records, so two can be ordered.
     seq: u64 = 0,
+
+    /// Sets the gate of `note` from the record and the trace.
+    pub fn update(s: *State) void {
+        s.sources = s.keep or s.trace.on(.option);
+        if (!s.sources) s.site = null;
+    }
+
+    pub fn deinit(s: *State, gpa: std.mem.Allocator) void {
+        s.trace.deinit(gpa);
+    }
 };
 
 pub const Kind = enum { create, configure, animate, internal };
@@ -124,6 +146,29 @@ fn noteOrFail(w: *Widget, it: *ztcl.Interp, i: usize, kind: Kind, pairs: []const
         try frames.append(gpa, try clip(gpa, text));
     }
     const stack = try frames.toOwnedSlice(gpa);
+    app.dbg.seq += 1;
+    if (app.dbg.trace.on(.option)) {
+        const proc: []const u8 = if (stack.len > 0) firstWord(stack[0]) else "";
+        record(app, app.dbg.seq, .option, w.path, &.{
+            .{ .str = "option" }, .{ .str = w.class.specs[i].name },
+            .{ .str = "value" },  .{ .str = w.opts[i].text },
+            .{ .str = "prev" },   .{ .str = prev_own },
+            .{ .str = "source" }, .{ .str = @tagName(kind) },
+            .{ .str = "code" },   .{ .str = code },
+            .{ .str = "line" },   .{ .int = if (site) |c| c.line else 0 },
+            .{ .str = "proc" },   .{ .str = proc },
+        });
+        app.dbg.trace.reason = app.dbg.seq;
+    }
+    if (!app.dbg.keep) {
+        for (stack) |x| gpa.free(x);
+        gpa.free(stack);
+        gpa.free(call);
+        gpa.free(code);
+        gpa.free(file);
+        gpa.free(prev_own);
+        return;
+    }
     const slot = &w.opts[i];
     const count: u32 = if (slot.src) |old| old.count +| 1 else 1;
     const s = gpa.create(Source) catch |e| {
@@ -131,7 +176,6 @@ fn noteOrFail(w: *Widget, it: *ztcl.Interp, i: usize, kind: Kind, pairs: []const
         gpa.free(stack);
         return e;
     };
-    app.dbg.seq += 1;
     s.* = .{ .kind = kind, .seq = app.dbg.seq, .count = count, .code = code, .call = call, .line = if (site) |c| c.line else 0, .file = file, .prev = prev_own, .stack = stack };
     if (slot.src) |old| old.free(gpa);
     slot.src = s;
@@ -141,7 +185,7 @@ pub fn register(it: *ztcl.Interp) !void {
     try it.register("ztk::debug", cmdDebug);
 }
 
-const usage = "ztk::debug sources ?on|off? | why pathName ?option? ?-all? | geometry pathName";
+const usage = "ztk::debug sources ?on|off? | why pathName ?option? ?-all? | geometry pathName | trace subcommand ?arg ...?";
 
 fn cmdDebug(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
     if (argv.len < 2) return it.wrongArgs(usage);
@@ -151,17 +195,18 @@ fn cmdDebug(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
         if (argv.len > 3) return it.wrongArgs("ztk::debug sources ?on|off?");
         if (argv.len == 3) {
             const on = options.parseBool(try it.str(argv[2])) orelse return it.fail("expected boolean value but got \"{s}\"", .{try it.str(argv[2])});
-            app.dbg.sources = on;
-            if (!on) app.dbg.site = null;
+            app.dbg.keep = on;
+            app.dbg.update();
         }
-        return .{ .int = @intFromBool(app.dbg.sources) };
+        return .{ .int = @intFromBool(app.dbg.keep) };
     }
     if (std.mem.eql(u8, sub, "why")) return cmdWhy(it, app, argv[2..]);
+    if (std.mem.eql(u8, sub, "trace")) return cmdTrace(it, app, argv[2..]);
     if (std.mem.eql(u8, sub, "geometry")) {
         if (argv.len != 3) return it.wrongArgs("ztk::debug geometry pathName");
         return cmdGeometry(it, app, try it.str(argv[2]));
     }
-    return it.fail("bad option \"{s}\": must be geometry, sources, or why", .{sub});
+    return it.fail("bad option \"{s}\": must be geometry, sources, trace, or why", .{sub});
 }
 
 fn widgetOf(it: *ztcl.Interp, app: *App, path: []const u8) ztcl.Error!*Widget {
@@ -390,4 +435,312 @@ fn level(it: *ztcl.Interp, w: *Widget) ztcl.Error!Value {
     }
     if (notes.items.len > 0) try d.appendSlice(a, &.{ .{ .str = "notes" }, try ztcl.value.wrapList(a, notes.items) });
     return ztcl.value.wrapList(a, d.items);
+}
+
+// ---- The trace ----
+
+/// Adds a trace record with the fields as one Tcl dict.
+pub fn record(app: *App, seq: u64, kind: trace_mod.Kind, widget: []const u8, fields: []const Value) void {
+    const it = app.it;
+    const text = it.str(ztcl.value.newList(it.alloc(), fields) catch return) catch return;
+    app.dbg.trace.add(app.gpa, seq, app.platform.nowUs(), kind, widget, text);
+}
+
+/// Adds a record with a new number and gives the number.
+pub fn add(app: *App, kind: trace_mod.Kind, widget: []const u8, fields: []const Value) u64 {
+    app.dbg.seq += 1;
+    record(app, app.dbg.seq, kind, widget, fields);
+    return app.dbg.seq;
+}
+
+/// An event that reaches a widget. Gives the number for the cause of
+/// the records of its bindings, or 0 when the kind is off.
+pub fn event(app: *App, ev: *const bind.WidgetEvent) u64 {
+    const t = &app.dbg.trace;
+    const motion = switch (ev.type) {
+        .motion, .enter, .leave => true,
+        else => false,
+    };
+    if (!t.on(if (motion) .motion else .event)) return 0;
+    var buf: [64]u8 = undefined;
+    const detail: u32 = switch (ev.type) {
+        .button_press, .button_release => ev.button,
+        .key_press, .key_release => ev.keysym,
+        else => 0,
+    };
+    const name = bind.formatPattern(.{ .type = ev.type, .detail = detail, .virtual = ev.virtual }, &buf);
+    return add(app, if (motion) .motion else .event, ev.widget.path, &.{
+        .{ .str = "event" }, .{ .str = name },
+        .{ .str = "x" },     .{ .int = ev.x },
+        .{ .str = "y" },     .{ .int = ev.y },
+        .{ .str = "text" },  .{ .str = ev.text },
+    });
+}
+
+/// A binding that runs for an event.
+pub fn binding(app: *App, w: *const Widget, tag: []const u8, pattern: bind.Pattern, script: []const u8) void {
+    if (!app.dbg.trace.on(.binding)) return;
+    // The bindings of pointer motion follow the kind `motion`.
+    switch (pattern.type) {
+        .motion, .enter, .leave => if (!app.dbg.trace.on(.motion)) return,
+        else => {},
+    }
+    var buf: [64]u8 = undefined;
+    _ = add(app, .binding, w.path, &.{
+        .{ .str = "tag" },     .{ .str = tag },
+        .{ .str = "pattern" }, .{ .str = bind.formatPattern(pattern, &buf) },
+        .{ .str = "script" },  .{ .str = clipView(script) },
+    });
+}
+
+/// The `-command` of a widget that runs.
+/// A disabled widget runs no command: `ran` is 0 and `why` says so.
+pub fn command(app: *App, w: *const Widget, script: []const u8, disabled: bool) void {
+    if (!app.dbg.trace.on(.command)) return;
+    _ = add(app, .command, w.path, &.{
+        .{ .str = "script" }, .{ .str = clipView(script) },
+        .{ .str = "ran" },    .{ .int = @intFromBool(!disabled and script.len > 0) },
+        .{ .str = "why" },    .{ .str = if (disabled) "the widget is disabled" else if (script.len == 0) "no -command" else "" },
+    });
+}
+
+fn clipView(text: []const u8) []const u8 {
+    return text[0..@min(text.len, max_text)];
+}
+
+fn flagList(a: std.mem.Allocator, d: widget_mod.Dirty) !Value {
+    var items: std.ArrayList(Value) = .empty;
+    if (d.style) try items.append(a, .{ .str = "style" });
+    if (d.measure) try items.append(a, .{ .str = "measure" });
+    if (d.layout) try items.append(a, .{ .str = "layout" });
+    if (d.paint) try items.append(a, .{ .str = "paint" });
+    return ztcl.value.wrapList(a, items.items);
+}
+
+/// A widget that gets new dirty flags. `by` is the option record that
+/// caused it, or 0.
+pub fn dirty(w: *const Widget, d: widget_mod.Dirty) void {
+    const app = w.app;
+    if (!app.dbg.trace.on(.dirty)) return;
+    const new: widget_mod.Dirty = .{ .style = d.style and !w.dirty.style, .measure = d.measure and !w.dirty.measure, .layout = d.layout and !w.dirty.layout, .paint = d.paint and !w.dirty.paint };
+    if (!new.any()) return;
+    const flags = flagList(app.it.alloc(), new) catch return;
+    _ = add(app, .dirty, w.path, &.{ .{ .str = "flags" }, flags, .{ .str = "by" }, .{ .int = @intCast(app.dbg.trace.reason) } });
+}
+
+/// A frame of a toplevel: the widgets that became dirty since its last frame.
+pub fn frame(app: *App, top: *const Widget, us: i64) void {
+    const t = &app.dbg.trace;
+    if (!t.on(.frame)) return;
+    const a = app.it.alloc();
+    var paths: std.ArrayList(Value) = .empty;
+    var i = t.len;
+    while (i > 0) {
+        i -= 1;
+        const r = t.at(i);
+        if (r.kind == .frame and std.mem.eql(u8, r.widget, top.path)) break;
+        if (r.kind != .dirty) continue;
+        if (!inTop(r.widget, top.path)) continue;
+        var seen = false;
+        for (paths.items) |p| if (std.mem.eql(u8, p.str, r.widget)) {
+            seen = true;
+        };
+        if (!seen) paths.append(a, .{ .str = r.widget }) catch return;
+        if (paths.items.len == 64) break;
+    }
+    std.mem.reverse(Value, paths.items);
+    const list = ztcl.value.wrapList(a, paths.items) catch return;
+    _ = add(app, .frame, top.path, &.{ .{ .str = "frame" }, .{ .int = @intCast(app.frames) }, .{ .str = "us" }, .{ .int = us }, .{ .str = "dirty" }, list });
+}
+
+/// True when `path` is the toplevel `top` or a widget in it. A widget in
+/// a nested toplevel also gives true; the toplevel of "." is ".".
+fn inTop(path: []const u8, top: []const u8) bool {
+    if (std.mem.eql(u8, top, ".")) return true;
+    return std.mem.eql(u8, path, top) or (std.mem.startsWith(u8, path, top) and path.len > top.len and path[top.len] == '.');
+}
+
+/// The boxes of the content of a container before an arrange.
+pub const Boxes = struct {
+    items: []geom.Rect = &.{},
+};
+
+pub fn boxesBefore(c: *const Widget) Boxes {
+    const app = c.app;
+    if (!app.dbg.trace.on(.geometry)) return .{};
+    const a = app.it.alloc();
+    const out = a.alloc(geom.Rect, c.children.items.len) catch return .{};
+    for (c.children.items, out) |ch, *o| o.* = ch.geom;
+    return .{ .items = out };
+}
+
+/// A geometry pass of a container: each content widget whose box changed.
+pub fn arranged(c: *const Widget, manager: []const u8, before: Boxes) void {
+    const app = c.app;
+    if (!app.dbg.trace.on(.geometry) or before.items.len != c.children.items.len) return;
+    const a = app.it.alloc();
+    var changed: std.ArrayList(Value) = .empty;
+    for (c.children.items, before.items) |ch, old| {
+        const g = ch.geom;
+        if (g.x == old.x and g.y == old.y and g.w == old.w and g.h == old.h) continue;
+        const item = ztcl.value.newList(a, &.{
+            .{ .str = ch.path },
+            ztcl.value.newList(a, &.{ .{ .int = old.x }, .{ .int = old.y }, .{ .int = old.w }, .{ .int = old.h } }) catch return,
+            ztcl.value.newList(a, &.{ .{ .int = g.x }, .{ .int = g.y }, .{ .int = g.w }, .{ .int = g.h } }) catch return,
+        }) catch return;
+        changed.append(a, item) catch return;
+    }
+    const list = ztcl.value.wrapList(a, changed.items) catch return;
+    _ = add(app, .geometry, c.path, &.{
+        .{ .str = "manager" }, .{ .str = manager },
+        .{ .str = "req" },     ztcl.value.newList(a, &.{ .{ .int = c.req.w }, .{ .int = c.req.h } }) catch return,
+        .{ .str = "box" },     ztcl.value.newList(a, &.{ .{ .int = c.geom.w }, .{ .int = c.geom.h } }) catch return,
+        .{ .str = "changed" }, list,
+    });
+}
+
+/// A change of the focus.
+pub fn focus(app: *App, old: ?*const Widget, new: ?*const Widget) void {
+    if (!app.dbg.trace.on(.focus)) return;
+    _ = add(app, .focus, if (new) |n| n.path else "", &.{ .{ .str = "from" }, .{ .str = if (old) |o| o.path else "" }, .{ .str = "to" }, .{ .str = if (new) |n| n.path else "" } });
+}
+
+/// A grab that starts or ends.
+pub fn grab(app: *App, w: *const Widget, action: []const u8, global: bool) void {
+    if (!app.dbg.trace.on(.grab)) return;
+    _ = add(app, .grab, w.path, &.{ .{ .str = "action" }, .{ .str = action }, .{ .str = "global" }, .{ .int = @intFromBool(global) } });
+}
+
+const trace_usage = "ztk::debug trace start ?-kinds list? ?-size n? | stop | clear | status | records ?-kind list? ?-widget pattern? ?-match pattern? ?-cause n? ?-since n? ?-last n?";
+
+fn cmdTrace(it: *ztcl.Interp, app: *App, args: []const Value) ztcl.Error!Value {
+    if (args.len == 0) return it.wrongArgs(trace_usage);
+    const t = &app.dbg.trace;
+    const sub = try it.str(args[0]);
+    const a = it.alloc();
+    if (std.mem.eql(u8, sub, "start")) {
+        var mask: u16 = (1 << trace_mod.n_kinds) - 1;
+        mask &= ~(@as(u16, 1) << @intFromEnum(trace_mod.Kind.motion));
+        var size: usize = trace_mod.default_size;
+        var k: usize = 1;
+        while (k < args.len) : (k += 2) {
+            if (k + 1 >= args.len) return it.wrongArgs(trace_usage);
+            const opt = try it.str(args[k]);
+            if (std.mem.eql(u8, opt, "-kinds")) {
+                const items = try it.readList(args[k + 1]);
+                const names = try a.alloc([]const u8, items.len);
+                for (items, names) |v, *n| n.* = try it.str(v);
+                mask = trace_mod.maskOf(names) orelse return it.fail("bad kind in \"{s}\": must be {s}, or all", .{ try it.str(args[k + 1]), trace_mod.kind_names });
+            } else if (std.mem.eql(u8, opt, "-size")) {
+                const n = try it.int(args[k + 1]);
+                if (n < 1 or n > 1_000_000) return it.fail("bad size \"{d}\": must be 1 to 1000000", .{n});
+                size = @intCast(n);
+            } else return it.fail("bad option \"{s}\": must be -kinds or -size", .{opt});
+        }
+        t.start(app.gpa, mask, size) catch return error.OutOfMemory;
+        app.dbg.update();
+        return Value.empty;
+    }
+    if (std.mem.eql(u8, sub, "stop")) {
+        t.mask = 0;
+        app.dbg.update();
+        return Value.empty;
+    }
+    if (std.mem.eql(u8, sub, "clear")) {
+        t.clear(app.gpa);
+        return Value.empty;
+    }
+    if (std.mem.eql(u8, sub, "status")) {
+        var kinds: std.ArrayList(Value) = .empty;
+        inline for (@typeInfo(trace_mod.Kind).@"enum".field_names) |n| {
+            if (t.on(@field(trace_mod.Kind, n))) try kinds.append(a, .{ .str = n });
+        }
+        return ztcl.value.newList(a, &.{
+            .{ .str = "on" },      .{ .int = @intFromBool(t.mask != 0) },
+            .{ .str = "kinds" },   try ztcl.value.wrapList(a, kinds.items),
+            .{ .str = "count" },   .{ .int = @intCast(t.len) },
+            .{ .str = "size" },    .{ .int = @intCast(t.ring.len) },
+            .{ .str = "dropped" }, .{ .int = @intCast(t.dropped) },
+        });
+    }
+    if (std.mem.eql(u8, sub, "records")) return records(it, app, args[1..]);
+    return it.fail("bad option \"{s}\": must be clear, records, start, status, or stop", .{sub});
+}
+
+pub const Filter = struct {
+    kinds: u16 = 0xffff,
+    widget: ?[]const u8 = null,
+    /// A glob pattern for the text of the fields.
+    match: ?[]const u8 = null,
+    cause: ?u64 = null,
+    since: u64 = 0,
+    last: ?usize = null,
+
+    pub fn keep(f: Filter, r: *const trace_mod.Record) bool {
+        if (f.kinds & (@as(u16, 1) << @intFromEnum(r.kind)) == 0) return false;
+        if (r.seq <= f.since) return false;
+        if (f.cause) |c| if (r.cause != c and r.seq != c) return false;
+        if (f.widget) |g| if (!trace_mod.glob(g, r.widget)) return false;
+        if (f.match) |g| if (!trace_mod.glob(g, r.fields)) return false;
+        return true;
+    }
+};
+
+pub fn parseFilter(it: *ztcl.Interp, args: []const Value) ztcl.Error!Filter {
+    var f: Filter = .{};
+    var k: usize = 0;
+    while (k < args.len) : (k += 2) {
+        if (k + 1 >= args.len) return it.wrongArgs("ztk::debug trace records ?-kind list? ?-widget pattern? ?-match pattern? ?-cause n? ?-since n? ?-last n?");
+        const opt = try it.str(args[k]);
+        const v = args[k + 1];
+        if (std.mem.eql(u8, opt, "-kind")) {
+            const items = try it.readList(v);
+            const names = try it.alloc().alloc([]const u8, items.len);
+            for (items, names) |x, *n| n.* = try it.str(x);
+            f.kinds = trace_mod.maskOf(names) orelse return it.fail("bad kind in \"{s}\": must be {s}, or all", .{ try it.str(v), trace_mod.kind_names });
+        } else if (std.mem.eql(u8, opt, "-widget")) {
+            f.widget = try it.str(v);
+        } else if (std.mem.eql(u8, opt, "-match")) {
+            f.match = try it.str(v);
+        } else if (std.mem.eql(u8, opt, "-cause")) {
+            f.cause = @intCast(@max(try it.int(v), 0));
+        } else if (std.mem.eql(u8, opt, "-since")) {
+            f.since = @intCast(@max(try it.int(v), 0));
+        } else if (std.mem.eql(u8, opt, "-last")) {
+            f.last = @intCast(@max(try it.int(v), 0));
+        } else return it.fail("bad option \"{s}\": must be -cause, -kind, -last, -match, -since, or -widget", .{opt});
+    }
+    return f;
+}
+
+/// The records that pass the filter, oldest first. With `-last n`, the
+/// last n of them. With `-cause n`, the event n and the records that its
+/// bindings made.
+fn records(it: *ztcl.Interp, app: *App, args: []const Value) ztcl.Error!Value {
+    const f = try parseFilter(it, args);
+    const t = &app.dbg.trace;
+    const a = it.alloc();
+    var picked: std.ArrayList(*const trace_mod.Record) = .empty;
+    for (0..t.len) |i| {
+        const r = t.at(i);
+        if (f.keep(r)) try picked.append(a, r);
+    }
+    var from: usize = 0;
+    if (f.last) |n| from = picked.items.len -| n;
+    var out: std.ArrayList(Value) = .empty;
+    for (picked.items[from..]) |r| try out.append(a, try recordValue(it, r));
+    return ztcl.value.wrapList(a, out.items);
+}
+
+pub fn recordValue(it: *ztcl.Interp, r: *const trace_mod.Record) ztcl.Error!Value {
+    const a = it.alloc();
+    const head = try ztcl.value.newList(a, &.{
+        .{ .str = "seq" },    .{ .int = @intCast(r.seq) },
+        .{ .str = "kind" },   .{ .str = @tagName(r.kind) },
+        .{ .str = "widget" }, .{ .str = try a.dupe(u8, r.widget) },
+        .{ .str = "cause" },  .{ .int = @intCast(r.cause) },
+        .{ .str = "us" },     .{ .int = r.us },
+    });
+    const text = try std.mem.concat(a, u8, &.{ try it.str(head), " ", r.fields });
+    return .{ .str = text };
 }

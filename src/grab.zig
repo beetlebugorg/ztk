@@ -79,7 +79,10 @@ pub fn cmdGrab(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl
         1 => {
             if (argv.len != 3) return it.wrongArgs("grab release window");
             const w = app.find(try it.str(argv[2])) orelse return Value.empty;
-            if (app.grab.widget == w) app.grab.widget = null;
+            if (app.grab.widget == w) {
+                app.grab.widget = null;
+                if (app.dbg.trace.mask != 0) @import("debug.zig").grab(app, w, "release", app.grab.global);
+            }
             return Value.empty;
         },
         2 => {
@@ -99,6 +102,7 @@ pub fn cmdGrab(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl
 
 fn set(app: *App, w: *Widget, global: bool) Value {
     app.grab = .{ .widget = w, .global = global };
+    if (app.dbg.trace.mask != 0) @import("debug.zig").grab(app, w, "set", global);
     return Value.empty;
 }
 

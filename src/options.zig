@@ -410,6 +410,7 @@ pub fn applyEx(w: *Widget, it: *ztcl.Interp, pairs: []const ztcl.Value, creating
         c.* = p.index;
         if (rec) debug.note(w, it, p.index, if (creating) .create else .configure, pairs, prev);
     }
+    defer w.app.dbg.trace.reason = 0;
     w.afterConfigure(changed) catch |e| return e;
     w.invalidate(.{ .style = true, .measure = true, .layout = true, .paint = true });
 }

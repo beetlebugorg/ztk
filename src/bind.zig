@@ -13,6 +13,7 @@
 
 const std = @import("std");
 const ztcl = @import("ztcl");
+const debug = @import("debug.zig");
 const event = @import("event.zig");
 const keysym = @import("keysym.zig");
 const widget_mod = @import("widget.zig");
@@ -644,6 +645,12 @@ pub fn deliver(app: *App, ev: *const WidgetEvent) void {
     app.enter();
     defer app.leave();
     const w = ev.widget;
+    const saved_cause = app.dbg.trace.cause;
+    defer app.dbg.trace.cause = saved_cause;
+    if (app.dbg.trace.mask != 0) {
+        const seq = debug.event(app, ev);
+        if (seq != 0) app.dbg.trace.cause = seq;
+    }
     if (w.class.event) |f| if (w.alive()) {
         f(w, ev);
         if (!w.alive() and ev.type != .destroy) return;
@@ -659,6 +666,7 @@ pub fn deliver(app: *App, ev: *const WidgetEvent) void {
         // Only the Destroy event reaches a widget that is not alive.
         if (!w.alive() and ev.type != .destroy) return;
         const e = app.bindings.matchEntry(tag, ev) orelse continue;
+        if (app.dbg.trace.mask != 0) debug.binding(app, w, tag, e.pattern, e.script);
         const code = runEntry(app, e, ev);
         switch (code) {
             .brk, .err => return,

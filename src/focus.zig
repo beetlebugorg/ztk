@@ -40,6 +40,7 @@ pub fn set(app: *App, w: ?*Widget) void {
     if (f.current == w) return;
     const old = f.current;
     f.current = w;
+    if (app.dbg.trace.mask != 0) @import("debug.zig").focus(app, old, w);
     if (!f.window_focused) return;
     if (old) |o| {
         if (o.alive()) {

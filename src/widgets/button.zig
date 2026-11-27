@@ -10,6 +10,7 @@ const std = @import("std");
 const ztcl = @import("ztcl");
 const widget = @import("../widget.zig");
 const options = @import("../options.zig");
+const debug = @import("../debug.zig");
 const focus = @import("../focus.zig");
 const label = @import("label.zig");
 const App = @import("../app.zig").App;
@@ -80,10 +81,11 @@ fn subcommand(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!?Val
 
 /// Runs the -command of the button. Returns the result of the script.
 pub fn invoke(w: *Widget, it: *ztcl.Interp) ztcl.Error!Value {
-    if (w.state.disabled) return Value.empty;
     const slot = options.get(w, "-command");
-    if (!slot.set or slot.text.len == 0) return Value.empty;
     const app = w.app;
+    if (app.dbg.trace.mask != 0) debug.command(app, w, slot.text, w.state.disabled);
+    if (w.state.disabled) return Value.empty;
+    if (!slot.set or slot.text.len == 0) return Value.empty;
     // The script text stays valid if the script deletes the button.
     const script = try it.alloc().dupe(u8, slot.text);
     const saved_frame = it.frame;
@@ -117,7 +119,11 @@ fn cmdButton(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.E
         },
         .leave => d.armed = false,
         .down => {
-            if (w.state.disabled) return Value.empty;
+            if (w.state.disabled) {
+                // The trace shows the command that a click on a disabled button does not run.
+                if (app.dbg.trace.mask != 0) debug.command(app, w, options.get(w, "-command").text, true);
+                return Value.empty;
+            }
             d.armed = true;
             if (focus.accepts(w)) focus.set(app, w);
         },
