@@ -52,6 +52,14 @@ Version 0.9. Status: **works with gaps**. Eighteen Plotchart examples draw their
 
 Version: gitk of git 2.56.0. Status: **works**. In a test repository the list shows the commits, a click on a commit shows its diff, and Up selects the commit above. gitk has the GPL: ztk only runs it, and no code of gitk is in ztk. The page shows no screenshot of it.
 
+## SaVi
+
+![The coverage map of the Iridium constellation in SaVi 1.6.0 on ztk](site/shots/app-savi-coverage.png)
+
+Version 1.6.0, satellite constellation visualization by Lloyd Wood and the Geometry Center (https://savi.sourceforge.io/). Status: **works**. SaVi is a C program with Tcl and Tk scripts. It builds with no change against [libztk](python-tkinter.md) and its `tk.h`, and the same program file also runs on the libraries of Tcl and Tk. The script loads Iridium, opens the coverage map, which the C code fills through the photo API, and runs the simulation. The 3D view needs Geomview and is not tried. Run it with `tests/apps/savi/run.sh` after `zig build libztk`. SaVi calls `Tcl_GetCommandInfo`, which libztcl has from ztcl#502 on; the images come from a build of libztk on that branch.
+
+![The main window of SaVi 1.6.0 on ztk](site/shots/app-savi-main.png)
+
 ## In progress
 
 - TkDiff 5.7 starts, but its text panes do not show yet ([#253](https://github.com/beetlebugorg/ztk/issues/253)).
