@@ -4,6 +4,7 @@
 //!
 //!   ztk::win::backdrop window ?auto|none|mica|acrylic|tabbed?
 //!   ztk::win::jumplist ?task ...?     the tasks of the jump list; none removes it
+//!   ztk::win::thumbbar window ?button ...?   the buttons of the thumbnail of the taskbar
 //!
 //! `backdrop` sets the system backdrop of a toplevel, the material that
 //! Windows 11 draws behind the window (`DWMWA_SYSTEMBACKDROP_TYPE`), and
@@ -84,4 +85,57 @@ pub fn cmdJumpList(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) 
     const tasks = try parseTasks(it, argv[1..]);
     if (!f(app.platform.ptr, tasks)) return it.failCode("ZTK WIN JUMPLIST", "the shell refused the jump list", .{});
     return Value.empty;
+}
+
+/// `ztk::win::thumbbar window ?button ...?`: the buttons of the thumbnail
+/// of the taskbar button of a toplevel, at most 7. Each button is a dict
+/// of `image` (a photo), `tooltip`, `command`, and `disabled`. The
+/// scripts stay in the wm state of the toplevel.
+pub fn cmdThumbBar(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
+    const app = App.of(it);
+    if (argv.len < 2) return it.wrongArgs("ztk::win::thumbbar window ?button ...?");
+    const f = app.platform.vtable.winThumbBar orelse return unavailable(it, "ztk::win::thumbbar");
+    const path = try it.str(argv[1]);
+    const top = app.find(path) orelse return it.fail("bad window path name \"{s}\"", .{path});
+    if (!top.class.is_toplevel) return it.fail("\"{s}\" is not a toplevel", .{path});
+    const win = app.winOf(top) orelse return it.fail("\"{s}\" has no window", .{path});
+    const items = argv[2..];
+    if (items.len > plat.max_thumb_buttons) return it.fail("a thumbnail has at most {d} buttons", .{plat.max_thumb_buttons});
+    var buttons: [plat.max_thumb_buttons]plat.ThumbButton = undefined;
+    var scripts: [plat.max_thumb_buttons][]const u8 = @splat("");
+    for (items, 0..) |v, i| {
+        const l = try it.readList(v);
+        if (l.len % 2 != 0) return it.fail("a button is a dict of image, tooltip, command, and disabled", .{});
+        buttons[i] = .{ .icon = .{ .width = 0, .height = 0, .pixels = &.{} } };
+        var k: usize = 0;
+        while (k < l.len) : (k += 2) {
+            const key = try it.str(l[k]);
+            const val = try it.str(l[k + 1]);
+            if (std.mem.eql(u8, key, "image")) {
+                const p = app.images.find(val) orelse return it.fail("image \"{s}\" doesn't exist", .{val});
+                buttons[i].icon = .{ .width = p.width, .height = p.height, .pixels = p.pixels };
+            } else if (std.mem.eql(u8, key, "tooltip")) {
+                buttons[i].tooltip = val;
+            } else if (std.mem.eql(u8, key, "command")) {
+                scripts[i] = val;
+            } else if (std.mem.eql(u8, key, "disabled")) {
+                buttons[i].enabled = !(@import("options.zig").parseBool(val) orelse return it.fail("expected boolean value but got \"{s}\"", .{val}));
+            } else return it.fail("bad key \"{s}\" of a button: must be command, disabled, image, or tooltip", .{key});
+        }
+    }
+    const st = app.wmOf(top);
+    for (scripts, 0..) |s, i| {
+        var name: [8]u8 = undefined;
+        st.setProp(app.gpa, std.fmt.bufPrint(&name, "thumb{d}", .{i}) catch unreachable, s) catch return it.memError();
+    }
+    f(app.platform.ptr, win, buttons[0..items.len]);
+    return Value.empty;
+}
+
+/// A click of a button of a thumbnail: its script, at the global level.
+pub fn handleThumb(app: *App, win: *plat.Window, index: u32) void {
+    const top = app.topOfWindow(win) orelse return;
+    var name: [8]u8 = undefined;
+    const s = app.wmOf(top).prop(std.fmt.bufPrint(&name, "thumb{d}", .{index}) catch return);
+    if (s.len > 0) app.callback(s);
 }

@@ -600,6 +600,34 @@ test "windows: a tray icon in the notification area, its actions, and its menu" 
     try t.expect(has(events.items, .tray).?.tray.action == .menu);
 }
 
+test "windows: the thumbnail buttons keep their slots, and a click gives a thumb event" {
+    if (!enabled()) return;
+    const tb = @import("../platform/wintaskbar.zig");
+    try t.expectEqual(@as(usize, 552), @sizeOf(tb.THUMBBUTTON));
+    var events: std.ArrayListUnmanaged(Event) = .empty;
+    defer events.deinit(t.allocator);
+    const o = try openHidden(&events);
+    defer o.b.deinit();
+    const p = o.b.platform();
+    var px: [16 * 16 * 4]u8 = @splat(0xff);
+    p.vtable.winThumbBar.?(p.ptr, o.w, &.{
+        .{ .icon = .{ .width = 16, .height = 16, .pixels = &px }, .tooltip = "Play" },
+        .{ .icon = .{ .width = 16, .height = 16, .pixels = &px }, .tooltip = "Next", .enabled = false },
+    });
+    const r = o.b.recOf(o.w).?;
+    // A hidden window has no taskbar button, so the shell has not taken
+    // the buttons yet; the message of the button adds them.
+    try t.expect(!r.thumbs.added);
+    try t.expect(r.thumbs.buttons[0].hIcon != null);
+    try t.expectEqualSlices(u16, std.unicode.utf8ToUtf16LeStringLiteral("Next"), std.mem.sliceTo(&r.thumbs.buttons[1].szTip, 0));
+    try t.expectEqual(tb.THBF_DISABLED, r.thumbs.buttons[1].dwFlags);
+    try t.expectEqual(tb.THBF_HIDDEN, r.thumbs.buttons[2].dwFlags);
+    // WM_COMMAND with THBN_CLICKED for the button 1.
+    _ = w32.SendMessageW(o.hwnd, 0x0111, (tb.THBN_CLICKED << 16) | 1, 0);
+    try pollAll(o.b, &events);
+    try t.expectEqual(@as(u32, 1), has(events.items, .thumb).?.thumb.index);
+}
+
 test "windows: a jump list of tasks builds, and the test drops it with no commit" {
     if (!enabled()) return;
     const jump = @import("../platform/winjump.zig");

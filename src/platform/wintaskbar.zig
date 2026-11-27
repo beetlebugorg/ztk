@@ -49,6 +49,8 @@ const slot_hr_init = 3;
 const slot_set_progress_value = 9;
 const slot_set_progress_state = 10;
 const slot_set_overlay_icon = 18;
+const slot_thumb_bar_add_buttons = 15;
+const slot_thumb_bar_update_buttons = 16;
 
 pub const Taskbar = struct {
     list: ?*anyopaque = null,
@@ -175,4 +177,72 @@ test "wintaskbar: the badge has a red disc and white digits in the middle" {
     try std.testing.expectEqualSlices(u8, &.{ 0xff, 0xff, 0xff, 0xff }, px[(3 * 16 + 5) * 4 ..][0..4]);
     badge(&px, 1000);
     try std.testing.expectEqualSlices(u8, &.{ 0xff, 0xff, 0xff, 0xff }, px[(8 * 16 + 8) * 4 ..][0..4]);
+}
+
+/// THUMBBUTTON of `ShObjIdl_core.h`: 552 bytes on x64.
+pub const THUMBBUTTON = extern struct {
+    dwMask: u32 = 0x2 | 0x4 | 0x8, // THB_ICON | THB_TOOLTIP | THB_FLAGS
+    iId: u32 = 0,
+    iBitmap: u32 = 0,
+    hIcon: ?w32.HICON = null,
+    szTip: [260]u16 = @splat(0),
+    dwFlags: u32 = 0x8, // THBF_HIDDEN
+};
+pub const THBF_DISABLED: u32 = 0x1;
+pub const THBF_HIDDEN: u32 = 0x8;
+/// The high word of the wParam of WM_COMMAND for a click of a button.
+pub const THBN_CLICKED: u32 = 0x1800;
+
+/// The buttons of the thumbnail of a window: seven slots, with the ones
+/// that the script did not set hidden, since the shell reads the count of
+/// buttons once, at `ThumbBarAddButtons`. The icons stay alive until the
+/// next set.
+pub const Thumbs = struct {
+    buttons: [plat.max_thumb_buttons]THUMBBUTTON = init: {
+        var b: [plat.max_thumb_buttons]THUMBBUTTON = undefined;
+        for (&b, 0..) |*x, i| x.* = .{ .iId = i };
+        break :init b;
+    },
+    /// True after the shell took the buttons for the current button.
+    added: bool = false,
+    /// True when the script set buttons at least once.
+    used: bool = false,
+
+    /// Takes the buttons of the script: the icons, the tooltips, and the
+    /// flags.
+    pub fn set(th: *Thumbs, list: []const plat.ThumbButton) void {
+        th.used = true;
+        for (&th.buttons, 0..) |*x, i| {
+            if (x.hIcon) |old| _ = DestroyIcon(old);
+            x.* = .{ .iId = @intCast(i) };
+            if (i >= list.len) continue;
+            const b = list[i];
+            x.hIcon = if (b.icon.pixels.len > 0) wintray.makeIcon(b.icon) else null;
+            const n = std.unicode.utf8ToUtf16Le(x.szTip[0 .. x.szTip.len - 1], b.tooltip[0..@min(b.tooltip.len, 200)]) catch 0;
+            x.szTip[n] = 0;
+            x.dwFlags = if (b.enabled) 0 else THBF_DISABLED;
+        }
+    }
+
+    pub fn deinit(th: *Thumbs) void {
+        for (&th.buttons) |*x| if (x.hIcon) |old| {
+            _ = DestroyIcon(old);
+            x.hIcon = null;
+        };
+    }
+};
+
+/// Shows the buttons on the thumbnail of `hwnd`. The shell refuses them
+/// until it made the button; the message of the button applies them
+/// again, with `added` false.
+pub fn applyThumbs(t: *Taskbar, hwnd: w32.HWND, th: *Thumbs) bool {
+    if (!th.used) return true;
+    const l = t.get() orelse return false;
+    const n: u32 = plat.max_thumb_buttons;
+    const s = if (th.added)
+        com.call(com.HRESULT, l, slot_thumb_bar_update_buttons, .{ hwnd, n, &th.buttons })
+    else
+        com.call(com.HRESULT, l, slot_thumb_bar_add_buttons, .{ hwnd, n, &th.buttons });
+    if (s >= 0) th.added = true;
+    return s >= 0;
 }

@@ -101,6 +101,8 @@ const WinRec = struct {
     taskbar: plat.Taskbar = .{},
     /// The OLE drop target of the window, when it takes drops.
     drop: ?*windrop.Target = null,
+    /// The buttons of the thumbnail of the taskbar button (`ztk::win::thumbbar`).
+    thumbs: wintaskbar.Thumbs = .{},
     /// The style and the rect before a full screen of `wm attributes`.
     fullscreen: ?winstate.Saved = null,
     /// The buttons that are down, bit 0 for button 1.
@@ -224,6 +226,7 @@ pub const Win32 = struct {
         .reducedMotion = vReducedMotion,
         .winBackdrop = vWinBackdrop,
         .winJumpTasks = vWinJumpTasks,
+        .winThumbBar = vWinThumbBar,
         .taskbarSet = vTaskbarSet,
         .attention = vAttention,
         .recentAdd = vRecentAdd,
@@ -328,6 +331,7 @@ pub const Win32 = struct {
             b.menus.dropBar(bar);
         }
         _ = w32.DestroyWindow(rec.hwnd);
+        rec.thumbs.deinit();
         b.gpa.destroy(rec);
         b.gpa.destroy(w);
     }
@@ -709,6 +713,15 @@ pub const Win32 = struct {
         return winjump.set(self(ptr).gpa, tasks);
     }
 
+    fn vWinThumbBar(ptr: *anyopaque, w: *Window, buttons: []const plat.ThumbButton) void {
+        const b = self(ptr);
+        const r = b.recOf(w) orelse return;
+        r.thumbs.set(buttons[0..@min(buttons.len, plat.max_thumb_buttons)]);
+        // Before the button exists the shell refuses, and the message of
+        // the button applies the buttons.
+        _ = wintaskbar.applyThumbs(&b.taskbar, r.hwnd, &r.thumbs);
+    }
+
     // ---- Appearance ----
 
     /// The dark mode from `AppsUseLightTheme` of the user (0 is dark), and
@@ -1024,6 +1037,15 @@ pub const Win32 = struct {
         if (msg == wintray.callback_msg) return b.trayMessage(rec, wp, lp);
         if (msg == b.taskbar.button_created and msg != 0) {
             b.taskbar.apply(rec.hwnd, rec.taskbar);
+            // A new button, also after Explorer starts again, gets the
+            // buttons of the thumbnail again.
+            rec.thumbs.added = false;
+            _ = wintaskbar.applyThumbs(&b.taskbar, rec.hwnd, &rec.thumbs);
+            return 0;
+        }
+        // WM_COMMAND with THBN_CLICKED: a button of the thumbnail.
+        if (msg == 0x0111 and (wp >> 16) & 0xffff == wintaskbar.THBN_CLICKED) {
+            b.push(.{ .thumb = .{ .window = rec.win, .index = @intCast(wp & 0xffff) } });
             return 0;
         }
         if (msg == winhotkey.WM_HOTKEY) {

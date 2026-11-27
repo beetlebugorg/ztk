@@ -73,3 +73,15 @@ test "tray: the tasks of ztk::win::jumplist parse from dicts" {
     const bad = try h.it.eval("list {args --x}");
     try t.expectError(error.TclError, winapi.parseTasks(&h.it, try h.it.readList(bad)));
 }
+
+test "tray: ztk::win::thumbbar is only on Windows, and a click runs the script of its button" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    try t.expectEqualStrings("ztk::win::thumbbar is only on Windows", try h.evalError("ztk::win::thumbbar . {tooltip Play}"));
+    // The scripts of the buttons stay in the wm state of the toplevel.
+    const top = h.app.find(".").?;
+    try h.app.wmOf(top).setProp(h.app.gpa, "thumb1", "set ::clicked 1");
+    @import("../winapi.zig").handleThumb(h.app, h.win, 1);
+    try t.expectEqualStrings("1", try h.eval("set ::clicked"));
+}
