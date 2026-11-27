@@ -26,7 +26,7 @@ option -state value disabled source configure code {$w configure -state disabled
 | Key | What it has |
 |---|---|
 | `option`, `value` | The option and the value that `cget` gives. |
-| `source` | `create`, `configure`, `animate` (a step of `ztk::animate`), `internal` (the widget keeps the option equal to its state), `variable` (the `-text` of a `-textvariable`), `call` (a call set it while the record was off), `style` (`cget` reads the computed style), or `default`. |
+| `source` | `create`, `configure`, `animate` (a step of `ztk::animate`), `internal` (the widget keeps the option equal to its state), `optiondb` (the new widget took the value of the option database, `option add`), `variable` (the `-text` of a `-textvariable`), `call` (a call set it while the record was off), `style` (`cget` reads the computed style), or `default`. |
 | `code` | The source text of the command, before substitution. |
 | `call` | The words of the call with their values. |
 | `file`, `line` | The value of `info script`, and the line of the command in its own script. For a command in a proc, the line counts from the start of the body of the proc. |

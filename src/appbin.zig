@@ -60,7 +60,7 @@ pub fn payload(a: std.mem.Allocator, files: []const File, allow: []const u8, roo
 /// A copy of `runtime` with the app in it. `ident` is the identifier of
 /// the code signature of a Mach-O file.
 pub fn build(a: std.mem.Allocator, runtime: []const u8, files: []const File, allow: []const u8, root: ?[]const u8, ident: []const u8) (Error || bn.Error)![]u8 {
-    return bn.bundle(a, runtime, try payload(a, files, allow, root), ident);
+    return bn.bundle(a, runtime, try payload(a, files, allow, root), ident, &.{});
 }
 
 /// The text of an error of `build` for a person.

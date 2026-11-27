@@ -1010,7 +1010,7 @@ pub const App = struct {
 
     /// True when a wait can end: a timer, an idle entry, or a live backend exists.
     pub fn canWait(app: *App) bool {
-        return app.platform.live or app.loop.nextTimeoutUs() != null;
+        return app.platform.live or app.loop.nextTimeoutUs() != null or ztcl.event.hasWatches(app.it);
     }
 
     pub fn handleEvent(app: *App, ev: event.Event) void {
@@ -1083,6 +1083,11 @@ pub const App = struct {
         app.stats.end(.events, app.wall());
         const timers = try app.loop.runTimers();
         var ran = had_events or timers;
+        // The handlers of `fileevent` are in the loop of ztcl: one pass of
+        // it with no wait runs the handlers of the channels that are ready.
+        if (ztcl.event.hasWatches(app.it)) {
+            if (try ztcl.event.doOne(app.it, false, false)) ran = true;
+        }
         if (!ran) ran = try app.loop.runIdle();
         return ran;
     }
@@ -1093,7 +1098,10 @@ pub const App = struct {
     pub fn doOneEvent(app: *App, wait: bool) ztcl.Error!bool {
         if (try app.pass()) return true;
         if (!wait) return false;
-        const timeout = app.loop.nextTimeoutUs();
+        var timeout = app.loop.nextTimeoutUs();
+        // A channel with a handler can become ready at any time: the wait
+        // ends after 5 ms to look at it again.
+        if (ztcl.event.hasWatches(app.it)) timeout = @min(timeout orelse 5000, 5000);
         if (timeout == null and !app.platform.live) return false;
         app.platform.wait(timeout);
         return app.pass();

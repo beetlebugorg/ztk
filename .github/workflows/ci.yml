@@ -277,12 +277,33 @@ jobs:
             echo "::notice::The build has no wasm step. The wasm build is skipped."
           fi
 
+  famous-apps:
+    # The famous Tcl/Tk apps of tests/apps, each with a script of real
+    # interactions on the headless backend: the widget demo of Tk, tkcon,
+    # BWidget, Tablelist, tklib, and gitk. git runs the commits of gitk.
+    name: Famous apps
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+      - name: Install the build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y glslc
+      - name: Build
+        run: zig build
+      - name: Run the apps
+        run: tests/famous-apps.sh
+
   # A failure of the scheduled full run opens an issue, so it is fixed
   # in the next batch of work.
   report:
     name: Report a failure of the full run
     if: failure() && github.event_name == 'schedule'
-    needs: [check, docs, test, test-macos, cross-macos-window, test-windows, cross, wasm]
+    needs: [check, docs, test, test-macos, cross-macos-window, test-windows, cross, wasm, famous-apps]
     runs-on: ubuntu-latest
     permissions:
       issues: write

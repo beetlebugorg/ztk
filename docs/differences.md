@@ -5,7 +5,9 @@ ztk follows Tk 8.6.16. A script that runs in `wish` 8.6 runs in ztk when it uses
 ## Missing today
 
 - Widgets: the `text` widget has no peers.
-- Commands: `option`, `selection`, `event add`, `send`, and `package`. The Tk test files cannot run, because `tcltest` needs `package`.
+- Commands: `send`. `selection` works inside the app only: it is not connected to the selections of the system. `tk busy` keeps the busy mark of a window and does not block its input. `tk fontchooser` keeps its options and shows no dialog.
+- Event sequences of more than one event, such as `<Control-x><Control-s>`.
+- `text` peers, and Tk in a child interpreter (`load {} Tk child`).
 - The clipboard is local to the app. It is not connected to the clipboard of the system.
 - `canvas postscript`.
 - Fonts come from ztk (Inter by default), so text widths differ from `wish`.
@@ -16,7 +18,7 @@ ztk follows Tk 8.6.16. A script that runs in `wish` 8.6 runs in ztk when it uses
 - Linux: a Wayland window with the CPU renderer, a headless backend, and a direct backend for the framebuffer. The Vulkan renderer works offscreen only.
 - macOS and Windows: the headless backend only. The native backends are planned.
 - The web: one window (`.`) on a canvas. A second `toplevel` has no canvas.
-- `tk windowingsystem` gives `ztk`, so a script that tests for `x11`, `win32`, or `aqua` gets none of them.
+- `tk windowingsystem` gives `ztk`, so a script that tests for `x11`, `win32`, or `aqua` gets none of them. The flag `--windowingsystem x11` of the `ztk` program gives the name that such an app needs.
 
 ## The look
 

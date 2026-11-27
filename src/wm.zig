@@ -127,16 +127,19 @@ pub fn cmdWm(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.E
     if (eq(name, "geometry")) {
         if (args.len == 0) return .{ .str = try std.fmt.allocPrint(a, "{d}x{d}+{d}+{d}", .{ w.geom.w, w.geom.h, st.pos.x, st.pos.y }) };
         if (args.len > 1) return it.fail("wrong # args: should be \"wm geometry window ?newGeometry?\"", .{});
-        const t = try it.str(args[0]);
-        if (t.len == 0) {
+        const t0 = try it.str(args[0]);
+        // X11 geometry strings can start with "=".
+        const t = if (t0.len > 0 and t0[0] == '=') t0[1..] else t0;
+        if (t0.len == 0) {
             st.geometry = null;
             w.invalidate(.{ .style = false, .measure = true, .layout = true, .paint = true });
             return Value.empty;
         }
         // A position alone, such as +300+300, moves the window and
         // keeps its size.
+        if (t.len == 0) return it.fail("bad geometry specifier \"{s}\"", .{t0});
         if (t[0] == '+' or t[0] == '-') {
-            const p = parsePosition(t) orelse return it.fail("bad geometry specifier \"{s}\"", .{t});
+            const p = parsePosition(t) orelse return it.fail("bad geometry specifier \"{s}\"", .{t0});
             st.pos = p;
             return Value.empty;
         }
@@ -242,6 +245,12 @@ pub fn cmdWm(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.E
     // client, command, colormapwindows, positionfrom, sizefrom, aspect,
     // and grid.
     const key: []const u8 = names[which];
+    // `wm grid` with no value set: the grid of a text or a listbox with
+    // -setgrid 1, as Tk sets it for that widget.
+    if (args.len == 0 and eq(name, "grid") and st.prop(key).len == 0) {
+        const words = [_]Value{ .{ .str = "::ztk::priv::wmgrid" }, .{ .str = w.path } };
+        return it.eval(try it.str(try ztcl.value.newList(a, &words)));
+    }
     if (args.len == 0) return .{ .str = try a.dupe(u8, st.prop(key)) };
     if (eq(name, "iconphoto") or eq(name, "aspect") or eq(name, "grid") or eq(name, "iconposition") or eq(name, "iconbitmap")) {
         var words = args;

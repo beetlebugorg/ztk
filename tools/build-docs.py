@@ -45,6 +45,7 @@ PAGES = [
     ("docs/quickstart.md", "quickstart/", "Start", "Quick start"),
     ("docs/agents.md", "agents/", "Start", "For agents"),
     ("docs/replay.md", "replay/", "Start", "Watch it get built"),
+    ("docs/apps.md", "apps/", "Start", "Runs on ztk"),
     ("docs/widgets/README.md", "widgets/", "Widgets", "All widgets"),
     ("docs/toys.md", "toys/", "Widgets", "Toys"),
     ("docs/build/backspin.md", "toys/backspin/", "Widgets", "Backspin, part by part"),

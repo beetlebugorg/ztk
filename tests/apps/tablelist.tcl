@@ -11,6 +11,10 @@ lassign $argv src demo app::shots
 set argv {}
 lappend auto_path $src
 
+# The demo embeddedWindows lists the Tcl files of $tk_library. ztk has no
+# library folder, so the folder of the demos takes its place.
+if {$::tk_library eq ""} {set ::tk_library [file join $src demos]}
+
 # The demos config and browse are for an interactive wish: a person
 # sources them and calls a command with a widget.
 set interactive {config displayConfig browse displayChildren browseTree displayChildren}

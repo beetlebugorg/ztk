@@ -247,6 +247,36 @@ fn loadPng(app: *App, it: *ztcl.Interp, p: *Photo, bytes: []const u8) ztcl.Error
     p.height = img.height;
 }
 
+/// Base64 text to bytes, as Tk reads it: white space and the padding are
+/// left out, and extra bits at the end do not matter. Gives null for a
+/// text with another character, which is then binary data.
+fn base64Lenient(a: std.mem.Allocator, text: []const u8) !?[]u8 {
+    const out = try a.alloc(u8, text.len / 4 * 3 + 3);
+    var n: usize = 0;
+    var acc: u32 = 0;
+    var bits: u5 = 0;
+    for (text) |c| {
+        const v: u32 = switch (c) {
+            'A'...'Z' => c - 'A',
+            'a'...'z' => c - 'a' + 26,
+            '0'...'9' => c - '0' + 52,
+            '+' => 62,
+            '/' => 63,
+            '=', ' ', '\t', '\r', '\n' => continue,
+            else => return null,
+        };
+        acc = (acc << 6) | v;
+        bits += 6;
+        if (bits >= 8) {
+            bits -= 8;
+            out[n] = @truncate(acc >> bits);
+            n += 1;
+            acc &= (@as(u32, 1) << bits) - 1;
+        }
+    }
+    return out[0..n];
+}
+
 /// True when a list is rows of color names, as `put` takes them.
 fn colorRows(it: *ztcl.Interp, rows: []const Value) bool {
     if (rows.len == 0) return false;
@@ -260,20 +290,7 @@ fn colorRows(it: *ztcl.Interp, rows: []const Value) bool {
 /// or PPM. The caller frees `pixels` with the gpa of the App.
 fn decodeData(app: *App, it: *ztcl.Interp, text: []const u8) ztcl.Error!?@import("render/renderer.zig").Image {
     const gif = @import("gif.zig");
-    const dec = std.base64.standard.Decoder;
-    const clean = try it.alloc().alloc(u8, text.len);
-    var n: usize = 0;
-    for (text) |c| if (!std.ascii.isWhitespace(c)) {
-        clean[n] = c;
-        n += 1;
-    };
-    var bytes: []const u8 = undefined;
-    if (dec.calcSizeForSlice(clean[0..n])) |size| {
-        const buf = try it.alloc().alloc(u8, size);
-        if (dec.decode(buf, clean[0..n])) |_| {
-            bytes = buf;
-        } else |_| bytes = try binaryBytes(it, .{ .str = text });
-    } else |_| bytes = try binaryBytes(it, .{ .str = text });
+    const bytes = (try base64Lenient(it.alloc(), text)) orelse try binaryBytes(it, .{ .str = text });
     const r = if (gif.isGif(bytes)) gif.decodeGif(app.gpa, bytes) else if (gif.isPpm(bytes)) gif.decodePpm(app.gpa, bytes) else png.decode(app.gpa, bytes);
     return r catch null;
 }
@@ -327,18 +344,9 @@ fn configurePhoto(app: *App, it: *ztcl.Interp, p: *Photo, args: []const Value) z
             try loadPng(app, it, p, try binaryBytes(it, v));
         },
         .data => {
-            const dec = std.base64.standard.Decoder;
-            const clean = try it.alloc().alloc(u8, p.data.len);
-            var n: usize = 0;
-            for (p.data) |c| if (!std.ascii.isWhitespace(c)) {
-                clean[n] = c;
-                n += 1;
-            };
             // -data is base64 text, or the bytes of the file as a binary
             // string, as in Tk 8.6.
-            const size = dec.calcSizeForSlice(clean[0..n]) catch return loadPng(app, it, p, try binaryBytes(it, .{ .str = p.data }));
-            const bytes = try it.alloc().alloc(u8, size);
-            dec.decode(bytes, clean[0..n]) catch return loadPng(app, it, p, try binaryBytes(it, .{ .str = p.data }));
+            const bytes = (try base64Lenient(it.alloc(), p.data)) orelse try binaryBytes(it, .{ .str = p.data });
             try loadPng(app, it, p, bytes);
         },
     }
