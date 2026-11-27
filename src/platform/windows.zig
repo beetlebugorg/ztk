@@ -49,6 +49,7 @@ const dwrite = @import("dwrite.zig");
 const windrop = @import("windrop.zig");
 const windialog = @import("windialog.zig");
 const winbox = @import("winbox.zig");
+const winstate = @import("winstate.zig");
 const wintaskbar = @import("wintaskbar.zig");
 const winrecent = @import("winrecent.zig");
 const winhotkey = @import("winhotkey.zig");
@@ -99,6 +100,8 @@ const WinRec = struct {
     taskbar: plat.Taskbar = .{},
     /// The OLE drop target of the window, when it takes drops.
     drop: ?*windrop.Target = null,
+    /// The style and the rect before a full screen of `wm attributes`.
+    fullscreen: ?winstate.Saved = null,
     /// The buttons that are down, bit 0 for button 1.
     buttons: u8 = 0,
 };
@@ -216,6 +219,8 @@ pub const Win32 = struct {
         .fileDialog = vFileDialog,
         .colorDialog = vColorDialog,
         .messageBox = vMessageBox,
+        .setWindowState = vSetWindowState,
+        .reducedMotion = vReducedMotion,
         .taskbarSet = vTaskbarSet,
         .attention = vAttention,
         .recentAdd = vRecentAdd,
@@ -680,6 +685,16 @@ pub const Win32 = struct {
         const b = self(ptr);
         const owner: ?w32.HWND = if (opts.parent) |p| (if (b.recOf(p)) |r| r.hwnd else null) else null;
         return winbox.messageBox(b.gpa, opts, owner);
+    }
+
+    fn vSetWindowState(ptr: *anyopaque, w: *Window, s: plat.WindowState) void {
+        const r = self(ptr).recOf(w) orelse return;
+        winstate.setFullscreen(r.hwnd, s.fullscreen, &r.fullscreen);
+        winstate.setTopmost(r.hwnd, s.topmost);
+    }
+
+    fn vReducedMotion(_: *anyopaque) bool {
+        return winstate.reducedMotion();
     }
 
     // ---- Appearance ----

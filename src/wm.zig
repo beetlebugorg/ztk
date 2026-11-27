@@ -12,6 +12,7 @@ const options = @import("options.zig");
 const app_mod = @import("app.zig");
 const App = app_mod.App;
 const Value = ztcl.Value;
+const Widget = @import("widget.zig").Widget;
 
 pub const State = struct {
     title: []u8 = &.{},
@@ -218,7 +219,7 @@ pub fn cmdWm(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.E
     }
     if (eq(name, "frame")) return .{ .str = try std.fmt.allocPrint(a, "0x{x}", .{@intFromPtr(w) & 0xffffff}) };
     if (eq(name, "manage") or eq(name, "forget")) return Value.empty;
-    if (eq(name, "attributes")) return attributes(app, st, args);
+    if (eq(name, "attributes")) return attributes(app, w, st, args);
     if (eq(name, "overrideredirect")) {
         if (args.len == 0) return .{ .int = @intFromBool(options.parseBool(st.prop("overrideredirect")) orelse false) };
         const t = try it.str(args[0]);
@@ -266,7 +267,7 @@ pub fn cmdWm(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.E
 /// `wm attributes window ?option? ?value option value ...?`: -alpha,
 /// -topmost, -zoomed, -fullscreen, and -type, stored for the window, in
 /// the order of `wish` 8.6 on X11.
-fn attributes(app: *App, st: *State, args: []const Value) ztcl.Error!Value {
+fn attributes(app: *App, w: *Widget, st: *State, args: []const Value) ztcl.Error!Value {
     const it = app.it;
     const a = it.alloc();
     const keys = [_][]const u8{ "-alpha", "-topmost", "-zoomed", "-fullscreen", "-type" };
@@ -294,11 +295,22 @@ fn attributes(app: *App, st: *State, args: []const Value) ztcl.Error!Value {
     }
     if (args.len % 2 != 0) return it.fail("wrong # args: should be \"wm attributes window ?-option value ...?\"", .{});
     var k: usize = 0;
+    var state_changed = false;
     while (k < args.len) : (k += 2) {
         const name = try it.str(args[k]);
         const i = index.of(name) orelse return it.fail("bad attribute \"{s}\": must be -alpha, -topmost, -zoomed, -fullscreen, or -type", .{name});
+        // -topmost and -fullscreen are booleans of Tcl.
+        if (i == 1 or i == 3) {
+            _ = options.parseBool(try it.str(args[k + 1])) orelse return it.fail("expected boolean value but got \"{s}\"", .{try it.str(args[k + 1])});
+            state_changed = true;
+        }
         st.setProp(app.gpa, keys[i], try it.str(args[k + 1])) catch return it.memError();
     }
+    // A backend with the window state applies it (ztk#68).
+    if (state_changed) if (app.winOf(w)) |win| app.platform.setWindowState(win, .{
+        .fullscreen = options.parseBool(st.prop("-fullscreen")) orelse false,
+        .topmost = options.parseBool(st.prop("-topmost")) orelse false,
+    });
     return Value.empty;
 }
 

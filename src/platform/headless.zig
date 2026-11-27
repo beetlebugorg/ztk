@@ -103,6 +103,8 @@ pub const Headless = struct {
     /// The file dialog: the paths that the next dialog gives (null: a cancel),
     /// the filter that it gives, and the options of the last call.
     dialog_answer: ?[]const []const u8 = null,
+    /// The setting of the system for less motion that `reducedMotion` gives.
+    reduced_motion: bool = false,
     dialog_filter: ?u32 = null,
     dialog_kind: ?plat.FileDialog.Kind = null,
     dialog_title: std.ArrayListUnmanaged(u8) = .empty,
@@ -185,6 +187,7 @@ pub const Headless = struct {
         .clipboardGet = vClipboardGet,
         .textInput = vTextInput,
         .appearance = vAppearance,
+        .reducedMotion = vReducedMotion,
         .fileDialog = vFileDialog,
         .menuSet = vMenuSet,
         .menuEntrySet = vMenuEntrySet,
@@ -513,6 +516,10 @@ pub const Headless = struct {
 
     fn vAppearance(ptr: *anyopaque) plat.Appearance {
         return self(ptr).system orelse .{ .dark = false };
+    }
+
+    fn vReducedMotion(ptr: *anyopaque) bool {
+        return self(ptr).reduced_motion;
     }
 
     /// Records the options of a dialog and gives the answer of the test.

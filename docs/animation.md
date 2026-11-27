@@ -51,7 +51,7 @@ ztk::animate reduce ?bool?
 
 ## Reduced motion
 
-`ztk::animate reduce 1`, `ZTK_NO_ANIMATION=1`, and the setting `prefers-reduced-motion` of a browser show each end state at once.
+`ztk::animate reduce 1`, `ZTK_NO_ANIMATION=1`, the setting `prefers-reduced-motion` of a browser, and the setting of the system for less motion (on Windows, the animation effects of the visual effects) show each end state at once. The setting of the system applies until a script calls `ztk::animate reduce` with a value.
 
 ## How smooth
 
