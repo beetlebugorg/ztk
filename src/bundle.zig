@@ -370,7 +370,12 @@ pub fn run(io: Io, a: std.mem.Allocator, args: []const [:0]const u8, err: *Io.Wr
     // app seals the resources. A host with no codesign leaves the app as
     // it is: docs/macos-app.md has the steps for a signature.
     if (sign) {
-        const r = std.process.run(a, io, .{ .argv = &.{ "codesign", "--force", "--sign", "-", out_path } }) catch |e| {
+        // The entitlement of the JIT, which MAP_JIT needs under a
+        // signature with the hardened runtime.
+        const ents_path = try std.fmt.allocPrint(a, "{s}.entitlements", .{out_path});
+        try cwd.writeFile(io, .{ .sub_path = ents_path, .data = entitlements });
+        defer cwd.deleteFile(io, ents_path) catch {};
+        const r = std.process.run(a, io, .{ .argv = &.{ "codesign", "--force", "--sign", "-", "--entitlements", ents_path, out_path } }) catch |e| {
             try err.print("ztk bundle: codesign: {s}; the app is not signed\n", .{@errorName(e)});
             return 0;
         };
@@ -381,6 +386,19 @@ pub fn run(io: Io, a: std.mem.Allocator, args: []const [:0]const u8, err: *Io.Wr
     }
     return 0;
 }
+
+/// The entitlements plist of an app.
+const entitlements =
+    \\<?xml version="1.0" encoding="UTF-8"?>
+    \\<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    \\<plist version="1.0">
+    \\<dict>
+    \\    <key>com.apple.security.cs.allow-jit</key>
+    \\    <true/>
+    \\</dict>
+    \\</plist>
+    \\
+;
 
 /// The mode of the program in the app. Windows has no mode bits, so a
 /// bundle from Windows gets its mode on the Mac, from the archive or from
