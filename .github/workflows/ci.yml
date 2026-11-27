@@ -391,3 +391,21 @@ jobs:
           gh issue create -R "${{ github.repository }}" \
             --title "The full CI run failed on $(date -u +%Y-%m-%d)" \
             --body "The scheduled full run failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+  # The one check for the merge: it passes when each job of the run
+  # passed or was skipped, and fails when a job failed or was
+  # cancelled.
+  linux-ok:
+    name: Linux ok
+    if: always()
+    needs: [changes, check, docs, test, test-arm, cross, wasm]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the results of the jobs
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          for r in $RESULTS; do
+            case $r in success|skipped) ;; *) exit 1 ;; esac
+          done
