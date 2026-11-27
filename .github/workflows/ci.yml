@@ -58,6 +58,31 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - run: sh tools/check-repo.sh
 
+  # The module map of src/ (docs/dev/architecture.md): a report of the
+  # imports, the cycles, and the layering breaks. The job is a report:
+  # a break does not fail it.
+  modmap:
+    name: Module map
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+          use-cache: false
+      - name: Test the tool
+        run: zig test tools/modmap.zig
+      - name: Write the report
+        run: |
+          mkdir -p modmap
+          zig run tools/modmap.zig -- --dot modmap/modmap.dot --area-dot modmap/areas.dot > modmap/modmap.md
+          zig run tools/modmap.zig -- --only summary,areas,cycles >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: modmap
+          path: modmap/
+
   docs:
     name: Docs build
     runs-on: ubuntu-latest
