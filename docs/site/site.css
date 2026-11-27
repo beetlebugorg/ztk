@@ -510,3 +510,21 @@ details.more > :not(summary) { margin-left: 14px; margin-right: 14px; }
 .live-demo.wide { margin: 0 0 24px; }
 .live-demo.wide .ld-more { order: 2; }
 .live-demo.wide .ld-frame { width: 100%; max-width: var(--w); aspect-ratio: var(--ar); }
+/* A showcase (assets/showcase.js): an app in the page itself, with no
+   card and no toolbar. Its height follows its width. */
+figure.showcase { margin: 24px 0 32px; max-width: none; position: relative; z-index: 5; background: var(--bg); box-shadow: 0 0 0 12px var(--bg); }
+.showcase .sc-stage { position: relative; aspect-ratio: var(--ar); border-radius: 16px; overflow: hidden; background: #f7f5ff; display: grid; place-items: center; }
+.showcase .sc-stage canvas { position: absolute; inset: 0; }
+.showcase .sc-poster { margin: 0; padding: 16px; color: #4b4670; text-align: center; }
+.showcase .sc-code { margin-top: 12px; }
+.showcase .sc-code > summary { cursor: pointer; color: var(--text-2); font-size: 15px; }
+.showcase .sc-code > summary:hover { color: var(--accent); }
+.showcase .sc-code .ld-code { margin-top: 8px; }
+.showcase .sc-code pre { max-height: 480px; overflow: auto; }
+@media (max-width: 639px) { .showcase .sc-stage { aspect-ratio: var(--nar); border-radius: 12px; } }
+.stage { position: relative; z-index: 5; }
+@media (min-width: 1100px) {
+  .stage { grid-template-rows: auto 250px 330px; }
+  .stage .st-view figure { zoom: 1; width: 600px; }
+  .stage .st-view .ld-frame { width: 560px; }
+}

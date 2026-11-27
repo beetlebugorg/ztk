@@ -12,8 +12,8 @@ one of these files. The build needs markdown-it-py
 missing page or a missing anchor, and for a missing image, also on the
 landing page.
 
-A line `<!-- live -->`, `<!-- live wide: WxH -->` (a window of W by H
-logical pixels over the full width, and the code under a toggle), or `<!-- widget: NAME; shot: SCRIPT -->` before a
+A line `<!-- live -->`, `<!-- showcase: WxH; narrow: WxH -->` (an app in
+the page itself, wide and with no toolbar, see assets/showcase.js), or `<!-- widget: NAME; shot: SCRIPT -->` before a
 `tcl` block makes the block a live snippet (docs/dev/interactive-docs.md).
 The build writes a figure with the code and the shot widget-NAME-light.png
 and widget-NAME-dark.png, and the page loads assets/live.js. An image
@@ -115,7 +115,7 @@ def rel(from_page, to_page):
     return "./" if path == "." else path.rstrip("/") + "/"
 
 
-MARK = re.compile(r"^<!-- (live(?: wide: \d+x\d+)?|widget: ([a-z0-9-]+);.*) -->$")
+MARK = re.compile(r"^<!-- (live|showcase: \d+x\d+; narrow: \d+x\d+|widget: ([a-z0-9-]+);.*) -->$")
 
 
 class Build:
@@ -198,7 +198,8 @@ class Build:
                              '<ol class="st-steps" aria-label="The prompts and the answers"></ol>'
                              '<div class="st-code" aria-label="The code of the step"><pre><code></code></pre></div>'
                              f'<div class="st-view">{fig}<div class="st-mark" aria-hidden="true"><span></span></div></div>'
-                             f'</section><script type="module" src="{root}assets/stage.js"></script>\n')
+                             f'</section><script type="module" src="{root}assets/stage.js"></script>'
+                             f'<script type="module" src="{root}assets/showcase.js"></script>\n')
                 continue
             if t.type == "inline" and t.content.strip() == "<!-- widget-grid -->":
                 tokens[i - 1].type = tokens[i + 1].type = "html_block"
@@ -262,7 +263,7 @@ class Build:
             count += 1
             meta = {"live": True, "name": name, "id": f"live-{name}" if name else f"live-{count}", "alt": "",
                     "still": m.group(1).endswith("shot: update"), "title": title.group(1).strip() if title else None,
-                    "wide": m.group(1)[len("live wide: "):] if m.group(1).startswith("live wide: ") else None}
+                    "showcase": re.findall(r"\d+x\d+", m.group(1)) if m.group(1).startswith("showcase: ") else None}
             if meta["title"] is None:
                 heads = [k for k in range(len(out) - 1) if out[k].type == "heading_open"]
                 meta["title"] = inline_text(out[heads[-1] + 1]) if heads else name
@@ -362,15 +363,16 @@ class Build:
                     f'<figcaption class="ld-bar"><span class="ld-tag">Live</span>'
                     f'<a class="toy-page" hidden></a><span class="toy-status" role="status"></span></figcaption>'
                     f'<div class="ld-err" role="status" hidden></div>{Build.toy_games(root)}</figure>\n')
-        if meta.get("wide"):
-            # A wide app: the window over the full width, and its code
-            # under a toggle.
-            w, h = meta["wide"].split("x")
-            return (f'<figure class="live-demo stack wide" id="{meta["id"]}"{data} data-size="{meta["wide"]}" style="--w: {w}px; --ar: {w} / {h}">'
-                    f'<div class="ld-view"><div class="ld-frame">{pic}</div></div>'
-                    f'<details class="ld-more"><summary>Show the code</summary>{code_html}</details>'
-                    f'<figcaption class="ld-bar"><span class="ld-tag">Live</span></figcaption>'
-                    f'<div class="ld-err" role="status" hidden></div></figure>\n')
+        if meta.get("showcase"):
+            # A showcase: the app in the page itself, over the width of
+            # the page and with no toolbar (assets/showcase.js). The size is
+            # the logical size of the app, and the narrow size is for a
+            # phone. The code is under a toggle.
+            (w, h), (nw, nh) = [x.split("x") for x in meta["showcase"]]
+            lines = code.count("\n")
+            return (f'<figure class="showcase" data-size="{w}x{h}" data-narrow="{nw}x{nh}" style="--ar: {w} / {h}; --nar: {nw} / {nh}">'
+                    f'<div class="sc-stage"><p class="sc-poster">The piece starts when it comes into view. It needs JavaScript and WebAssembly.</p></div>'
+                    f'<details class="sc-code"><summary>The code: {lines} lines of Tcl</summary>{code_html}</details></figure>\n')
         if name and name.startswith("toy-"):
             # A toy: the handheld first and large, and its code under a
             # toggle, so that the page next to the game is short.
@@ -424,6 +426,8 @@ class Build:
         root = rel(page, "")
         name = f"{html.escape(title)} · ztk"
         script = f'\n<script type="module" src="{root}assets/live.js"></script>' if 'class="live-demo' in body else ""
+        if 'class="showcase' in body:
+            script += f'\n<script type="module" src="{root}assets/showcase.js"></script>'
         if 'data-name="toy-' in body:
             script += f'\n<script type="module" src="{root}assets/toys.js"></script>'
 
@@ -530,7 +534,7 @@ class Build:
             (folder / "index.html").write_text(self.document(page, title, body), encoding="utf-8")
         (out / "index.html").write_text(landing, encoding="utf-8")
         (out / "assets").mkdir()
-        for name in ("site.css", "favicon.svg", "live.js", "replay.js", "stage.js", "toys.js"):
+        for name in ("site.css", "favicon.svg", "live.js", "replay.js", "stage.js", "toys.js", "showcase.js"):
             shutil.copy(SITE_DIR / name, out / "assets" / name)
         # The screenshots of the examples (tools/shots.sh).
         shutil.copytree(SITE_DIR / "shots", out / "assets" / "shots")
