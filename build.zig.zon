@@ -5,8 +5,8 @@
     .minimum_zig_version = "0.17.0",
     .dependencies = .{
         .ztcl = .{
-            .url = "git+https://github.com/beetlebugorg/ztcl#1929125f5829e07ccefd3651462b84d8d8414b93",
-            .hash = "ztcl-0.1.0-alpha-WhPN_rM4WwDXmWUN4JoKATtOpsXDzt98chs2-XFHZmwx",
+            .url = "git+https://github.com/beetlebugorg/ztcl#cb32700ba455a9b0f798dd44658c207eda8000f3",
+            .hash = "ztcl-0.1.0-alpha-WhPN_sdPYABvWRSNcM2wQ0xVBIlo0rLx37tjJBsT9kJT",
         },
         .vulkan_headers = .{
             .url = "git+https://github.com/KhronosGroup/Vulkan-Headers?ref=v1.4.369#d277a0a3cda9c682708c93279f0c72cd6b0ae3f3",
