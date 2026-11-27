@@ -67,6 +67,7 @@ PAGES = [
     ("docs/agents.md", "agents/", "Start", "For agents"),
     ("docs/replay.md", "replay/", "Start", "Watch it get built"),
     ("docs/apps.md", "apps/", "Start", "Runs on ztk"),
+    ("docs/python-tkinter.md", "python-tkinter/", "Start", "Python tkinter"),
     ("docs/widgets/README.md", "widgets/", "Widgets", "All widgets"),
     ("docs/toys.md", "toys/", "Widgets", "Toys"),
     ("docs/build/lamplighter.md", "toys/lamplighter/", "Widgets", "Lamplighter: the design"),

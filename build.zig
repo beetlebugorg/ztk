@@ -39,7 +39,8 @@ fn vulkanC(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builti
 }
 
 /// The backends of one build of the ztk module, and the Vulkan renderer.
-const Config = struct { backends: []const u8, vulkan: bool, drop: []const u8 = "", ztcl_drop: []const u8 = "" };
+/// `cext`: the ztcl of the module has the C API of Tcl (libztk).
+const Config = struct { backends: []const u8, vulkan: bool, drop: []const u8 = "", ztcl_drop: []const u8 = "", cext: bool = false };
 
 /// The full GUI backend of each platform: Wayland, X11, and the direct
 /// backend with Vulkan on Linux, AppKit with Metal on macOS, and Win32
@@ -67,7 +68,10 @@ const Built = struct {
 
 /// `public`: other packages import the module as "ztk".
 fn addZtk(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, cfg: Config, shaders: Shaders, public: bool) Built {
-    const ztcl = b.dependency("ztcl", .{ .target = target, .optimize = optimize, .drop = cfg.ztcl_drop }).module("ztcl");
+    const ztcl = if (cfg.cext)
+        b.dependency("ztcl", .{ .target = target, .optimize = optimize, .drop = cfg.ztcl_drop, .cext = true }).module("ztcl")
+    else
+        b.dependency("ztcl", .{ .target = target, .optimize = optimize, .drop = cfg.ztcl_drop }).module("ztcl");
     const is_linux = target.result.os.tag == .linux;
     const is_macos = target.result.os.tag == .macos;
     // The Wayland and X11 code exists for Linux only.
@@ -171,6 +175,45 @@ fn splitDrop(b: *std.Build, list: []const u8) Drop {
     return .{ .ztk = ztk_list.items, .ztcl = ztcl_list.items };
 }
 
+/// `zig build libztk` (ztk#223): libtcl8.6 with ztcl and ztk, and a small
+/// libtk8.6 with the Tk names, for Python's `_tkinter` and other programs
+/// that link Tk 8.6. `docs/python-tkinter.md` has the steps.
+fn addLibztk(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, cfg: Config, shaders: Shaders) void {
+    const step = b.step("libztk", "Build libztk: libtk8.6.so and libtcl8.6.so for Python's tkinter");
+    if (target.result.os.tag != .linux) {
+        step.dependOn(&b.addFail("libztk builds for Linux only for now").step);
+        return;
+    }
+    var lcfg = cfg;
+    lcfg.cext = true;
+    const m = addZtk(b, target, optimize, lcfg, shaders, false);
+    const lib = b.addLibrary(.{ .name = "tcl8.6", .linkage = .dynamic, .use_llvm = true, .use_lld = true, .root_module = b.createModule(.{
+        .root_source_file = b.path("src/libztk.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+        .pic = true,
+        .imports = &.{
+            .{ .name = "ztcl", .module = m.ztcl },
+            .{ .name = "ztk", .module = m.ztk },
+        },
+    }) });
+    step.dependOn(&b.addInstallArtifact(lib, .{}).step);
+    // libtk8.6.so: the Tk names, each a jump into libtcl8.6.so.
+    const tk = b.addLibrary(.{ .name = "tk8.6", .linkage = .dynamic, .use_llvm = true, .use_lld = true, .root_module = b.createModule(.{
+        .root_source_file = b.path("src/libztk_tk.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+        .pic = true,
+    }) });
+    tk.root_module.linkLibrary(lib);
+    step.dependOn(&b.addInstallArtifact(tk, .{}).step);
+    // tk.h of the part of the Tk API that libztk has, beside the headers
+    // of Tcl from the kit of ztcl.
+    step.dependOn(&b.addInstallFileWithDir(b.path("packaging/libztk/include/tk.h"), .header, "tk.h").step);
+}
+
 /// The targets of `ztk bundle --target`, and of `zig build runtimes`.
 const runtime_targets = [_][]const u8{ "x86_64-linux", "aarch64-linux", "x86_64-macos", "aarch64-macos", "x86_64-windows", "aarch64-windows" };
 
@@ -250,6 +293,8 @@ pub fn build(b: *std.Build) void {
         wasm_step.dependOn(&b.addInstallDirectory(.{ .source_dir = b.path("web"), .install_dir = .{ .custom = "web" }, .install_subdir = "" }).step);
         wasm_step.dependOn(&b.addInstallDirectory(.{ .source_dir = b.path("examples"), .install_dir = .{ .custom = "web" }, .install_subdir = "examples", .include_extensions = &.{ ".tcl", ".css" } }).step);
     }
+
+    addLibztk(b, target, optimize, cfg, shaders);
 
     const run = b.addRunArtifact(exe);
     run.addPassthruArgs();

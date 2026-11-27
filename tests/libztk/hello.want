@@ -1,0 +1,4 @@
+tk_version 8.6 ws x11
+entry hello class Tk
+clicks 1 label changed big 1208925819614629174706176
+done

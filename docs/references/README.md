@@ -5,6 +5,7 @@ ztk credits each source of an idea, a table, a method, or a library here. Each p
 | Page | Content |
 |---|---|
 | [Tk](tk.md) | The manual pages, the behavior of `wish`, and the test files of Tk |
+| [Python tkinter](python-tkinter.md) | The C API of Tk and the event loop of Tcl that libztk has, and the tkinter tests |
 | [CSS](css.md) | The CSS specifications that the style system follows |
 | [Rendering](rendering.md) | The methods of the renderers |
 | [Terminal](terminal.md) | The specifications that `ztk::terminal` follows |
