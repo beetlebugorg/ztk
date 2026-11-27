@@ -48,6 +48,12 @@ The features of ztk go through `Platform.VTable`, as the menus do: optional entr
 - `colorDialog(opts) ?Color` for `tk_chooseColor`: the parent window, the title, and the first color. Windows has it (`ChooseColorW`). A font dialog follows when ztk has a `tk fontchooser`.
 - A backend without the entry gets the dialogs that the core draws, from task 17 of the widget stage.
 
+**Window state (ztk#68).**
+
+- `setWindowState(window, .{ .fullscreen, .topmost })`: `wm attributes` calls it when `-fullscreen` or `-topmost` changes, with the two booleans of the window. Windows: the style `WS_POPUP` and the rect of the monitor for full screen, with the style and the rect before it back at the end, and `SetWindowPos` with `HWND_TOPMOST` or `HWND_NOTOPMOST`.
+- `reducedMotion() bool`: the setting of the system for less motion. The core reads it at the start and on each `appearance` event, and `ztk::animate` shows each end state at once while it is on, until a script calls `ztk::animate reduce` with a value. Windows: `SPI_GETCLIENTAREAANIMATION`. macOS can give `accessibilityDisplayShouldReduceMotion`, with its notification as an `appearance` event.
+- `-zoomed` stays a stored value for now: a maximize shows the window, and a test opens no window on the desktop.
+
 **Bundles (ztk#56, ztk#59, ztk#60).** `ztk bundle` writes a program with the scripts and the style sheets inside it, from any host, as ztcl#40 asks for ztcl. On Windows the bundle is one `.exe` with its resources written by ztk in Zig: the icon, a manifest with the per-monitor DPI awareness and the common controls, and the version info. The build needs no resource compiler, so a build on Linux or macOS works.
 
 ## The order

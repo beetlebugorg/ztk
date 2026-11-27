@@ -600,6 +600,46 @@ test "windows: a tray icon in the notification area, its actions, and its menu" 
     try t.expect(has(events.items, .tray).?.tray.action == .menu);
 }
 
+test "windows: full screen and topmost of wm attributes change the window and come back" {
+    if (!enabled()) return;
+    const ws = @import("../platform/winstate.zig");
+    const Vis = struct {
+        extern "user32" fn IsWindowVisible(h: w32.HWND) callconv(.winapi) i32;
+        extern "user32" fn GetWindowRect(h: w32.HWND, r: *w32.RECT) callconv(.winapi) i32;
+    };
+    var events: std.ArrayListUnmanaged(Event) = .empty;
+    defer events.deinit(t.allocator);
+    const o = try openHidden(&events);
+    defer o.b.deinit();
+    const p = o.b.platform();
+    try t.expect(p.hasWindowState());
+    var before: w32.RECT = .{};
+    _ = Vis.GetWindowRect(o.hwnd, &before);
+    const style = w32.GetWindowLongPtrW(o.hwnd, ws.GWL_STYLE);
+
+    p.setWindowState(o.w, .{ .fullscreen = true, .topmost = true });
+    const fs_style: usize = @bitCast(w32.GetWindowLongPtrW(o.hwnd, ws.GWL_STYLE));
+    try t.expect(fs_style & w32.WS_POPUP != 0);
+    const ex: usize = @bitCast(w32.GetWindowLongPtrW(o.hwnd, ws.GWL_EXSTYLE));
+    try t.expect(ex & ws.WS_EX_TOPMOST != 0);
+    var full: w32.RECT = .{};
+    _ = Vis.GetWindowRect(o.hwnd, &full);
+    try t.expect(full.right - full.left >= before.right - before.left);
+    // No call of the state shows the window.
+    try t.expectEqual(@as(i32, 0), Vis.IsWindowVisible(o.hwnd));
+
+    p.setWindowState(o.w, .{});
+    try t.expectEqual(style, w32.GetWindowLongPtrW(o.hwnd, ws.GWL_STYLE));
+    const ex2: usize = @bitCast(w32.GetWindowLongPtrW(o.hwnd, ws.GWL_EXSTYLE));
+    try t.expect(ex2 & ws.WS_EX_TOPMOST == 0);
+    var after: w32.RECT = .{};
+    _ = Vis.GetWindowRect(o.hwnd, &after);
+    try t.expectEqual(before, after);
+    try t.expectEqual(@as(i32, 0), Vis.IsWindowVisible(o.hwnd));
+    // The setting of the system for less motion is a boolean either way.
+    _ = p.reducedMotion().?;
+}
+
 test "windows: the color dialog and the message box of Windows get their options" {
     if (!enabled()) return;
     const box = @import("../platform/winbox.zig");

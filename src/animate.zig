@@ -272,6 +272,7 @@ pub fn cmdAnimate(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) z
             if (argv.len == 3) {
                 const t = try it.str(argv[2]);
                 app.reduce_motion = options.parseBool(t) orelse return it.fail("expected boolean value but got \"{s}\"", .{t});
+                app.reduce_motion_set = true;
                 app.requestFrame();
             }
             return .{ .int = @intFromBool(anim.reduced(app)) };
@@ -459,8 +460,13 @@ pub fn paintMove(app: *App, w: *Widget, now_us: i64) ?PaintMove {
     const a = found orelse return null;
     for (a.tracks.items) |tr| if (tr.kind != .color) return null;
     const fa: scene.FrameAnim = .{
-        .first = 0, .count = 0, .from = 0,
-        .start_us = a.start_us, .delay_us = @as(i64, a.delay_ms) * 1000, .len_us = lenUs(a), .timing = a.timing,
+        .first = 0,
+        .count = 0,
+        .from = 0,
+        .start_us = a.start_us,
+        .delay_us = @as(i64, a.delay_ms) * 1000,
+        .len_us = lenUs(a),
+        .timing = a.timing,
         .iterations = @floatFromInt(a.repeat),
     };
     const s = fa.sample(now_us);

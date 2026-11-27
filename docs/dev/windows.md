@@ -130,3 +130,7 @@ Rule 12 of `AGENTS.md` forbids windows on the live desktop session of the develo
 ## Decisions for the user
 
 1. The default backend of `ztk` on Windows. The recommendation is Win32, and the headless backend with `--headless` and in CI, as on Linux and macOS.
+
+## Window state
+
+`wm attributes -fullscreen` and `-topmost` (ztk#68) go to `src/platform/winstate.zig`. Full screen gives the window the style `WS_POPUP` with no frame and the rect of its monitor from `MonitorFromWindow`, and the end of full screen puts back the style and the rect from before. `-topmost` is `SetWindowPos` with `HWND_TOPMOST` or `HWND_NOTOPMOST`. No call shows a hidden window, so the test changes a hidden window and reads the styles and the rect back. The setting for less motion comes from `SPI_GETCLIENTAREAANIMATION`: false when the animation effects are off in the settings of Windows.

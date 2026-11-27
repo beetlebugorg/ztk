@@ -170,6 +170,13 @@ pub const MessageBox = struct {
     pub const Button = enum { abort, retry, ignore, ok, cancel, no, yes };
 };
 
+/// The state of a window that `wm attributes` sets (ztk#68).
+pub const WindowState = struct {
+    /// The window covers its monitor with no frame.
+    fullscreen: bool = false,
+    /// The window stays above the windows that are not topmost.
+    topmost: bool = false,
+};
 /// The options of a native color dialog. The title is UTF-8 and is valid
 /// only during the call.
 pub const ColorDialog = struct {
@@ -346,6 +353,13 @@ pub const Platform = struct {
         /// Runs a native color dialog to its end, as `tk_chooseColor`
         /// needs. Null: the dialog was canceled, or it could not show.
         colorDialog: ?*const fn (ptr: *anyopaque, gpa: std.mem.Allocator, opts: *const ColorDialog) ?geom.Color = null,
+        /// Sets the full screen and the topmost state of a window, from
+        /// `wm attributes`.
+        setWindowState: ?*const fn (ptr: *anyopaque, w: *Window, s: WindowState) void = null,
+        /// The setting of the system to show less motion, which
+        /// `ztk::animate` follows unless a script sets `reduce`. The core
+        /// reads it at the start and on each `appearance` event.
+        reducedMotion: ?*const fn (ptr: *anyopaque) bool = null,
 
         // The native menus. A backend with `native_menus` has each of these
         // functions. The core calls them on the UI thread. The backend
@@ -525,6 +539,17 @@ pub const Platform = struct {
     pub fn messageBox(p: Platform, opts: *const MessageBox) ?MessageBox.Button {
         const f = p.vtable.messageBox orelse return null;
         return f(p.ptr, opts);
+    }
+    pub fn hasWindowState(p: Platform) bool {
+        return p.vtable.setWindowState != null;
+    }
+    pub fn setWindowState(p: Platform, w: *Window, s: WindowState) void {
+        if (p.vtable.setWindowState) |f| f(p.ptr, w, s);
+    }
+    /// Null: the backend does not know the setting.
+    pub fn reducedMotion(p: Platform) ?bool {
+        const f = p.vtable.reducedMotion orelse return null;
+        return f(p.ptr);
     }
     pub fn hasColorDialog(p: Platform) bool {
         return p.vtable.colorDialog != null;

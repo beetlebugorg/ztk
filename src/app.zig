@@ -167,8 +167,12 @@ pub const App = struct {
     key_anims: std.ArrayListUnmanaged(anim.KeyAnim) = .empty,
     /// The animations of `ztk::animate`.
     opt_anims: @import("animate.zig").State = .{},
-    /// True: each animation shows its end state at once (`ztk::animate reduce`).
+    /// True: each animation shows its end state at once: the setting of
+    /// the system for less motion, or `ztk::animate reduce`.
     reduce_motion: bool = false,
+    /// True after `ztk::animate reduce` with a value: the script chose, and
+    /// the setting of the system no longer applies.
+    reduce_motion_set: bool = false,
     /// While set, `anim.shown` gives this style for this widget. The paint uses it
     /// to paint the start of a transition for the render thread.
     /// True when a paint asks for the next frame: a part of a widget moves.
@@ -277,6 +281,7 @@ pub const App = struct {
         app.env.dark = opts.dark;
         // With no --dark, the scheme follows the system when the backend gives it.
         if (!opts.dark) app.followSystem();
+        app.followMotion();
         app.style_root = root_dir;
         app.loop = loop.Loop.init(app, app.platform.clock());
         return app;
@@ -505,6 +510,16 @@ pub const App = struct {
         app.styles.generation +%= 1;
         if (app.root) |r| r.invalidate(.{ .style = true, .measure = true, .layout = true, .paint = true });
         for (app.tops.items) |t| t.invalidate(.{ .style = true, .measure = true, .layout = true, .paint = true });
+    }
+
+    /// Takes the setting of the system for less motion, unless the script
+    /// chose with `ztk::animate reduce`.
+    pub fn followMotion(app: *App) void {
+        if (app.reduce_motion_set) return;
+        const r = app.platform.reducedMotion() orelse return;
+        if (r == app.reduce_motion) return;
+        app.reduce_motion = r;
+        app.requestFrame();
     }
 
     fn markAllStyle(app: *App) void {
@@ -1033,7 +1048,10 @@ pub const App = struct {
             .focus => |f| focus_mod.windowFocus(app, f.focused),
             .scale => top.invalidate(.{ .style = false, .measure = false, .layout = false, .paint = true }),
             .motion, .button, .leave, .key, .scroll, .preedit, .commit => dispatch.handleIn(app, ev, top),
-            .appearance => app.followSystem(),
+            .appearance => {
+                app.followSystem();
+                app.followMotion();
+            },
             .tray => |tr| @import("tray.zig").handleEvent(app, tr.id, tr.action),
             .hotkey => |hk| @import("hotkey.zig").handleEvent(app, hk.id),
             .drop => |dr| @import("dnd.zig").handleEvent(app, dr, top),
