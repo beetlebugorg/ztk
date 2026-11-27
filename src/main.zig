@@ -251,6 +251,8 @@ pub fn main(init: std.process.Init) !void {
         Io.Dir.cwd().readFileAlloc(io, path, arena, .limited(64 << 20)) catch |e| {
             fail(err, "ztk: {s}: {s}\n", .{ path, @errorName(e) });
         };
+    // `info script` gives the file, as in wish.
+    if (own_app == null) it.script_name = path;
     it.output = .{ .ctx = out, .write = write };
     // The capabilities of the program: the file commands by default, as a
     // desktop program needs them, and more from --allow.

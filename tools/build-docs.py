@@ -65,6 +65,7 @@ PAGES = [
     ("docs/widgets/geometry.md", "widgets/geometry/", "Widgets", "pack, grid, and place"),
     ("docs/styling.md", "styling/", "Guide", "Styling and themes"),
     ("docs/animation.md", "animation/", "Guide", "Animation"),
+    ("docs/debugging.md", "debugging/", "Guide", "Debugging"),
     ("docs/web.md", "web/", "Guide", "On the web"),
     ("docs/windows.md", "windows/", "Guide", "On Windows"),
     ("docs/macos.md", "macos/", "Guide", "On macOS"),

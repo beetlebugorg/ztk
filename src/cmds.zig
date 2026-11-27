@@ -47,6 +47,7 @@ pub fn register(app: *App) !void {
     try it.register("ztk::limit", cmdLimit);
     try @import("snapshot.zig").register(it);
     try @import("inject.zig").register(it);
+    try @import("debug.zig").register(it);
     try it.register("interp", cmdInterp);
     try it.register("destroy", cmdDestroy);
     try it.register("exit", cmdExit);

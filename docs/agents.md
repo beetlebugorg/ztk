@@ -5,6 +5,7 @@ ztk is a GUI toolkit that an agent can see. A script builds a window with the Tk
 - `ztk::snapshot path` gives a PNG image of a widget.
 - `ztk::tree` gives each widget with its class, its box, and its map state.
 - `ztk::inject` sends pointer, wheel, key, and text events through the hit test and the focus, as a real backend does.
+- `ztk::debug why` gives the source of an option, and `ztk::debug geometry` gives the chain that sets the size and the place of a widget. See [Debugging](debugging.md).
 
 `ztk --headless` runs a script with no display and the CPU renderer, so the image of a window is the same on each platform.
 
