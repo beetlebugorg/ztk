@@ -234,6 +234,7 @@ pub const AppKit = struct {
         .macTabbing = vTabbing,
         .trayCreate = vTrayCreate,
         .traySet = vTraySet,
+        .setIcon = vSetIcon,
         .trayDrop = vTrayDrop,
         .fileDialog = vFileDialog,
         .messageBox = vMessageBox,
@@ -245,6 +246,24 @@ pub const AppKit = struct {
 
     fn vTrayCreate(ptr: *anyopaque, win: *Window, icon: plat.TrayIcon, template: bool, tooltip: []const u8) plat.TrayId {
         return self(ptr).trays.create(winOf(win), icon, template, tooltip);
+    }
+
+    /// `wm iconphoto`: the icon of the Dock, as Tk's Aqua port does, since
+    /// a window of macOS has no icon of its own. An app bundle with an icon
+    /// (CFBundleIconFile or CFBundleIconName) keeps it.
+    fn vSetIcon(_: *anyopaque, _: *Window, icons: []const plat.TrayIcon, _: bool) void {
+        const pool = objc.Pool.push();
+        defer pool.pop();
+        const bundle = objc.call(fn (Class, Sel) callconv(.c) Id, objc.class("NSBundle").?, "mainBundle", .{});
+        for ([_][]const u8{ "CFBundleIconFile", "CFBundleIconName" }) |k| {
+            const key = objc.nsString(k);
+            defer objc.release(key);
+            if (objc.call(fn (Id, Sel, Id) callconv(.c) ?Id, bundle, "objectForInfoDictionaryKey:", .{key}) != null) return;
+        }
+        const img = mactray.dockImageOf(icons) orelse return;
+        defer objc.release(img);
+        const app = objc.call(fn (Class, Sel) callconv(.c) Id, objc.class("NSApplication").?, "sharedApplication", .{});
+        objc.call(fn (Id, Sel, Id) callconv(.c) void, app, "setApplicationIconImage:", .{img});
     }
 
     fn vTraySet(ptr: *anyopaque, id: plat.TrayId, icon: plat.TrayIcon, template: bool, tooltip: []const u8, menu: plat.MenuId) void {

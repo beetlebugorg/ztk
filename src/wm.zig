@@ -8,6 +8,7 @@
 const std = @import("std");
 const ztcl = @import("ztcl");
 const geom = @import("geom.zig");
+const plat = @import("platform/platform.zig");
 const options = @import("options.zig");
 const app_mod = @import("app.zig");
 const App = app_mod.App;
@@ -255,7 +256,20 @@ pub fn cmdWm(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.E
     if (args.len == 0) return .{ .str = try a.dupe(u8, st.prop(key)) };
     if (eq(name, "iconphoto") or eq(name, "aspect") or eq(name, "grid") or eq(name, "iconposition") or eq(name, "iconbitmap")) {
         var words = args;
-        if (words.len > 0 and eq(try it.str(words[0]), "-default")) words = words[1..];
+        const default = words.len > 0 and eq(try it.str(words[0]), "-default");
+        if (default) words = words[1..];
+        if (eq(name, "iconphoto")) {
+            if (words.len == 0) return it.fail("wrong # args: should be \"wm iconphoto window ?-default? image1 ?image2 ...?\"", .{});
+            // The pixels of each photo go to the backend now, as Tk gives
+            // them to the window manager at the call.
+            const icons = try a.alloc(plat.TrayIcon, words.len);
+            for (words, icons) |word, *icon| {
+                const n = try it.str(word);
+                const p = app.images.find(n) orelse return it.fail("can't use \"{s}\" as iconphoto: not a photo image", .{n});
+                icon.* = .{ .width = p.width, .height = p.height, .pixels = p.pixels };
+            }
+            if (app.winOf(w)) |win| app.platform.setIcon(win, icons, default);
+        }
         try st.setProp(app.gpa, key, try it.str(try ztcl.value.newList(a, words)));
         return Value.empty;
     }

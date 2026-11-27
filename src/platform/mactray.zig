@@ -184,6 +184,39 @@ pub fn pointSize(width: u32, height: u32) NSSize {
 /// An `NSImage` of RGBA pixels with straight alpha, retained, or null for
 /// an icon with no pixels.
 fn imageOf(icon: plat.TrayIcon) ?Id {
+    const rep = repOf(icon) orelse return null;
+    defer objc.release(rep);
+    const img0 = call(fn (Class, Sel) callconv(.c) Id, objc.class("NSImage").?, "alloc", .{});
+    const img = call(fn (Id, Sel, NSSize) callconv(.c) Id, img0, "initWithSize:", .{pointSize(icon.width, icon.height)});
+    call(fn (Id, Sel, Id) callconv(.c) void, img, "addRepresentation:", .{rep});
+    return img;
+}
+
+/// The image of the Dock for `wm iconphoto`: one representation for each
+/// photo, at the size of the largest, retained, or null with no pixels.
+pub fn dockImageOf(icons: []const plat.TrayIcon) ?Id {
+    var side: u32 = 0;
+    for (icons) |i| side = @max(side, @max(i.width, i.height));
+    if (side == 0) return null;
+    const img0 = call(fn (Class, Sel) callconv(.c) Id, objc.class("NSImage").?, "alloc", .{});
+    const s: f64 = @floatFromInt(side);
+    const img = call(fn (Id, Sel, NSSize) callconv(.c) Id, img0, "initWithSize:", .{NSSize{ .w = s, .h = s }});
+    var any = false;
+    for (icons) |icon| {
+        const rep = repOf(icon) orelse continue;
+        defer objc.release(rep);
+        call(fn (Id, Sel, Id) callconv(.c) void, img, "addRepresentation:", .{rep});
+        any = true;
+    }
+    if (!any) {
+        objc.release(img);
+        return null;
+    }
+    return img;
+}
+
+/// An `NSBitmapImageRep` of RGBA pixels with straight alpha, retained.
+fn repOf(icon: plat.TrayIcon) ?Id {
     if (icon.width == 0 or icon.height == 0 or icon.pixels.len < @as(usize, icon.width) * icon.height * 4) return null;
     const NSDeviceRGBColorSpace = objc.nsString("NSDeviceRGBColorSpace");
     defer objc.release(NSDeviceRGBColorSpace);
@@ -199,10 +232,7 @@ fn imageOf(icon: plat.TrayIcon) ?Id {
     const data = call(fn (Id, Sel) callconv(.c) ?[*]u8, rep, "bitmapData", .{}) orelse return null;
     const n = @as(usize, icon.width) * icon.height * 4;
     @memcpy(data[0..n], icon.pixels[0..n]);
-    const img0 = call(fn (Class, Sel) callconv(.c) Id, objc.class("NSImage").?, "alloc", .{});
-    const img = call(fn (Id, Sel, NSSize) callconv(.c) Id, img0, "initWithSize:", .{pointSize(icon.width, icon.height)});
-    call(fn (Id, Sel, Id) callconv(.c) void, img, "addRepresentation:", .{rep});
-    return img;
+    return call(fn (Id, Sel) callconv(.c) Id, rep, "retain", .{});
 }
 
 const t = std.testing;
@@ -222,4 +252,17 @@ test "mactray: an image of RGBA pixels" {
     defer objc.release(img);
     try t.expect(imageOf(.{ .width = 4, .height = 4, .pixels = px[0..8] }) == null);
     try t.expect(imageOf(.{ .width = 0, .height = 0, .pixels = "" }) == null);
+}
+
+test "mactray: the Dock image has a representation for each photo" {
+    const pool = objc.Pool.push();
+    defer pool.pop();
+    var big: [32 * 32 * 4]u8 = @splat(255);
+    var small: [16 * 16 * 4]u8 = @splat(255);
+    const img = dockImageOf(&.{ .{ .width = 16, .height = 16, .pixels = &small }, .{ .width = 32, .height = 32, .pixels = &big } }).?;
+    defer objc.release(img);
+    const reps = call(fn (Id, Sel) callconv(.c) Id, img, "representations", .{});
+    try t.expectEqual(@as(usize, 2), call(fn (Id, Sel) callconv(.c) usize, reps, "count", .{}));
+    try t.expectEqual(@as(f64, 32), call(fn (Id, Sel) callconv(.c) NSSize, img, "size", .{}).w);
+    try t.expect(dockImageOf(&.{.{ .width = 0, .height = 0, .pixels = "" }}) == null);
 }

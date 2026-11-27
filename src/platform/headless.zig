@@ -94,6 +94,12 @@ pub const Headless = struct {
     recent: std.ArrayListUnmanaged([]u8) = .empty,
     recent_clears: u32 = 0,
     tray_next: u32 = 1,
+    /// The last `setIcon`: the widths of its images, its window, and
+    /// whether it was the default.
+    icon_widths: [4]u32 = @splat(0),
+    icon_count: usize = 0,
+    icon_window: ?*Window = null,
+    icon_default: bool = false,
     /// The kinds of drops of the last `dropTypes`.
     drop_types: plat.DropTypes = .{},
     /// The native look and the text engine that the platform gives, for
@@ -208,7 +214,16 @@ pub const Headless = struct {
         .hotkeyAdd = vHotkeyAdd,
         .hotkeyRemove = vHotkeyRemove,
         .dropTypes = vDropTypes,
+        .setIcon = vSetIcon,
     };
+
+    fn vSetIcon(ptr: *anyopaque, w: *Window, icons: []const plat.TrayIcon, default: bool) void {
+        const h = self(ptr);
+        h.icon_count = icons.len;
+        for (icons[0..@min(icons.len, h.icon_widths.len)], 0..) |icon, i| h.icon_widths[i] = icon.width;
+        h.icon_window = w;
+        h.icon_default = default;
+    }
 
     pub const TrayRec = struct { id: plat.TrayId, width: u32 = 0, template: bool = false, tooltip: std.ArrayListUnmanaged(u8) = .empty, menu: plat.MenuId = 0 };
 
