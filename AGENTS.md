@@ -42,6 +42,8 @@ systemd-run --user --scope -q -p MemoryMax=4G -p MemorySwapMax=0 -- <command>
 | `tests/wayland-gpu.sh [ztk] [render node]` | Runs `ztk` on a private headless sway with the GLES2 renderer, with `ZTK_RENDERER=vulkan` (dma-bufs) and `ZTK_RENDERER=cpu`, and compares a `grim` shot of each. It needs a render node such as `/dev/dri/renderD128`. |
 | `tests/dbus.sh` | Runs the D-Bus tests on a private session bus of `dbus-run-session`: the SASL lines, `Hello`, a call, a match, and an error reply. The tests of `src/platform/portal.zig` use a fake bus on a socket pair. |
 | `tests/wayland-input.sh [ztk]` | Sends keys, a resize, the scale 1.5, and the clipboard to `ztk` on a private headless sway, with `wtype` and `wl-copy`. |
+| `tests/wayland-icon.sh [ztk]` | Runs `wm iconphoto` on the small Wayland server of `tests/wayland/icon-server.py`, which has `xdg-toplevel-icon-v1`, and compares the icon buffers with the photos. |
+| `tests/x11-icon.sh [ztk]` | Runs `wm iconphoto` on a private Xvfb and compares `_NET_WM_ICON` with the photos. It needs `xprop`. |
 | `ZTK_WAYLAND_DEBUG=1 zig-out/bin/ztk script.tcl` | Prints each Wayland event to stderr: the interface number, the object, and the opcode. |
 | `python3 -I tools/gen-keysyms.py /usr/include/X11/keysymdef.h > src/platform/wl/keysyms.zig` | Makes the key symbol table of the Wayland backend again. |
 | `tools/shots.sh [folder]` | Draws the screenshots of the examples into `docs/site/shots`, in light and dark at scale 2. |

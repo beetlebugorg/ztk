@@ -78,6 +78,8 @@ A program file for Windows (`--target x86_64-windows` or `aarch64-windows`, or t
 
 On Linux, `--desktop` also writes a desktop entry and an icon next to the program file: `ztk bundle -o notes --desktop --name "My Notes" --icon notes.png notes.tcl` gives `notes`, `notes.desktop`, and `notes.png` (256 pixels or less). The entry has `Exec=notes`, so put the program in a folder of `PATH` such as `~/.local/bin`, the entry in `~/.local/share/applications`, and the icon in `~/.local/share/icons/hicolor/256x256/apps`. A bundled program gives its file name as the app id of its Wayland window, so the desktop finds the entry and its icon. A renamed program needs an entry of the new name.
 
+`wm iconphoto` sets the icon of the window on Linux. On X11 the photos go in the property `_NET_WM_ICON`. On Wayland they go to the compositor with the protocol `xdg-toplevel-icon-v1`, and a compositor without the protocol shows the icon of the desktop entry.
+
 With `--target` and an output name that ends in `.app`, the target is `aarch64-macos` or `x86_64-macos`, and `ztk bundle` writes a macOS app folder (see [macOS](macos.md#make-an-app)).
 
 The default target is the computer that runs `ztk bundle`, with the `ztk` program itself as the copy. For another target, give the `ztk` program of that target with `--runner`, or put it in `lib/ztk/runtime/TARGET/` next to the folder of `ztk`. The targets are `x86_64-linux`, `aarch64-linux`, `x86_64-macos`, `aarch64-macos`, `x86_64-windows`, and `aarch64-windows`. A macOS file gets an ad hoc signature. The form of the file is the form of `ztcl build` of ztcl.

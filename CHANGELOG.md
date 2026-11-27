@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `wm iconphoto` sets the window icon on Linux: `_NET_WM_ICON` on X11, and `xdg-toplevel-icon-v1` on Wayland.
 - Adds `ztk::debug sources`, `ztk::debug why`, and `ztk::debug geometry`: the source of each option of a widget and its geometry chain.
 - Adds `ztk::debug trace`: records of events, bindings, commands, option writes, geometry passes, dirty widgets, frames, focus, and grabs, with filters.
 - Adds `ztk::debug mark` and `ztk::debug diff`: the pixels and the widgets that changed between two captures.
