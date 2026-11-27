@@ -87,6 +87,7 @@ test {
     _ = @import("tests/appearance.zig");
     _ = @import("tests/tray.zig");
     _ = @import("tests/dnd.zig");
+    _ = @import("tests/density.zig");
     _ = @import("tests/iconphoto.zig");
     _ = @import("tests/filedialog.zig");
     _ = @import("tests/taskbar.zig");

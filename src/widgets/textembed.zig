@@ -226,7 +226,7 @@ pub fn contentSize(w: *Widget, e: *const Embed) geom.Size {
         },
         .image => {
             const ph = w.app.images.find(e.image) orelse return .{};
-            return .{ .w = @intCast(ph.width), .h = @intCast(ph.height) };
+            return .{ .w = @intCast(ph.logicalWidth()), .h = @intCast(ph.logicalHeight()) };
         },
     }
 }

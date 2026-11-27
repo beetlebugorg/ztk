@@ -33,6 +33,21 @@ pub const Photo = struct {
     serial: u32 = 0,
     /// A bitmap image keeps its options, and its pixels are made from them.
     bitmap: ?*Bitmap = null,
+    /// The pixels in one logical pixel along each side (`-density`, a ztk
+    /// option): 2 for an image made for a Retina screen. A widget lays
+    /// the image out at its logical size and draws its pixels 1:1 on a
+    /// screen of that scale.
+    density: u8 = 1,
+
+    /// The width in logical pixels.
+    pub fn logicalWidth(p: *const Photo) u32 {
+        return (p.width + p.density - 1) / p.density;
+    }
+
+    /// The height in logical pixels.
+    pub fn logicalHeight(p: *const Photo) u32 {
+        return (p.height + p.density - 1) / p.density;
+    }
 
     fn deinit(p: *Photo, gpa: std.mem.Allocator) void {
         if (p.bitmap) |b| {
@@ -236,7 +251,7 @@ fn changed(app: *App, p: *Photo) void {
     app.requestFrame();
 }
 
-const photo_opts = "-data, -file, -format, -gamma, -height, -palette, or -width";
+const photo_opts = "-data, -density, -file, -format, -gamma, -height, -palette, or -width";
 
 fn loadPng(app: *App, it: *ztcl.Interp, p: *Photo, bytes: []const u8) ztcl.Error!void {
     const gif = @import("gif.zig");
@@ -330,6 +345,10 @@ fn configurePhoto(app: *App, it: *ztcl.Interp, p: *Photo, args: []const Value) z
             const n = std.fmt.parseInt(i64, std.mem.trim(u8, v, " "), 0) catch return it.fail("expected integer but got \"{s}\"", .{v});
             const c: u32 = @intCast(std.math.clamp(n, 0, 8192));
             if (name[1] == 'w') p.set_w = c else p.set_h = c;
+        } else if (std.mem.eql(u8, name, "-density")) {
+            const n = std.fmt.parseInt(i64, std.mem.trim(u8, v, " "), 0) catch return it.fail("expected integer but got \"{s}\"", .{v});
+            if (n < 1 or n > 4) return it.fail("bad density \"{s}\": must be 1 to 4", .{v});
+            p.density = @intCast(n);
         } else if (std.mem.eql(u8, name, "-format") or std.mem.eql(u8, name, "-gamma") or std.mem.eql(u8, name, "-palette")) {
             // Accepted and ignored: the decoder finds the format from the data.
         } else return it.fail("bad option \"{s}\": must be {s}", .{ name, photo_opts });
@@ -362,6 +381,7 @@ fn photoCget(it: *ztcl.Interp, p: *Photo, name: []const u8) ztcl.Error!Value {
     if (std.mem.eql(u8, name, "-data")) return .{ .str = try a.dupe(u8, p.data) };
     if (std.mem.eql(u8, name, "-width")) return .{ .int = p.set_w };
     if (std.mem.eql(u8, name, "-height")) return .{ .int = p.set_h };
+    if (std.mem.eql(u8, name, "-density")) return .{ .int = p.density };
     if (std.mem.eql(u8, name, "-format") or std.mem.eql(u8, name, "-palette")) return Value.empty;
     if (std.mem.eql(u8, name, "-gamma")) return .{ .str = "1.0" };
     return it.fail("unknown option \"{s}\"", .{name});
@@ -595,8 +615,9 @@ pub fn cmdImage(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztc
         if (argv.len != 3) return it.fail("wrong # args: should be \"image {s} name\"", .{o});
         const n = try it.str(argv[2]);
         const p = reg.find(n) orelse return it.fail("image \"{s}\" doesn't exist", .{n});
-        if (o[0] == 'w') return .{ .int = p.width };
-        if (o[0] == 'h') return .{ .int = p.height };
+        // The size in logical pixels, as a widget lays the image out.
+        if (o[0] == 'w') return .{ .int = p.logicalWidth() };
+        if (o[0] == 'h') return .{ .int = p.logicalHeight() };
         if (o[0] == 't') return .{ .str = if (p.bitmap != null) "bitmap" else "photo" };
         return .{ .int = 0 };
     };

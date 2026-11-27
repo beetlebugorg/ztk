@@ -250,7 +250,7 @@ fn contentSize(w: *Widget, st: *const style_mod.Style) struct { all: geom.Size, 
     if (w.class.ttk and wd == .int and wd.int < 0) txt.w = @max(txt.w, num.px(@min(-wd.int, 10000) * paint.zeroWidth(app, st.font)));
     if (ht == .int and ht.int > 0) txt.h = num.px(@min(ht.int, 10000) * paint.lineHeight(app, st.font));
     const ph = photoOf(w) orelse return .{ .all = txt, .img = .{}, .txt = txt, .show_text = true, .show_image = false };
-    const img: geom.Size = .{ .w = @intCast(@min(ph.width, 10000)), .h = @intCast(@min(ph.height, 10000)) };
+    const img: geom.Size = .{ .w = @intCast(@min(ph.logicalWidth(), 10000)), .h = @intCast(@min(ph.logicalHeight(), 10000)) };
     const c = compoundOf(w);
     return switch (c) {
         .none, .image => .{ .all = img, .img = img, .txt = txt, .show_text = false, .show_image = true },
@@ -354,16 +354,20 @@ pub fn drawPhoto(b: *scene.Builder, atlas: *Atlas, ph: *const image_mod.Photo, x
     if (ph.width == 0 or ph.height == 0) return;
     const key = (@as(u64, ph.serial) << 32) | ph.version;
     if (try atlas.image(key, ph.width, ph.height, ph.pixels)) |uv| {
-        return b.image(.{ .x = x, .y = y, .w = @intCast(ph.width), .h = @intCast(ph.height) }, uv, opacity);
+        return b.image(.{ .x = x, .y = y, .w = @intCast(ph.logicalWidth()), .h = @intCast(ph.logicalHeight()) }, uv, opacity);
     }
+    // One box for each logical pixel: a photo of a density above 1 gives
+    // the first pixel of each block of pixels.
+    const dn: u32 = ph.density;
+    const lw = ph.logicalWidth();
     var row: u32 = 0;
-    while (row < ph.height) : (row += 1) {
+    while (row < ph.logicalHeight()) : (row += 1) {
+        const prow = @as(usize, @min(row * dn, ph.height - 1)) * ph.width;
         var col: u32 = 0;
-        while (col < ph.width) {
-            const o = (@as(usize, row) * ph.width + col) * 4;
-            const px = ph.pixels[o..][0..4];
+        while (col < lw) {
+            const px = ph.pixels[(prow + @min(col * dn, ph.width - 1)) * 4 ..][0..4];
             var end = col + 1;
-            while (end < ph.width and std.mem.eql(u8, ph.pixels[(@as(usize, row) * ph.width + end) * 4 ..][0..4], px)) end += 1;
+            while (end < lw and std.mem.eql(u8, ph.pixels[(prow + @min(end * dn, ph.width - 1)) * 4 ..][0..4], px)) end += 1;
             if (px[3] > 0) try b.box(.{ .x = x + @as(i32, @intCast(col)), .y = y + @as(i32, @intCast(row)), .w = @intCast(end - col), .h = 1 }, .{ .fill = .{ .r = px[0], .g = px[1], .b = px[2], .a = px[3] }, .opacity = opacity });
             col = end;
         }
