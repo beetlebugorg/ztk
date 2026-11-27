@@ -34,6 +34,7 @@ jobs:
     outputs:
       code: ${{ steps.f.outputs.code }}
       docs: ${{ steps.f.outputs.docs }}
+      quick: ${{ steps.f.outputs.quick }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -49,7 +50,12 @@ jobs:
           docs_re='^(docs/|README\.md|CHANGELOG\.md|WRITING\.md|AGENTS\.md|tools/build-docs\.py|tools/shots\.sh|licenses/)'
           if printf '%s\n' "$files" | grep -qvE "$docs_re"; then code=true; else code=false; fi
           if printf '%s\n' "$files" | grep -qE "$docs_re"; then docs=true; else docs=false; fi
-          echo "code=$code" >> "$GITHUB_OUTPUT"; echo "docs=$docs" >> "$GITHUB_OUTPUT"
+          echo "For QA: code=$code docs=$docs"
+          # A pull request runs only the repository check and the quick
+          # check. The QA agents test it on our machines and post the
+          # status qa/linux (docs/dev/ci.md of ztcl).
+          echo "code=false" >> "$GITHUB_OUTPUT"; echo "docs=false" >> "$GITHUB_OUTPUT"
+          echo "quick=true" >> "$GITHUB_OUTPUT"
 
   check:
     name: Repository check
@@ -85,6 +91,7 @@ jobs:
 
   docs:
     name: Docs build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -417,13 +424,32 @@ jobs:
             --title "The full CI run failed on $(date -u +%Y-%m-%d)" \
             --body "The scheduled full run failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
+  # The quick check of a pull request: a headless build with no Vulkan
+  # that runs one script.
+  quick:
+    name: Quick check
+    needs: changes
+    if: needs.changes.outputs.quick == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+      - name: Build and run a script
+        run: |
+          ulimit -v 6000000
+          zig build install -Dbackends=headless -Dvulkan=false
+          printf 'puts [expr {6 * 7}]\n' > "$RUNNER_TEMP/t.tcl"
+          test "$(zig-out/bin/ztk --headless "$RUNNER_TEMP/t.tcl")" = 42
+
   # The one check for the merge: it passes when each job of the run
   # passed or was skipped, and fails when a job failed or was
   # cancelled.
   linux-ok:
     name: Linux ok
     if: always()
-    needs: [changes, check, docs, test, test-arm, cross, wasm]
+    needs: [changes, quick, check, docs, test, test-arm, cross, wasm]
     runs-on: ubuntu-latest
     steps:
       - name: Check the results of the jobs
