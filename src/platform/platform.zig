@@ -117,6 +117,18 @@ pub const TrayId = u32;
 /// The pixels are valid only during the call that gives them.
 pub const TrayIcon = struct { width: u32, height: u32, pixels: []const u8 };
 
+/// The data of a drag out of a window to other apps (`ztk::dnd drag`).
+/// The strings are UTF-8 and are valid only during the call.
+pub const DragData = struct {
+    /// The full paths of files, with `/` between the parts.
+    files: []const []const u8 = &.{},
+    text: []const u8 = "",
+    /// The target may move the files as well as copy them.
+    allow_move: bool = false,
+};
+
+/// The answer of the target of a drag.
+pub const DragAction = enum { none, copy, move };
 /// The kinds of data that a window accepts from the drops of other apps.
 pub const DropTypes = packed struct(u8) {
     files: bool = false,
@@ -377,6 +389,9 @@ pub const Platform = struct {
         /// Runs a native color dialog to its end, as `tk_chooseColor`
         /// needs. Null: the dialog was canceled, or it could not show.
         colorDialog: ?*const fn (ptr: *anyopaque, gpa: std.mem.Allocator, opts: *const ColorDialog) ?geom.Color = null,
+        /// Runs a drag of files or text out of a window to its end, in the
+        /// modal loop of the system, and gives the action of the target.
+        dragStart: ?*const fn (ptr: *anyopaque, w: *Window, d: DragData) DragAction = null,
         /// Sets the full screen and the topmost state of a window, from
         /// `wm attributes`.
         setWindowState: ?*const fn (ptr: *anyopaque, w: *Window, s: WindowState) void = null,

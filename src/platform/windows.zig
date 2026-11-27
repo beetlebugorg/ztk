@@ -51,6 +51,7 @@ const windialog = @import("windialog.zig");
 const winbox = @import("winbox.zig");
 const winstate = @import("winstate.zig");
 const winjump = @import("winjump.zig");
+const windrag = @import("windrag.zig");
 const wintaskbar = @import("wintaskbar.zig");
 const winrecent = @import("winrecent.zig");
 const winhotkey = @import("winhotkey.zig");
@@ -227,6 +228,7 @@ pub const Win32 = struct {
         .winBackdrop = vWinBackdrop,
         .winJumpTasks = vWinJumpTasks,
         .winThumbBar = vWinThumbBar,
+        .dragStart = vDragStart,
         .taskbarSet = vTaskbarSet,
         .attention = vAttention,
         .recentAdd = vRecentAdd,
@@ -720,6 +722,12 @@ pub const Win32 = struct {
         // Before the button exists the shell refuses, and the message of
         // the button applies the buttons.
         _ = wintaskbar.applyThumbs(&b.taskbar, r.hwnd, &r.thumbs);
+    }
+
+    fn vDragStart(ptr: *anyopaque, w: *Window, d: plat.DragData) plat.DragAction {
+        const b = self(ptr);
+        if (b.recOf(w) == null) return .none;
+        return windrag.run(&b.gpa, d);
     }
 
     // ---- Appearance ----

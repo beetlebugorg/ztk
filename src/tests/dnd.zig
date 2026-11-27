@@ -52,3 +52,13 @@ test "dnd: the errors of the arguments" {
     try t.expectEqualStrings("bad type \"DND_Color\": must be DND_Files, DND_Text, or *", try h.evalError("tkdnd::drop_target register . DND_Color"));
     try t.expectEqualStrings("bad option \"list\": must be register or unregister", try h.evalError("tkdnd::drop_target list ."));
 }
+
+test "dnd: a drag out checks its options, and a backend with no drags gives ZTK DND UNAVAILABLE" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    try t.expectEqualStrings("a drag needs -files or -text", try h.evalError("ztk::dnd drag ."));
+    try t.expectEqualStrings("bad option \"-url\": must be -files, -move, or -text", try h.evalError("ztk::dnd drag . -url x"));
+    try t.expectEqualStrings("expected boolean value but got \"x\"", try h.evalError("ztk::dnd drag . -text a -move x"));
+    try t.expectEqualStrings("ZTK DND UNAVAILABLE", try h.eval("catch {ztk::dnd drag . -text a}; set ::errorCode"));
+}

@@ -22,7 +22,7 @@ This page is the plan of the milestone "Platform features" (#53): the features o
 | ztk#59 | Bundle a Windows app | ztk | `ztk bundle` | | `.exe` with resources | | P2 |
 | ztk#60 | Bundle a Linux app | ztk | `ztk bundle` | | | AppImage or `.desktop` | P2 |
 | ztk#61 | Badge, progress, attention | ztk | `ztk::taskbar` | dock tile | `ITaskbarList3`, `FlashWindowEx` | Unity launcher API | P2 |
-| ztk#62 | Drag and drop between apps | ztk | `ztk::dnd` | `NSDraggingDestination` | `IDropTarget`, `DoDragDrop` | Wayland data device | P2 |
+| ztk#62 | Drag and drop between apps | ztk | `tkdnd::drop_target`, `ztk::dnd drag` | `NSDraggingDestination` | `IDropTarget`, `DoDragDrop` | Wayland data device | P2 |
 | ztk#63 | Global shortcuts | ztk | `ztk::hotkey` | `RegisterEventHotKey` | `RegisterHotKey` | the portal | P2 |
 | ztk#64 | Recent documents | ztk | `ztk::recent` | `NSDocumentController` | `SHAddToRecentDocs` | `recently-used.xbel` | P2 |
 | ztk#65 | macOS only | ztk | `ztk::mac::*` | dock menu, sheets, window tabs | | | P3 |
@@ -47,6 +47,10 @@ The features of ztk go through `Platform.VTable`, as the menus do: optional entr
   The call is synchronous on each platform. With a parent window, macOS begins a sheet and runs a modal loop until the completion handler of the sheet, so `tk_getOpenFile` keeps its result as in Tk.
 - `colorDialog(opts) ?Color` for `tk_chooseColor`: the parent window, the title, and the first color. Windows has it (`ChooseColorW`). A font dialog follows when ztk has a `tk fontchooser`.
 - A backend without the entry gets the dialogs that the core draws, from task 17 of the widget stage.
+
+**Drags out (ztk#62).**
+
+- `dragStart(window, .{ .files, .text, .allow_move }) DragAction`: a drag of files or text out of a window, which runs in the modal loop of the system and gives `copy`, `move`, or `none`. `ztk::dnd drag window ?-files list? ?-text string? ?-move bool?` calls it from a binding of `<B1-Motion>`, and a backend with no entry gives `ZTK DND UNAVAILABLE`. Windows: `DoDragDrop`. macOS can begin an `NSDraggingSession` and run a modal loop until its end, as the file dialogs do for a sheet.
 
 **Window state (ztk#68).**
 
