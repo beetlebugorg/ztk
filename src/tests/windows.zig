@@ -600,6 +600,22 @@ test "windows: a tray icon in the notification area, its actions, and its menu" 
     try t.expect(has(events.items, .tray).?.tray.action == .menu);
 }
 
+test "windows: a jump list of tasks builds, and the test drops it with no commit" {
+    if (!enabled()) return;
+    const jump = @import("../platform/winjump.zig");
+    // A commit changes the shell state of the user for this program, so
+    // the test aborts the list it built.
+    const l = jump.build(t.allocator, &.{
+        .{ .title = "New window", .args = "--new", .description = "Opens a new window" },
+        .{ .title = "Open", .args = "--open", .icon = "C:/Windows/System32/shell32.dll", .icon_index = 3 },
+    }) catch |e| {
+        std.debug.print("SKIP: no jump list in this session ({s})\n", .{@errorName(e)});
+        return;
+    };
+    try t.expectEqual(@as(usize, 2), l.count);
+    l.abort();
+}
+
 test "windows: ztk::win::backdrop sets the system backdrop of a hidden window" {
     if (!enabled()) return;
     const ws = @import("../platform/winstate.zig");

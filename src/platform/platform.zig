@@ -170,6 +170,17 @@ pub const MessageBox = struct {
     pub const Button = enum { abort, retry, ignore, ok, cancel, no, yes };
 };
 
+/// A task of the jump list of the app on Windows (`ztk::win::jumplist`):
+/// this program with `args`. The strings are UTF-8 and are valid only
+/// during the call.
+pub const JumpTask = struct {
+    title: []const u8,
+    args: []const u8 = "",
+    description: []const u8 = "",
+    /// A file with the icon, and the index of the icon in it.
+    icon: []const u8 = "",
+    icon_index: i32 = 0,
+};
 /// The system backdrop of a window on Windows 11 (`ztk::win::backdrop`),
 /// in the order of DWM_SYSTEMBACKDROP_TYPE.
 pub const Backdrop = enum(u32) { auto = 0, none = 1, mica = 2, acrylic = 3, tabbed = 4 };
@@ -425,6 +436,9 @@ pub const Platform = struct {
         /// The direct API of Windows (ztk#66): the system backdrop of a
         /// window. False when the system has none (before Windows 11 22H2).
         winBackdrop: ?*const fn (ptr: *anyopaque, w: *Window, kind: Backdrop) bool = null,
+        /// The tasks of the jump list of the app; an empty list removes
+        /// it. False when the shell refused the list.
+        winJumpTasks: ?*const fn (ptr: *anyopaque, tasks: []const JumpTask) bool = null,
 
         // The taskbar or dock button (ztk#61).
 
