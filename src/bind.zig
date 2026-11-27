@@ -270,11 +270,13 @@ pub fn parsePattern(it: *ztcl.Interp, text: []const u8) ztcl.Error!Pattern {
             continue;
         }
         if (!have_type) {
-            if (findMod(tok)) |m| {
+            // A modifier name in the last place is a key: `<Control-M>`
+            // is the key M, as in wish, where M alone is also Meta.
+            if (findMod(tok)) |m| if (i < n - 1 or keysymOf(tok) == null) {
                 if (i == n - 1) return it.fail("bad event type or keysym \"{s}\"", .{tok});
                 m.set(&p.mods, &count);
                 continue;
-            }
+            };
             if (findType(tok)) |t| {
                 p.type = t;
                 have_type = true;
@@ -605,6 +607,12 @@ pub fn substitute(gpa: std.mem.Allocator, script: []const u8, ev: *const WidgetE
             'h' => if (ev.type == .configure) try out.print(gpa, "{d}", .{ev.height}) else try out.appendSlice(gpa, "??"),
             'w' => if (ev.type == .configure) try out.print(gpa, "{d}", .{ev.width}) else try out.appendSlice(gpa, "??"),
             '#' => try out.print(gpa, "{d}", .{ev.serial}),
+            // The send_event field of bind.n: 0, as ztk sends no events
+            // of other clients.
+            'E' => try out.append(gpa, '0'),
+            // The focus field of an Enter or Leave event.
+            'f' => if (ev.type == .enter or ev.type == .leave) try out.append(gpa, '0') else try out.appendSlice(gpa, "??"),
+            'N' => if (is_key) try out.print(gpa, "{d}", .{ev.keysym}) else try out.appendSlice(gpa, "??"),
             'D' => if (wheel) {
                 if (ev.delta == @trunc(ev.delta)) try out.print(gpa, "{d}", .{@as(i64, @intFromFloat(ev.delta))}) else try out.print(gpa, "{d}", .{ev.delta});
             } else if (ev.type == .virtual) try appendQuoted(gpa, &out, ev.data) else try out.appendSlice(gpa, "??"),

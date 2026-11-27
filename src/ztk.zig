@@ -34,6 +34,7 @@ pub const windows_enabled = @import("builtin").os.tag == .windows;
 pub const windows = if (windows_enabled) @import("platform/windows.zig") else struct {};
 pub const scene = @import("scene.zig");
 pub const png = @import("png.zig");
+pub const image = @import("image.zig");
 pub const cpu = @import("render/cpu.zig");
 pub const renderer = @import("render/renderer.zig");
 pub const vulkan = if (@import("build_options").vulkan) @import("render/vulkan.zig") else @import("render/vulkan_off.zig");

@@ -504,3 +504,83 @@ proc ::ztk::priv::wmgrid {top} {
     }
     return {}
 }
+
+# tk_setPalette and tk_bisque of palette.n. With one argument, the
+# argument is the background, and the other colors come from it: the
+# foreground is black on a light background and white on a dark one,
+# the active and trough colors are the background 10 percent lighter or
+# darker, and the disabled foreground is between the two. Each color
+# goes in the option database, and each widget that has the option
+# gets it.
+proc ::ztk::priv::shade {color pct} {
+    lassign [winfo rgb . $color] r g b
+    set out "#"
+    foreach c [list $r $g $b] {
+        set c [expr {$c / 257}]
+        if {$pct >= 0} {
+            set c [expr {$c + (255 - $c) * $pct / 100}]
+        } else {
+            set c [expr {$c * (100 + $pct) / 100}]
+        }
+        append out [format %02x [expr {max(0, min(255, int($c)))}]]
+    }
+    return $out
+}
+
+proc ::tk_setPalette {args} {
+    if {[llength $args] == 1} {
+        set bg [lindex $args 0]
+        set new [list background $bg]
+    } elseif {[llength $args] % 2 == 0 && [llength $args] > 0} {
+        set new $args
+    } else {
+        return -code error "wrong # args: should be \"tk_setPalette ?option value ...?\""
+    }
+    array set p $new
+    if {![info exists p(background)]} {
+        return -code error "must specify a background color"
+    }
+    lassign [winfo rgb . $p(background)] r g b
+    set light [expr {0.299 * $r + 0.587 * $g + 0.114 * $b > 32768}]
+    if {![info exists p(foreground)]} {
+        set p(foreground) [expr {$light ? "#000000" : "#ffffff"}]
+    }
+    set step [expr {$light ? -10 : 10}]
+    foreach {name value} [list \
+            activeBackground [::ztk::priv::shade $p(background) [expr {-$step}]] \
+            activeForeground $p(foreground) \
+            highlightBackground $p(background) \
+            highlightColor $p(foreground) \
+            insertBackground $p(foreground) \
+            selectColor [::ztk::priv::shade $p(background) [expr {2 * $step}]] \
+            selectBackground [::ztk::priv::shade $p(background) [expr {2 * $step}]] \
+            selectForeground $p(foreground) \
+            troughColor [::ztk::priv::shade $p(background) $step] \
+            disabledForeground [::ztk::priv::shade $p(foreground) [expr {$light ? 60 : -40}]]] {
+        if {![info exists p($name)]} {set p($name) $value}
+    }
+    foreach name [array names p] {
+        option add *$name $p($name) widgetDefault
+    }
+    ::ztk::priv::paletteApply . p
+    return
+}
+
+proc ::ztk::priv::paletteApply {w pVar} {
+    upvar 1 $pVar p
+    foreach name [array names p] {
+        catch {$w configure -$name $p($name)}
+    }
+    foreach c [winfo children $w] {
+        ::ztk::priv::paletteApply $c p
+    }
+}
+
+proc ::tk_bisque {} {
+    tk_setPalette activeBackground #e6ceb1 activeForeground black \
+        background #ffe4c4 disabledForeground #b0b0b0 foreground black \
+        highlightBackground #ffe4c4 highlightColor black \
+        insertBackground black selectColor #b03060 \
+        selectBackground #e6ceb1 selectForeground black \
+        troughColor #cdb79e
+}
