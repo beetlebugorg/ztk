@@ -3,7 +3,8 @@
 // first live snippet of a widget page is scrolled to the top and to the
 // bottom of the viewport, at three widths, and the panel of its first
 // widget must be inside the viewport and off the widget. Under 640 CSS
-// pixels the panel is a sheet at the bottom. It prints one line for each
+// pixels the panel is a sheet at the bottom. Then each tab of the panel
+// must keep the box of the panel. It prints one line for each
 // check and exits with 1 on a failure.
 // Use: node tests/inspect.mjs <browser> <profile dir> <url of a widget page> [flag ...]
 import { spawn } from "node:child_process";
@@ -70,6 +71,37 @@ for (const width of [1200, 760, 420]) {
     if (!ok) fail = 1;
   }
 }
+// The tabs of the panel: each tab keeps the box of the panel, the
+// Options tab gives the source of the -text of the widget, and each
+// change of tab ends inside one frame of 60 Hz (16.7 ms).
+await send("Emulation.setDeviceMetricsOverride", { width: 1200, height: 700, deviceScaleFactor: 1, mobile: false });
+const tabs = await value(`(async () => {
+  const f = ${fig}, d = f.ztkDemo;
+  f.querySelector(".ld-view").scrollIntoView({ block: "center", behavior: "instant" });
+  await new Promise((res) => setTimeout(res, 300));
+  d.inspecting = true;
+  const b = d.boxes().find((x) => x.kind === "w" && x.path !== "." && d.h.eval("winfo class " + x.path).result === "Button")
+    || d.boxes().find((x) => x.kind === "w" && x.path !== ".");
+  d.pick(b.path);
+  const box = () => { const r = d.panel.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(Math.round).join(","); };
+  const first = box();
+  const out = { path: b.path, same: true, worst: 0, tabs: [] };
+  for (const t of d.panel.querySelectorAll(".ld-itabs button")) {
+    const t0 = performance.now();
+    t.click();
+    out.worst = Math.max(out.worst, performance.now() - t0);
+    out.tabs.push(t.textContent);
+    if (box() !== first) out.same = false;
+  }
+  d.panel.querySelector(".ld-itabs button").click();
+  const row = [...d.panel.querySelectorAll(".ld-iopts tr")].find((r) => r.cells[0].textContent === "-text");
+  out.src = row ? row.querySelector(".ld-isrc")?.textContent ?? "" : "";
+  d.pick(null);
+  return out;
+})()`);
+const tabsOk = tabs && tabs.same && tabs.worst < 16.7 && tabs.tabs.length === 5 && /line \d+/.test(tabs.src);
+console.log(`${tabsOk ? "ok" : "FAIL"}: the tabs of Inspect on ${tabs?.path}: ${tabs?.tabs?.join(", ")}; same box ${tabs?.same}; slowest change ${tabs?.worst?.toFixed(1)} ms; source of -text "${tabs?.src}"`);
+if (!tabsOk) fail = 1;
 clearTimeout(timer);
 child.kill();
 process.exit(fail);

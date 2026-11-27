@@ -17,11 +17,14 @@
 //
 // X-ray draws the box of each widget over the window, in the color of
 // its geometry manager, and the cells of each grid. Inspect shows the
-// path, the class, the manager, and the options of the widget under the
-// pointer. A click keeps it, and a change of an option in the table
-// configures the widget and writes the option into the line of the
-// code that makes the widget. Both read the widgets with winfo, so they
-// work for each snippet with no hook in ztk.
+// path, the class, and the manager of the widget under the pointer. A
+// click keeps it and opens a panel with tabs: the options with the
+// source of each value, the bindings, the geometry chain, the scripts
+// and procs behind the widget, and its trace records (ztk::debug). A
+// change of an option in the table configures the widget and writes the
+// option into the line of the code that set it, or else the line that
+// makes the widget. X-ray and the boxes of Inspect read the widgets with
+// winfo, so they work for each snippet with no hook in ztk.
 //
 // The page draws the frames itself (the option loop: false of start()),
 // and only while the snippet is on the screen. It measures the CPU time
@@ -164,7 +167,15 @@ proc ::ztk_stress_tick {n} {
 }
 ::ztk_stress_tick 0`;
 const STRESS_OFF = "destroy .ztk_stress";
+// The trace of Inspect: each kind except the frames and the dirty
+// widgets, so a snippet that animates fills no ring.
+const TRACE_ON = "ztk::debug trace start -kinds {event binding command option geometry focus grab} -size 2000";
 const COLORS = { pack: "var(--accent)", grid: "var(--tok-str)", place: "var(--tok-var)", panedwindow: "var(--tok-num)" };
+
+// The pairs of a dict as a list of [key, value].
+const pairs = (l) => { const out = []; for (let i = 0; i + 1 < l.length; i += 2) out.push([l[i], l[i + 1]]); return out; };
+// A block of code in the panel.
+const codeBlock = (text) => { const pre = document.createElement("pre"); pre.className = "ld-icode"; pre.textContent = text; return pre; };
 
 // A Tcl word for a value in the code: bare when it is plain, else in braces.
 const word = (v) => (/^[\w.#+:%@,-]+$/.test(v) ? v : /^[^{}\\]*$/.test(v) ? `{${v}}` : quote(v));
@@ -282,6 +293,7 @@ class Demo {
         this[key] = !this[key];
         b.setAttribute("aria-pressed", String(this[key]));
         if (key === "inspecting" && !this.inspecting) this.pick(null);
+        if (key === "inspecting" && this.h) this.h.eval(this.inspecting ? TRACE_ON : "ztk::debug trace stop");
         this.overlay();
       });
       // ?xray or ?inspect in the URL turns the mode on for each snippet.
@@ -352,7 +364,8 @@ class Demo {
       return this.fail(e.message);
     }
     if (seq !== this.seq) { h.destroy(); frame.remove(); return; }
-    const pre = h.eval(`wm geometry . ${this.W}x${this.H}\n` + (this.theme === "classic" ? "ztk::style theme classic\n" : ""));
+    // The record of the option sources is on, for the Options tab of Inspect.
+    const pre = h.eval(`wm geometry . ${this.W}x${this.H}\nztk::debug sources on\n` + (this.inspecting ? TRACE_ON + "\n" : "") + (this.theme === "classic" ? "ztk::style theme classic\n" : ""));
     if (!pre.ok) {
       h.destroy();
       frame.remove();
@@ -452,7 +465,11 @@ class Demo {
     if (hot !== this.hot) { this.hot = hot; this.overlay(); }
   }
 
-  // The table of the options of the picked widget.
+  // The panel of the picked widget. Its tabs show the options with the
+  // source of each value (ztk::debug why), the bindings of each tag, the
+  // geometry chain (ztk::debug geometry), the scripts and procs behind
+  // the widget, and the trace records of the widget. The panel has one
+  // fixed height, so a change of tab moves no other part of the page.
   pick(path) {
     this.picked = path;
     this.overlay();
@@ -460,20 +477,77 @@ class Demo {
     const ev = (s) => this.h.eval(s);
     const cls = ev(`winfo class ${path}`).result;
     const mgr = ev(`winfo manager ${path}`).result || "none";
-    const info = ["pack", "grid", "place"].includes(mgr) ? ev(`${mgr} info ${path}`).result : "";
     const head = document.createElement("div");
     head.className = "ld-ihead";
     head.innerHTML = `<b></b> <span></span>`;
     head.firstChild.textContent = path;
-    head.lastChild.textContent = `${cls} · ${mgr} ${info}`;
+    head.lastChild.textContent = `${cls} · ${mgr}`;
     const close = document.createElement("button");
     close.type = "button";
     close.className = "ld-iclose";
     close.textContent = "Close";
     close.addEventListener("click", () => this.pick(null));
     head.appendChild(close);
-    this.panel.setAttribute("aria-label", `The options of ${path}`);
+    this.panel.setAttribute("aria-label", `Inspect ${path}`);
+    this.note = document.createElement("p");
+    this.note.className = "ld-note";
+    const scroll = document.createElement("div");
+    scroll.className = "ld-iscroll";
+    const tabs = document.createElement("div");
+    tabs.className = "ld-itabs";
+    tabs.setAttribute("role", "tablist");
+    const views = {
+      Options: () => this.optionsView(path),
+      Bindings: () => this.bindingsView(path),
+      Layout: () => this.layoutView(path),
+      Code: () => this.codeView(path),
+      Trace: () => this.traceView(path),
+    };
+    this.tab = views[this.tab] ? this.tab : "Options";
+    const show = (name) => {
+      this.tab = name;
+      for (const t of tabs.children) t.setAttribute("aria-selected", String(t.textContent === name));
+      this.note.textContent = "";
+      scroll.replaceChildren(views[name]());
+      scroll.scrollTop = 0;
+    };
+    for (const name of Object.keys(views)) {
+      const t = document.createElement("button");
+      t.type = "button";
+      t.setAttribute("role", "tab");
+      t.textContent = name;
+      t.addEventListener("click", () => show(name));
+      tabs.appendChild(t);
+    }
+    this.panel.replaceChildren(head, tabs, this.note, scroll);
+    show(this.tab);
+    this.panel.hidden = false;
+    this.place(true);
+  }
+
+  // A short text for the source of an option: "default", "theme line 71",
+  // "line 3 in lock", and the full answer in the title.
+  static source(d) {
+    const s = d.source;
+    if (s === "configure" || s === "create") return `${s} line ${d.line}${d.proc ? ` in ${d.proc}` : ""}`;
+    if (s === "variable") return `-textvariable ${d.variable}`;
+    if (d.style) {
+      const st = Object.fromEntries(pairs(tclList(d.style)));
+      return `${st.sheet} line ${st.line}${st.inherited ? ` (inherited from ${st.inherited})` : ""}`;
+    }
+    return s;
+  }
+
+  optionsView(path) {
+    const ev = (s) => this.h.eval(s);
     const table = document.createElement("table");
+    table.className = "ld-iopts";
+    const why = new Map();
+    const w = ev(`ztk::debug why ${path} -all`);
+    for (const x of w.ok ? tclList(w.result) : []) {
+      const d = Object.fromEntries(pairs(tclList(x)));
+      why.set(d.option, d);
+    }
     const conf = ev(`${path} configure`);
     for (const row of conf.ok ? tclList(conf.result) : []) {
       const f = tclList(row);
@@ -486,12 +560,22 @@ class Demo {
       input.value = value;
       input.setAttribute("aria-label", `${path} ${opt}`);
       if (value !== def) tr.className = "set";
+      // The source of the value goes on a line under the value.
+      const src = document.createElement("div");
+      src.className = "ld-isrc";
+      const d = why.get(opt);
+      if (d) {
+        src.textContent = Demo.source(d);
+        src.title = d.code ? `${d.code}\n${d.call}` : d.style ? tclList(d.style).join(" ") : d.source;
+      }
+      // The line of the code that set the value, before the change of the panel replaces the record.
+      const line = d && (d.source === "create" || d.source === "configure") && !d.proc ? Number(d.line) : 0;
       const apply = () => {
         const r = ev(`${path} configure ${opt} ${quote(input.value)}`);
         input.classList.toggle("bad", !r.ok);
         input.title = r.ok ? "" : r.result;
         if (!r.ok) return;
-        this.write(path, opt, input.value);
+        this.write(path, opt, input.value, line);
         this.h.frame(performance.now());
         this.overlay();
       };
@@ -509,15 +593,89 @@ class Demo {
         c.addEventListener("input", () => { input.value = c.value; apply(); });
         td.prepend(c);
       }
+      if (src.textContent) td.appendChild(src);
     }
-    this.note = document.createElement("p");
-    this.note.className = "ld-note";
-    const scroll = document.createElement("div");
-    scroll.className = "ld-iscroll";
-    scroll.appendChild(table);
-    this.panel.replaceChildren(head, this.note, scroll);
-    this.panel.hidden = false;
-    this.place(true);
+    return table;
+  }
+
+  bindingsView(path) {
+    const ev = (s) => this.h.eval(s);
+    const box = document.createElement("div");
+    const tags = ev(`bindtags ${path}`);
+    for (const tag of tags.ok ? tclList(tags.result) : []) {
+      const seqs = ev(`bind ${quote(tag)}`);
+      const list = seqs.ok ? tclList(seqs.result) : [];
+      const h = document.createElement("h4");
+      h.textContent = list.length ? tag : `${tag} (no bindings)`;
+      box.appendChild(h);
+      for (const seq of list) {
+        const script = ev(`bind ${quote(tag)} ${quote(seq)}`).result;
+        box.appendChild(codeBlock(`${seq}  ${script}`));
+      }
+    }
+    return box;
+  }
+
+  layoutView(path) {
+    const g = this.h.eval(`ztk::debug geometry ${path}`);
+    const box = document.createElement("div");
+    for (const x of g.ok ? tclList(g.result) : []) {
+      const d = Object.fromEntries(pairs(tclList(x)));
+      const h = document.createElement("h4");
+      h.textContent = `${d.widget} · ${d.class}`;
+      box.appendChild(h);
+      const lines = [`requested ${tclList(d.req).join(" × ")}, box ${tclList(d.box).join(" ")}${d.mapped === "1" ? "" : ", not mapped"}`];
+      if (d.size) lines.push(`size ${d.size}`);
+      if (d.manager !== undefined) lines.push(d.manager ? `${d.manager} ${d.info ?? ""}` : "no geometry manager");
+      if (d.propagate !== undefined) lines.push(`propagate ${d.propagate}`);
+      for (const n of d.notes ? tclList(d.notes) : []) lines.push(n);
+      box.appendChild(codeBlock(lines.join("\n")));
+    }
+    return box;
+  }
+
+  // The scripts of the widget (-command and the other script options),
+  // and the body of each proc that a script names.
+  codeView(path) {
+    const ev = (s) => this.h.eval(s);
+    const box = document.createElement("div");
+    const conf = ev(`${path} configure`);
+    const procs = new Set();
+    for (const row of conf.ok ? tclList(conf.result) : []) {
+      const f = tclList(row);
+      if (f.length < 5 || !/command$|cmd$/.test(f[0]) || !f[4]) continue;
+      const h = document.createElement("h4");
+      h.textContent = f[0];
+      box.appendChild(h);
+      box.appendChild(codeBlock(f[4]));
+      for (const w of f[4].split(/[\s;[\]{}]+/)) {
+        if (w && ev(`info procs ${quote(w.startsWith("::") ? w : "::" + w)}`).result) procs.add(w);
+      }
+    }
+    for (const p of procs) {
+      const h = document.createElement("h4");
+      h.textContent = `proc ${p}`;
+      box.appendChild(h);
+      box.appendChild(codeBlock(`proc ${p} {${ev(`info args ${quote(p)}`).result}} {${ev(`info body ${quote(p)}`).result}}`));
+    }
+    if (!box.children.length) this.note.textContent = `${path} has no script options.`;
+    return box;
+  }
+
+  // The trace records of the widget, newest first. The trace runs while
+  // Inspect is on.
+  traceView(path) {
+    const r = this.h.eval(`ztk::debug trace records -widget ${quote(path)} -last 40`);
+    const box = document.createElement("div");
+    const list = r.ok ? tclList(r.result).reverse() : [];
+    if (!list.length) this.note.textContent = `No records for ${path} yet. Click or type in the window, then open this tab again.`;
+    const lines = list.map((x) => {
+      const d = tclList(x);
+      const kv = pairs(d.slice(10)).filter(([k, v]) => v !== "" && k !== "by").map(([k, v]) => `${k} ${v}`);
+      return `${d[1].padStart(4)} ${d[3].padEnd(8)} ${kv.join("  ")}`;
+    });
+    if (lines.length) box.appendChild(codeBlock(lines.join("\n")));
+    return box;
   }
 
   // The panel of Inspect opens beside the picked widget: on its right,
@@ -566,11 +724,14 @@ class Demo {
     p.style.top = `${Math.round(y)}px`;
   }
 
-  // Writes "-opt value" into the line of the code that makes the widget.
-  write(path, opt, value) {
+  // Writes "-opt value" into the line of the code that set the option
+  // (`line`, from ztk::debug why), else into the line that makes the widget.
+  write(path, opt, value, setAt = 0) {
     const lines = this.ta.value.split("\n");
     const esc = path.replace(/[.$]/g, "\\$&");
-    const at = lines.findIndex((l) => new RegExp(`^\\s*[\\w:]+\\s+${esc}(\\s|$)`).test(l));
+    const made = (l) => new RegExp(`^\\s*[\\w:]+\\s+${esc}(\\s|$)`).test(l);
+    const named = setAt > 0 && setAt <= lines.length && lines[setAt - 1].includes(path) && lines[setAt - 1].includes(opt);
+    const at = named ? setAt - 1 : lines.findIndex(made);
     if (at < 0) {
       this.note.textContent = `No line of the code makes ${path} with this path, so the change is only in the window.`;
       return;
