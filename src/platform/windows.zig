@@ -45,6 +45,7 @@ const Cursor = plat.Cursor;
 const tsf = @import("tsf.zig");
 const winmenu = @import("winmenu.zig");
 const wintray = @import("wintray.zig");
+const winicon = @import("winicon.zig");
 const dwrite = @import("dwrite.zig");
 const windrop = @import("windrop.zig");
 const windialog = @import("windialog.zig");
@@ -106,6 +107,8 @@ const WinRec = struct {
     thumbs: wintaskbar.Thumbs = .{},
     /// The style and the rect before a full screen of `wm attributes`.
     fullscreen: ?winstate.Saved = null,
+    /// The icons of the window from `wm iconphoto`, which it owns.
+    icons: winicon.Pair = .{},
     /// The buttons that are down, bit 0 for button 1.
     buttons: u8 = 0,
 };
@@ -134,6 +137,9 @@ pub const Win32 = struct {
     menu_handler: ?plat.MenuHandler = null,
     /// The icons in the notification area.
     trays: wintray.Trays,
+    /// The photos of `wm iconphoto -default`, copied, for each window made
+    /// after it.
+    default_icons: []plat.TrayIcon = &.{},
     /// The DirectWrite backend of the fonts, made at the first request.
     dwrite: ?*dwrite.DWrite = null,
     taskbar: wintaskbar.Taskbar,
@@ -169,6 +175,7 @@ pub const Win32 = struct {
     pub fn deinit(b: *Win32) void {
         // An icon goes away with the window that owns it, so the trays go first.
         b.trays.deinit();
+        b.freeDefaultIcons();
         if (b.dwrite) |d| d.deinit();
         b.taskbar.deinit();
         for (b.hotkeys.items) |k| winhotkey.unregister(k.hwnd, k.id);
@@ -227,6 +234,7 @@ pub const Win32 = struct {
         .reducedMotion = vReducedMotion,
         .winBackdrop = vWinBackdrop,
         .setWindowDark = vSetWindowDark,
+        .setIcon = vSetIcon,
         .winJumpTasks = vWinJumpTasks,
         .winThumbBar = vWinThumbBar,
         .dragStart = vDragStart,
@@ -296,6 +304,7 @@ pub const Win32 = struct {
         errdefer b.gpa.destroy(rec);
         rec.* = .{ .win = w, .hwnd = hwnd, .host = b, .surface = surf };
         try b.windows.append(b.gpa, rec);
+        if (b.default_icons.len > 0) setRecIcons(b, rec, b.default_icons);
         if (b.tsf) |*m| {
             const store = try tsf.Store.init(b.gpa, .{ .ctx = rec, .preedit = onPreedit, .commit = onCommit });
             if (m.attach(store)) |_| {
@@ -337,6 +346,7 @@ pub const Win32 = struct {
         }
         _ = w32.DestroyWindow(rec.hwnd);
         rec.thumbs.deinit();
+        rec.icons.deinit();
         b.gpa.destroy(rec);
         b.gpa.destroy(w);
     }
@@ -717,6 +727,44 @@ pub const Win32 = struct {
     fn vSetWindowDark(ptr: *anyopaque, w: *Window, dark: bool) void {
         const r = self(ptr).recOf(w) orelse return;
         _ = winstate.setDark(r.hwnd, dark);
+    }
+
+    /// `wm iconphoto`: the small and the big icon of the window, and with
+    /// `default` the icons of each window made after it.
+    fn vSetIcon(ptr: *anyopaque, w: *Window, icons: []const plat.TrayIcon, default: bool) void {
+        const b = self(ptr);
+        if (b.recOf(w)) |rec| setRecIcons(b, rec, icons);
+        if (default) b.setDefaultIcons(icons) catch {};
+    }
+
+    fn setRecIcons(b: *Win32, rec: *WinRec, icons: []const plat.TrayIcon) void {
+        const p = winicon.make(b.gpa, icons, w32.GetDpiForWindow(rec.hwnd));
+        if (p.empty()) return;
+        winicon.apply(rec.hwnd, p);
+        // The window has the new icons, so the old ones can go.
+        rec.icons.deinit();
+        rec.icons = p;
+    }
+
+    fn setDefaultIcons(b: *Win32, icons: []const plat.TrayIcon) !void {
+        const copy = try b.gpa.alloc(plat.TrayIcon, icons.len);
+        var done: usize = 0;
+        errdefer {
+            for (copy[0..done]) |ic| b.gpa.free(ic.pixels);
+            b.gpa.free(copy);
+        }
+        for (icons, copy) |ic, *c| {
+            c.* = .{ .width = ic.width, .height = ic.height, .pixels = try b.gpa.dupe(u8, ic.pixels) };
+            done += 1;
+        }
+        b.freeDefaultIcons();
+        b.default_icons = copy;
+    }
+
+    fn freeDefaultIcons(b: *Win32) void {
+        for (b.default_icons) |ic| b.gpa.free(ic.pixels);
+        b.gpa.free(b.default_icons);
+        b.default_icons = &.{};
     }
 
     fn vWinJumpTasks(ptr: *anyopaque, tasks: []const plat.JumpTask) bool {

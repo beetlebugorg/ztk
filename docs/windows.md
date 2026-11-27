@@ -28,6 +28,7 @@ The variable `ZTK_RENDERER` picks the output of the window:
 
 - Windows: a window for each toplevel, with its title and size, the close button, and the focus.
 - Scale: each window has the scale of its monitor (per-monitor DPI), and the scale changes when the window moves to another monitor.
+- Window icon: `wm iconphoto .w $photo` gives the window its small icon (the title bar and Alt+Tab) and its big icon (the taskbar), each one from the photo nearest to the size of the system at the DPI of the window. With `-default` the photos go to each toplevel made after the call too. Several photos of different sizes give the sharpest icons.
 - Drawing: Direct3D 12 on the first hardware GPU, then WARP. In the tests, each test scene equals the image of the CPU renderer within 2 levels in a channel.
 - Text: DirectWrite with the fonts of Windows. The default font is Segoe UI Variable with the optical size of each text size (Segoe UI on Windows 10), `monospace` is Cascadia Mono, and the glyphs have the grayscale antialiasing of Windows 11 apps.
 - Look: the controls have the Fluent look of Windows 11 from the theme resources of WinUI 3 (shapes, strokes, fills, sizes, and the accent of the system), in light and dark. See `src/themes/fluent-windows.css`.
