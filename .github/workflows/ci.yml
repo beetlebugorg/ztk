@@ -15,9 +15,13 @@ on:
 permissions:
   contents: read
 
+# A new push to a pull request cancels the run of its old commit. Runs
+# on main do not cancel each other: each one completes and saves the Zig
+# cache. A scheduled run has a group of its own, so a push to main does
+# not cancel the full run.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'schedule' && 'schedule' || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   ZIG_VERSION: "0.17.0"
@@ -96,8 +100,7 @@ jobs:
         if: hashFiles('build.zig') != ''
         run: |
           if [ "$RUNNER_OS" = Linux ]; then ulimit -v 6000000; fi
-          zig build
-          zig build test
+          zig build install test
       - name: Run a script
         if: hashFiles('build.zig') != ''
         run: |
@@ -233,15 +236,13 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    # Pull requests and pushes build one macOS and one Windows target.
+    # The Test job builds the Linux program. The scheduled run builds all
+    # five targets.
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { target: x86_64-linux-musl, backends: "wayland,direct,headless" }
-          - { target: aarch64-linux-musl, backends: "wayland,direct,headless" }
-          - { target: x86_64-macos, backends: "appkit,headless" }
-          - { target: aarch64-macos, backends: "appkit,headless" }
-          - { target: x86_64-windows, backends: headless }
+        include: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '[{"target":"x86_64-linux-musl","backends":"wayland,direct,headless"},{"target":"aarch64-linux-musl","backends":"wayland,direct,headless"},{"target":"x86_64-macos","backends":"appkit,headless"},{"target":"aarch64-macos","backends":"appkit,headless"},{"target":"x86_64-windows","backends":"headless"}]' || '[{"target":"aarch64-macos","backends":"appkit,headless"},{"target":"x86_64-windows","backends":"headless"}]') }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
