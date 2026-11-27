@@ -125,6 +125,10 @@ fn hostZone(_: ?*anyopaque, name: []const u8, a: std.mem.Allocator) ?[]const u8 
 var exit_out: ?*Io.Writer = null;
 var exit_err: ?*Io.Writer = null;
 
+fn flushOutput() void {
+    if (exit_out) |o| o.flush() catch {};
+}
+
 fn exitNow(code: u8) noreturn {
     if (exit_out) |o| o.flush() catch {};
     if (exit_err) |e| e.flush() catch {};
@@ -408,6 +412,7 @@ pub fn main(init: std.process.Init) !void {
     app.stats.slow_out = err;
     defer app.deinit();
     app.max_frames = max_frames;
+    app.flush_output = flushOutput;
     if (head) |h| {
         if (app.window) |win| {
             win.scale = scale;

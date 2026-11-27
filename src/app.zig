@@ -156,6 +156,9 @@ pub const App = struct {
     frames: u64 = 0,
     /// `run` returns after this count of frames.
     max_frames: ?u64 = null,
+    /// Writes the output of `puts` that waits in a buffer, at the start of
+    /// each pass, so that a pipe or a file gets it while the app runs.
+    flush_output: ?*const fn () void = null,
     /// The wall clock for the statistics, in microseconds.
     wall: *const fn () i64 = wallNow,
     animations: bool = true,
@@ -1088,6 +1091,7 @@ pub const App = struct {
     }
 
     fn pass(app: *App) ztcl.Error!bool {
+        if (app.flush_output) |f| f();
         app.enter();
         defer app.leave();
         app.platform.poll(app.gpa, &app.events) catch return error.OutOfMemory;
