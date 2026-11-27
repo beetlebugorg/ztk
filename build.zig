@@ -180,6 +180,20 @@ pub fn build(b: *std.Build) void {
             .{ .name = "ztk", .module = bench_ztk },
         },
     }) });
+    // `zig build native-ref -- OUTDIR`: the reference renders and measures
+    // of AppKit controls for the native look of macOS (ztk#154).
+    if (target.result.os.tag == .macos) {
+        const ref = b.addExecutable(.{ .name = "native-ref", .use_llvm = use_llvm, .use_lld = use_lld, .root_module = b.createModule(.{
+            .root_source_file = b.path("tools/native-ref/macos/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+            .imports = &.{.{ .name = "ztk", .module = ztk }},
+        }) });
+        const ref_run = b.addRunArtifact(ref);
+        ref_run.addPassthruArgs();
+        b.step("native-ref", "Render AppKit controls offscreen as the references of the macOS look").dependOn(&ref_run.step);
+    }
     const bench_run = b.addRunArtifact(bench);
     bench_run.setCwd(b.path("."));
     b.step("bench", "Run the benchmark (ReleaseFast)").dependOn(&bench_run.step);
