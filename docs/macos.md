@@ -75,6 +75,6 @@ ztk::mac::dockmenu .dock          ;# the menu of the Dock icon; no menu name rem
 ztk::mac::tabbing . -mode preferred -group documents
 ```
 
-`-mode` is `automatic` (the setting of the system), `preferred` (new windows open as tabs), or `disallowed` (no tab bar). Windows of one `-group` join one tab bar. A file dialog with `-parent` shows as a sheet of its window, and the application menu has the Services menu.
+`-mode` is `automatic` (the setting of the system), `preferred` (new windows open as tabs), or `disallowed` (no tab bar). Windows of one `-group` join one tab bar. A file dialog with `-parent` shows as a sheet of its window, and so does `tk_messageBox` (an `NSAlert` with the buttons of Tk, the default button on the right for Return). `tk_chooseColor` opens the color panel of macOS and gives its color when the panel closes; the panel has no Cancel, so the answer is the color at the close. The application menu has the Services menu.
 
 The design and the plan are in [docs/dev/macos.md](https://github.com/beetlebugorg/ztk/blob/main/docs/dev/macos.md).

@@ -225,6 +225,8 @@ pub const AppKit = struct {
         .traySet = vTraySet,
         .trayDrop = vTrayDrop,
         .fileDialog = vFileDialog,
+        .messageBox = vMessageBox,
+        .colorDialog = vColorDialog,
     };
 
     // ---- The tray ----
@@ -358,6 +360,15 @@ pub const AppKit = struct {
     fn vFileDialog(_: *anyopaque, gpa: std.mem.Allocator, opts: *const plat.FileDialog) ?plat.FileDialogResult {
         const parent: ?Id = if (opts.parent) |win| winOf(win).ns_window else null;
         return macdialog.run(gpa, opts, parent);
+    }
+
+    fn vMessageBox(_: *anyopaque, opts: *const plat.MessageBox) ?plat.MessageBox.Button {
+        const parent: ?Id = if (opts.parent) |win| winOf(win).ns_window else null;
+        return macdialog.messageBox(opts, parent);
+    }
+
+    fn vColorDialog(_: *anyopaque, _: std.mem.Allocator, opts: *const plat.ColorDialog) ?@import("../geom.zig").Color {
+        return macdialog.colorDialog(opts);
     }
 
     fn vClipboardSet(ptr: *anyopaque, typ: []const u8, data: []const u8) void {

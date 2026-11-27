@@ -1,5 +1,6 @@
-//! The native file dialogs of macOS: `NSOpenPanel` for an open and a
-//! folder, `NSSavePanel` for a save. The call blocks until the dialog
+//! The native dialogs of macOS: `NSOpenPanel` for an open and a folder,
+//! `NSSavePanel` for a save, `NSAlert` for `tk_messageBox`, and
+//! `NSColorPanel` for `tk_chooseColor`. The call blocks until the dialog
 //! ends, as `tk_getOpenFile` needs. With a parent window, the panel is a
 //! sheet of it: `beginSheetModalForWindow:completionHandler:` starts it,
 //! `runModalForWindow:` runs until the completion handler stops the modal
@@ -15,6 +16,7 @@
 const std = @import("std");
 const objc = @import("../sys/objc.zig");
 const plat = @import("platform.zig");
+const geom = @import("../geom.zig");
 const Id = objc.Id;
 const Sel = objc.Sel;
 const Class = objc.Class;
@@ -173,6 +175,135 @@ pub fn run(gpa: std.mem.Allocator, opts: *const plat.FileDialog, parent: ?Id) ?p
     return .{ .paths = paths.toOwnedSlice(gpa) catch return null };
 }
 
+// ---- The message box ----
+
+const Button = plat.MessageBox.Button;
+
+/// The buttons of a box in the order of `addButtonWithTitle:`: the first
+/// is the default of the Return key and is on the right. The default of
+/// the box comes first, then the others in the order of Tk.
+pub fn buttonOrder(opts: *const plat.MessageBox, out: *[3]Button) []const Button {
+    const all: []const Button = switch (opts.buttons) {
+        .ok => &.{.ok},
+        .okcancel => &.{ .ok, .cancel },
+        .yesno => &.{ .yes, .no },
+        .yesnocancel => &.{ .yes, .no, .cancel },
+        .retrycancel => &.{ .retry, .cancel },
+        .abortretryignore => &.{ .abort, .retry, .ignore },
+    };
+    var n: usize = 0;
+    for (all) |b| if (b == opts.default) {
+        out[n] = b;
+        n += 1;
+    };
+    if (n == 0) {
+        out[0] = all[0];
+        n = 1;
+    }
+    for (all) |b| if (b != out[0]) {
+        out[n] = b;
+        n += 1;
+    };
+    return out[0..n];
+}
+
+fn label(b: Button) []const u8 {
+    return switch (b) {
+        .abort => "Abort",
+        .retry => "Retry",
+        .ignore => "Ignore",
+        .ok => "OK",
+        .cancel => "Cancel",
+        .no => "No",
+        .yes => "Yes",
+    };
+}
+
+/// NSAlertFirstButtonReturn.
+const first_button: isize = 1000;
+
+/// Runs an alert to its end and gives the button. With a parent, the
+/// alert is a sheet of it, as for the file dialogs.
+pub fn messageBox(opts: *const plat.MessageBox, parent: ?Id) ?Button {
+    const pool = objc.Pool.push();
+    defer pool.pop();
+    const alert = call(fn (Id, Sel) callconv(.c) Id, call(fn (Class, Sel) callconv(.c) Id, objc.class("NSAlert").?, "alloc", .{}), "init", .{});
+    defer call(fn (Id, Sel) callconv(.c) void, alert, "release", .{});
+    // NSAlertStyleWarning 0, Informational 1, Critical 2.
+    const style: usize = switch (opts.icon) {
+        .@"error" => 2,
+        .warning => 0,
+        .info, .question => 1,
+    };
+    call(fn (Id, Sel, usize) callconv(.c) void, alert, "setAlertStyle:", .{style});
+    call(fn (Id, Sel, Id) callconv(.c) void, alert, "setMessageText:", .{str(if (opts.message.len > 0) opts.message else opts.title)});
+    if (opts.detail.len > 0) call(fn (Id, Sel, Id) callconv(.c) void, alert, "setInformativeText:", .{str(opts.detail)});
+    var buf: [3]Button = undefined;
+    const order = buttonOrder(opts, &buf);
+    for (order) |b| _ = call(fn (Id, Sel, Id) callconv(.c) Id, alert, "addButtonWithTitle:", .{str(label(b))});
+    const window = call(fn (Id, Sel) callconv(.c) Id, alert, "window", .{});
+    if (opts.title.len > 0) call(fn (Id, Sel, Id) callconv(.c) void, window, "setTitle:", .{str(opts.title)});
+    const response: isize = if (parent) |win| blk: {
+        call(fn (Id, Sel, Id, *const Block) callconv(.c) void, alert, "beginSheetModalForWindow:completionHandler:", .{ win, endBlock() });
+        const r = call(fn (Id, Sel, Id) callconv(.c) isize, nsApp(), "runModalForWindow:", .{window});
+        if (call(fn (Id, Sel) callconv(.c) ?Id, win, "attachedSheet", .{}) == window)
+            call(fn (Id, Sel, Id) callconv(.c) void, win, "endSheet:", .{window});
+        break :blk r;
+    } else call(fn (Id, Sel) callconv(.c) isize, alert, "runModal", .{});
+    const i = response - first_button;
+    if (i < 0 or i >= @as(isize, @intCast(order.len))) return null;
+    return order[@intCast(i)];
+}
+
+// ---- The color panel ----
+
+const NoteBlock = extern struct {
+    isa: *anyopaque,
+    flags: c_int,
+    reserved: c_int,
+    invoke: *const fn (*const NoteBlock, Id) callconv(.c) void,
+    descriptor: *const BlockDescriptor,
+};
+
+fn onClose(_: *const NoteBlock, _: Id) callconv(.c) void {
+    call(fn (Id, Sel) callconv(.c) void, nsApp(), "stopModal", .{});
+}
+
+const note_descriptor: BlockDescriptor = .{ .reserved = 0, .size = @sizeOf(NoteBlock) };
+var close_block: NoteBlock = undefined;
+
+/// Runs the shared color panel as a modal window until it closes, and
+/// gives its color in sRGB. The panel of macOS has no Cancel: its color
+/// at the close is the answer, as Tk on macOS gives it.
+pub fn colorDialog(opts: *const plat.ColorDialog) ?geom.Color {
+    const pool = objc.Pool.push();
+    defer pool.pop();
+    const panel = call(fn (Class, Sel) callconv(.c) Id, objc.class("NSColorPanel").?, "sharedColorPanel", .{});
+    const c = opts.initial;
+    const first = call(fn (Class, Sel, f64, f64, f64, f64) callconv(.c) Id, objc.class("NSColor").?, "colorWithSRGBRed:green:blue:alpha:", .{
+        @as(f64, @floatFromInt(c.r)) / 255.0, @as(f64, @floatFromInt(c.g)) / 255.0, @as(f64, @floatFromInt(c.b)) / 255.0, 1.0,
+    });
+    call(fn (Id, Sel, bool) callconv(.c) void, panel, "setShowsAlpha:", .{false});
+    call(fn (Id, Sel, Id) callconv(.c) void, panel, "setColor:", .{first});
+    if (opts.title.len > 0) call(fn (Id, Sel, Id) callconv(.c) void, panel, "setTitle:", .{str(opts.title)});
+    close_block = .{ .isa = &_NSConcreteGlobalBlock, .flags = block_is_global, .reserved = 0, .invoke = onClose, .descriptor = &note_descriptor };
+    const center = call(fn (Class, Sel) callconv(.c) Id, objc.class("NSNotificationCenter").?, "defaultCenter", .{});
+    const observer = call(fn (Id, Sel, Id, Id, ?Id, *const NoteBlock) callconv(.c) Id, center, "addObserverForName:object:queue:usingBlock:", .{ str("NSWindowWillCloseNotification"), panel, null, &close_block });
+    defer call(fn (Id, Sel, Id) callconv(.c) void, center, "removeObserver:", .{observer});
+    call(fn (Id, Sel, ?Id) callconv(.c) void, panel, "makeKeyAndOrderFront:", .{null});
+    _ = call(fn (Id, Sel, Id) callconv(.c) isize, nsApp(), "runModalForWindow:", .{panel});
+    const chosen = call(fn (Id, Sel) callconv(.c) Id, panel, "color", .{});
+    const srgb = call(fn (Class, Sel) callconv(.c) Id, objc.class("NSColorSpace").?, "sRGBColorSpace", .{});
+    const rgb = call(fn (Id, Sel, Id) callconv(.c) ?Id, chosen, "colorUsingColorSpace:", .{srgb}) orelse return null;
+    const comp = struct {
+        fn of(col: Id, sel: [*:0]const u8) u8 {
+            const v = call(fn (Id, Sel) callconv(.c) f64, col, sel, .{});
+            return @intFromFloat(@round(std.math.clamp(v, 0, 1) * 255.0));
+        }
+    };
+    return .{ .r = comp.of(rgb, "redComponent"), .g = comp.of(rgb, "greenComponent"), .b = comp.of(rgb, "blueComponent") };
+}
+
 fn pathOf(gpa: std.mem.Allocator, url: Id) ?[]u8 {
     const p = call(fn (Id, Sel) callconv(.c) ?Id, url, "path", .{}) orelse return null;
     return gpa.dupe(u8, objc.utf8(p)) catch null;
@@ -201,4 +332,15 @@ test "macdialog: the filters become the allowed extensions" {
     defer t.allocator.free(save);
     try t.expectEqualStrings("csv", save[0]);
     try t.expect(extensionOf("*.tar.*") == null);
+}
+
+test "macdialog: the buttons of a box, the default first" {
+    var buf: [3]Button = undefined;
+    const ync = buttonOrder(&.{ .buttons = .yesnocancel, .default = .no }, &buf);
+    try t.expectEqualSlices(Button, &.{ .no, .yes, .cancel }, ync);
+    const ok = buttonOrder(&.{ .buttons = .okcancel, .default = .ok }, &buf);
+    try t.expectEqualSlices(Button, &.{ .ok, .cancel }, ok);
+    // A default that the box does not have: the first of Tk.
+    const ari = buttonOrder(&.{ .buttons = .abortretryignore, .default = .ok }, &buf);
+    try t.expectEqualSlices(Button, &.{ .abort, .retry, .ignore }, ari);
 }
