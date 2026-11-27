@@ -50,6 +50,7 @@ const windrop = @import("windrop.zig");
 const windialog = @import("windialog.zig");
 const winbox = @import("winbox.zig");
 const winstate = @import("winstate.zig");
+const winjump = @import("winjump.zig");
 const wintaskbar = @import("wintaskbar.zig");
 const winrecent = @import("winrecent.zig");
 const winhotkey = @import("winhotkey.zig");
@@ -222,6 +223,7 @@ pub const Win32 = struct {
         .setWindowState = vSetWindowState,
         .reducedMotion = vReducedMotion,
         .winBackdrop = vWinBackdrop,
+        .winJumpTasks = vWinJumpTasks,
         .taskbarSet = vTaskbarSet,
         .attention = vAttention,
         .recentAdd = vRecentAdd,
@@ -701,6 +703,10 @@ pub const Win32 = struct {
     fn vWinBackdrop(ptr: *anyopaque, w: *Window, kind: plat.Backdrop) bool {
         const r = self(ptr).recOf(w) orelse return false;
         return winstate.setBackdrop(r.hwnd, kind);
+    }
+
+    fn vWinJumpTasks(ptr: *anyopaque, tasks: []const plat.JumpTask) bool {
+        return winjump.set(self(ptr).gpa, tasks);
     }
 
     // ---- Appearance ----

@@ -26,7 +26,7 @@ This page is the plan of the milestone "Platform features" (#53): the features o
 | ztk#63 | Global shortcuts | ztk | `ztk::hotkey` | `RegisterEventHotKey` | `RegisterHotKey` | the portal | P2 |
 | ztk#64 | Recent documents | ztk | `ztk::recent` | `NSDocumentController` | `SHAddToRecentDocs` | `recently-used.xbel` | P2 |
 | ztk#65 | macOS only | ztk | `ztk::mac::*` | dock menu, sheets, window tabs | | | P3 |
-| ztk#66 | Windows only | ztk | `ztk::win::*` | | jump lists, taskbar buttons, backdrops (`ztk::win::backdrop`) | | P3 |
+| ztk#66 | Windows only | ztk | `ztk::win::*` | | jump lists (`ztk::win::jumplist`), taskbar buttons, backdrops (`ztk::win::backdrop`) | | P3 |
 | ztcl#110 | Linux only | ztcl | `ztcl::linux::*` | | | portals, D-Bus | P3 |
 | ztcl#111 | macOS and Windows with no window | ztcl | `ztcl::mac::*`, `ztcl::win::*` | keychain, defaults, launch at login | registry, credentials, file associations | | P3 |
 | ztk#68 | Window state | ztk | `wm attributes` | full screen, level | `WS_EX_TOPMOST`, full screen | xdg toplevel states | P3 |
