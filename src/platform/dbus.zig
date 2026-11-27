@@ -73,6 +73,10 @@ pub const Writer = struct {
         w.raw(&b);
     }
 
+    pub fn int(w: *Writer, v: i32) void {
+        w.uint(@bitCast(v));
+    }
+
     pub fn boolean(w: *Writer, v: bool) void {
         w.uint(@intFromBool(v));
     }
@@ -287,6 +291,7 @@ pub const Message = struct {
     member: []const u8 = "",
     error_name: []const u8 = "",
     sender: []const u8 = "",
+    destination: []const u8 = "",
     signature: []const u8 = "",
     body: []const u8 = "",
 
@@ -323,6 +328,7 @@ pub const Message = struct {
                         F.member => m.member = s,
                         F.error_name => m.error_name = s,
                         F.sender => m.sender = s,
+                        F.destination => m.destination = s,
                         else => {},
                     }
                 },
@@ -424,6 +430,14 @@ pub const Conn = struct {
     unique: []u8 = &.{},
     /// The signals that `call` read before its reply.
     pending: std.ArrayListUnmanaged(Message) = .empty,
+    /// The objects of this client: the handler answers the method calls
+    /// to them. It gives false for a call that it does not know.
+    objects: ?Objects = null,
+
+    pub const Objects = struct {
+        ctx: *anyopaque,
+        call: *const fn (ctx: *anyopaque, c: *Conn, msg: *const Message) bool,
+    };
 
     /// Connects to the first address of a bus address list that works.
     pub fn connect(gpa: std.mem.Allocator, address: []const u8) Error!*Conn {
@@ -599,6 +613,10 @@ pub const Conn = struct {
             c.pending.append(c.gpa, msg) catch msg.deinit(c.gpa);
             return;
         }
+        if (msg.type == .method_call) if (c.objects) |o| if (o.call(o.ctx, c, &msg)) {
+            msg.deinit(c.gpa);
+            return;
+        };
         if (msg.type == .method_call and msg.raw[2] & 1 == 0) {
             _ = c.send(.{ .type = .@"error", .destination = msg.sender, .error_name = "org.freedesktop.DBus.Error.UnknownObject", .reply_serial = msg.serial, .no_reply = true }) catch {};
         }
@@ -625,6 +643,18 @@ pub const Conn = struct {
 
     fn matches(m: Message, path: []const u8, interface: []const u8, member: []const u8) bool {
         return m.type == .signal and std.mem.eql(u8, m.path, path) and std.mem.eql(u8, m.interface, interface) and std.mem.eql(u8, m.member, member);
+    }
+
+    /// Sends the reply of a method call, with a body of `sig`.
+    pub fn sendReply(c: *Conn, msg: *const Message, sig: []const u8, body: []const u8) void {
+        if (msg.raw[2] & 1 != 0) return;
+        _ = c.send(.{ .type = .method_return, .destination = msg.sender, .reply_serial = msg.serial, .signature = sig, .body = body, .no_reply = true }) catch {};
+    }
+
+    /// Sends an error reply of a method call.
+    pub fn sendError(c: *Conn, msg: *const Message, name: []const u8) void {
+        if (msg.raw[2] & 1 != 0) return;
+        _ = c.send(.{ .type = .@"error", .destination = msg.sender, .error_name = name, .reply_serial = msg.serial, .no_reply = true }) catch {};
     }
 
     /// Asks the bus to send the signals of a match rule (`AddMatch`).

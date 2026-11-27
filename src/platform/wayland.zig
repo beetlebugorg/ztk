@@ -52,6 +52,7 @@ const plat = @import("platform.zig");
 const wire = @import("wl/wire.zig");
 const dbus = @import("dbus.zig");
 const portal = @import("portal.zig");
+const sni = @import("sni.zig");
 const xkb = @import("wl/xkb.zig");
 const host = @import("../sys/host.zig");
 const Event = event.Event;
@@ -202,6 +203,10 @@ pub const Wayland = struct {
     /// from its `SettingChanged` signals.
     less_motion: ?bool = null,
     motion_read: bool = false,
+    /// The tray icons (StatusNotifierItem), after the first `trayCreate`.
+    tray: ?sni.Tray = null,
+    /// True while a portal call waits on the bus: the poll leaves the bus alone.
+    bus_wait: bool = false,
     /// The state of `wm attributes` that the backend sent.
     win_state: plat.WindowState = .{},
     /// The version of `wl_data_device_manager`.
@@ -321,6 +326,7 @@ pub const Wayland = struct {
             v.deinit();
         };
         if (w.dmabuf != 0) w.destroy(w.dmabuf, 0);
+        if (w.tray) |*t| t.deinit();
         if (w.bus) |b| b.deinit();
         w.atlas.deinit();
         if (w.prev) |p| w.gpa.free(p.pixels);
@@ -375,6 +381,9 @@ pub const Wayland = struct {
         .reducedMotion = vReducedMotion,
         .dropTypes = vDropTypes,
         .dragStart = vDragStart,
+        .trayCreate = vTrayCreate,
+        .traySet = vTraySet,
+        .trayDrop = vTrayDrop,
     };
 
     /// With a file chooser portal: `tk_getOpenFile` and the others use it.
@@ -444,7 +453,7 @@ pub const Wayland = struct {
             .{ .fd = -1, .events = linux.POLL.IN, .revents = 0 },
         };
         // The session bus, when the backend reads its SettingChanged signals.
-        if (w.motion_read) if (w.bus) |b| {
+        if ((w.motion_read or w.tray != null) and !w.bus_wait) if (w.bus) |b| {
             pfd[2].fd = b.fd;
         };
         const r = linux.poll(&pfd, 3, ms);
@@ -1703,6 +1712,7 @@ pub const Wayland = struct {
                 return;
             }
         }
+        if (w.tray) |*t| w.onTray(bus, t);
         var k: usize = 0;
         while (k < bus.pending.items.len) {
             const m = bus.pending.items[k];
@@ -1717,6 +1727,53 @@ pub const Wayland = struct {
                 if (w.window) |win| w.push(.{ .appearance = .{ .window = win } });
             };
         }
+    }
+
+    // ---- Tray icons ----
+
+    fn vTrayCreate(ptr: *anyopaque, _: *Window, icon: plat.TrayIcon, _: bool, tooltip: []const u8) plat.TrayId {
+        const w = self(ptr);
+        const bus = w.sessionBus() orelse return 0;
+        if (w.tray == null) {
+            w.tray = .{ .gpa = w.gpa, .app_id = w.opts.app_id };
+            bus.objects = .{ .ctx = &w.tray.?, .call = sni.Tray.handle };
+            bus.addMatch(sni.watcher_rule) catch {};
+        }
+        return w.tray.?.create(bus, linux.getpid(), icon, tooltip);
+    }
+
+    fn vTraySet(ptr: *anyopaque, id: plat.TrayId, icon: plat.TrayIcon, _: bool, tooltip: []const u8, _: plat.MenuId) void {
+        const w = self(ptr);
+        const bus = w.bus orelse return;
+        if (w.tray) |*t| t.set(bus, id, icon, tooltip);
+    }
+
+    fn vTrayDrop(ptr: *anyopaque, id: plat.TrayId) void {
+        const w = self(ptr);
+        const bus = w.bus orelse return;
+        if (w.tray) |*t| t.drop(bus, id);
+    }
+
+    /// After a read of the bus: registers the icons with a new watcher,
+    /// and gives the actions of the host as `tray` events.
+    fn onTray(w: *Wayland, bus: *dbus.Conn, t: *sni.Tray) void {
+        var k: usize = 0;
+        while (k < bus.pending.items.len) {
+            const m = bus.pending.items[k];
+            if (!std.mem.eql(u8, m.member, "NameOwnerChanged")) {
+                k += 1;
+                continue;
+            }
+            _ = bus.pending.orderedRemove(k);
+            defer m.deinit(w.gpa);
+            if (sni.watcherCame(&m)) t.registerAll(bus);
+        }
+        const win = w.window orelse {
+            t.actions.clearRetainingCapacity();
+            return;
+        };
+        for (t.actions.items) |a| w.push(.{ .tray = .{ .window = win, .id = a.id, .action = a.action } });
+        t.actions.clearRetainingCapacity();
     }
 
     fn vReducedMotion(ptr: *anyopaque) bool {
@@ -1755,6 +1812,8 @@ pub const Wayland = struct {
     fn vFileDialog(ptr: *anyopaque, gpa: std.mem.Allocator, opts: *const plat.FileDialog) ?plat.FileDialogResult {
         const w = self(ptr);
         const bus = w.sessionBus() orelse return null;
+        w.bus_wait = true;
+        defer w.bus_wait = false;
         return portal.fileDialog(gpa, bus, opts, "", .{ .ctx = w, .run = idleDispatch }) catch |e| {
             std.debug.print("ztk: the file chooser portal failed: {s}\n", .{@errorName(e)});
             if (e == error.Disconnected or e == error.BadMessage) {
