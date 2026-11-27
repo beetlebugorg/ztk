@@ -25,4 +25,13 @@ if [ "$out" != "$want" ]; then
     printf 'bundle-headless: got:\n%s\nwant:\n%s\n' "$out" "$want" >&2
     exit 1
 fi
+# --desktop writes the desktop entry with the name of the program file.
+case "$("$ztk" bundle --help 2>&1)" in *--desktop*)
+    "$ztk" bundle -o "$dir/notes" --desktop --name "My Notes" "$dir/app.tcl" 2>/dev/null
+    grep -qx 'Exec=notes' "$dir/notes.desktop" && grep -qx 'Name=My Notes' "$dir/notes.desktop" || {
+        echo "bundle-headless: notes.desktop is missing or wrong" >&2
+        exit 1
+    }
+    ;;
+esac
 echo "bundle-headless: ok"
