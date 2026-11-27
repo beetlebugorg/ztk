@@ -369,6 +369,7 @@ pub fn main(init: std.process.Init) !void {
             .no_input_thread = if (init.environ_map.get("ZTK_NO_INPUT_THREAD")) |v| std.mem.eql(u8, v, "1") else false,
             .debug = if (init.environ_map.get("ZTK_WAYLAND_DEBUG")) |v| std.mem.eql(u8, v, "1") else false,
             // ZTK_RENDERER=cpu, vulkan, or auto. The default is auto: Vulkan when the compositor accepts its dma-bufs.
+            .bus_address = init.environ_map.get("DBUS_SESSION_BUS_ADDRESS"),
             .renderer = if (force_cpu) .cpu else if (init.environ_map.get("ZTK_RENDERER")) |v| std.meta.stringToEnum(ztk.wayland.Renderer, v) orelse fail(err, "ztk: ZTK_RENDERER is cpu, vulkan, or auto\n", .{}) else .auto,
         }) catch |e| fail(err, "ztk: cannot use the Wayland display: {s}\n", .{@errorName(e)});
         platform = wl.?.platform();

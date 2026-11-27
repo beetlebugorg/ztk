@@ -120,6 +120,9 @@ jobs:
       - name: Run a bundled app headless
         if: hashFiles('build.zig') != '' && runner.os == 'Linux'
         run: sh tests/bundle-headless.sh
+      - name: Test the D-Bus client on a private bus
+        if: hashFiles('build.zig') != '' && runner.os == 'Linux'
+        run: sh tests/dbus.sh
 
   test-arm:
     needs: changes
