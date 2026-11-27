@@ -1342,13 +1342,14 @@ fn cmdEntry(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
         },
         .backspace => if (normal) {
             record(w, false);
-            if (e.caret > 0 or e.hasSelection()) deleteSelOr(w, e.caret -| 1, e.caret);
+            // One grapheme cluster (UAX #29) before the caret.
+            if (e.caret > 0 or e.hasSelection()) deleteSelOr(w, e.prevCluster(e.caret), e.caret);
             e.anchor = e.caret;
             return Value.empty;
         },
         .delete => if (normal) {
             record(w, false);
-            deleteSelOr(w, e.caret, e.caret + 1);
+            deleteSelOr(w, e.caret, e.nextCluster(e.caret));
             e.anchor = e.caret;
             return Value.empty;
         },

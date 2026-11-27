@@ -2,10 +2,14 @@
 //! and each index counts characters (code points), not bytes. The caret,
 //! the selection, and the anchor are character indexes. The model has no
 //! widget and no interpreter, so it is a plain data structure with tests.
-//! A word is a run of letters, digits, and the underscore.
+//! The caret moves, Backspace, and Delete step by extended grapheme
+//! clusters (UAX #29), so an accent, a flag, or an emoji with a skin
+//! tone is one step. A word is a word segment of UAX #29 with a letter
+//! or a number. `ztcl.text` has the segmenters.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
+const seg = @import("ztcl").text;
 
 pub const Edit = struct {
     gpa: std.mem.Allocator,
@@ -145,36 +149,51 @@ pub const Edit = struct {
         e.caret = to;
     }
 
-    fn isWord(c: u21) bool {
-        return c == '_' or (c < 128 and std.ascii.isAlphanumeric(@intCast(c))) or c >= 128;
+    /// The character index of the cluster boundary after `index`.
+    pub fn nextCluster(e: *const Edit, index: usize) usize {
+        if (index >= e.chars) return e.chars;
+        const b = e.byteOf(index);
+        return e.charOf(seg.graphemeEnd(e.buf.items, b));
     }
 
-    fn charAt(e: *const Edit, index: usize) u21 {
-        const b = e.byteOf(index);
-        const s = e.buf.items[b..];
-        const n = std.unicode.utf8ByteSequenceLength(s[0]) catch return s[0];
-        if (n > s.len) return s[0];
-        return std.unicode.utf8Decode(s[0..n]) catch s[0];
+    /// The character index of the cluster boundary before `index`.
+    pub fn prevCluster(e: *const Edit, index: usize) usize {
+        if (index == 0) return 0;
+        const b = e.byteOf(@min(index, e.chars));
+        return e.charOf(seg.graphemeBefore(e.buf.items, b));
+    }
+
+    /// The word segments as character ranges, for the word moves.
+    fn words(e: *const Edit, out: *[2]usize, caret: usize, forward: bool) usize {
+        var w: seg.Words = .{ .s = e.buf.items };
+        var at: usize = 0;
+        var best: usize = if (forward) e.chars else 0;
+        while (w.next()) |part| {
+            const a = at;
+            at += countChars(part);
+            if (!seg.wordLike(part)) continue;
+            if (forward and at > caret) {
+                best = at;
+                out.* = .{ a, at };
+                break;
+            }
+            if (!forward and a < caret) {
+                best = a;
+                out.* = .{ a, at };
+            }
+        }
+        return best;
     }
 
     pub fn target(e: *const Edit, step: Step) usize {
+        var r: [2]usize = undefined;
         switch (step) {
-            .prev_char => return if (e.caret > 0) e.caret - 1 else 0,
-            .next_char => return @min(e.caret + 1, e.chars),
+            .prev_char => return e.prevCluster(e.caret),
+            .next_char => return e.nextCluster(e.caret),
             .line_start => return 0,
             .line_end => return e.chars,
-            .prev_word => {
-                var i = e.caret;
-                while (i > 0 and !isWord(e.charAt(i - 1))) i -= 1;
-                while (i > 0 and isWord(e.charAt(i - 1))) i -= 1;
-                return i;
-            },
-            .next_word => {
-                var i = e.caret;
-                while (i < e.chars and !isWord(e.charAt(i))) i += 1;
-                while (i < e.chars and isWord(e.charAt(i))) i += 1;
-                return i;
-            },
+            .prev_word => return e.words(&r, e.caret, false),
+            .next_word => return e.words(&r, e.caret, true),
         }
     }
 
@@ -196,7 +215,7 @@ pub const Edit = struct {
             e.delete(e.sel_first, e.sel_last);
             e.caret = first;
         } else if (e.caret > 0) {
-            e.delete(e.caret - 1, e.caret);
+            e.delete(e.prevCluster(e.caret), e.caret);
         }
         e.anchor = e.caret;
     }
@@ -207,21 +226,18 @@ pub const Edit = struct {
             e.delete(e.sel_first, e.sel_last);
             e.caret = first;
         } else {
-            e.delete(e.caret, e.caret + 1);
+            e.delete(e.caret, e.nextCluster(e.caret));
         }
         e.anchor = e.caret;
     }
 
-    /// The word that has the character at `index`: [first, last).
+    /// The word segment of UAX #29 that has the character at `index`:
+    /// [first, last). A double click selects it.
     pub fn wordAt(e: *const Edit, index: usize) [2]usize {
         if (e.chars == 0) return .{ 0, 0 };
         const at = @min(index, e.chars - 1);
-        const word = isWord(e.charAt(at));
-        var a = at;
-        var b = at + 1;
-        while (a > 0 and isWord(e.charAt(a - 1)) == word) a -= 1;
-        while (b < e.chars and isWord(e.charAt(b)) == word) b += 1;
-        return .{ a, b };
+        const r = seg.wordAt(e.buf.items, e.byteOf(at));
+        return .{ e.charOf(r[0]), e.charOf(r[1]) };
     }
 };
 
@@ -299,4 +315,37 @@ test "edit: wordAt and setText clamp" {
     e.caret = 9;
     try e.setText("ab");
     try t.expectEqual(@as(usize, 2), e.caret);
+}
+
+test "edit: the caret, Backspace, and Delete step by grapheme clusters" {
+    var e = Edit.init(t.allocator);
+    defer e.deinit();
+    // e + U+0301, a flag, and a thumb with a skin tone: 3 clusters of 6 characters.
+    try e.setText("e\u{301}\u{1F1FA}\u{1F1F8}\u{1F44D}\u{1F3FD}");
+    e.moveTo(0, false);
+    e.moveTo(e.target(.next_char), false);
+    try t.expectEqual(@as(usize, 2), e.caret);
+    e.moveTo(e.target(.next_char), false);
+    try t.expectEqual(@as(usize, 4), e.caret);
+    e.moveTo(e.target(.line_end), false);
+    e.moveTo(e.target(.prev_char), false);
+    try t.expectEqual(@as(usize, 4), e.caret);
+    e.moveTo(6, false);
+    e.backspace();
+    try t.expectEqual(@as(usize, 4), e.len());
+    e.moveTo(0, false);
+    e.deleteForward();
+    try t.expectEqualStrings("\u{1F1FA}\u{1F1F8}", e.text());
+}
+
+test "edit: words of UAX #29" {
+    var e = Edit.init(t.allocator);
+    defer e.deinit();
+    try e.setText("can't stop, 3.14");
+    try t.expectEqual([2]usize{ 0, 5 }, e.wordAt(2));
+    try t.expectEqual([2]usize{ 12, 16 }, e.wordAt(13));
+    e.moveTo(0, false);
+    try t.expectEqual(@as(usize, 5), e.target(.next_word));
+    e.moveTo(16, false);
+    try t.expectEqual(@as(usize, 12), e.target(.prev_word));
 }

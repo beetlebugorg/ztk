@@ -24,6 +24,7 @@
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
+const tseg = @import("ztcl").text;
 
 /// A position: the line from 0 and the count of characters before it in
 /// the line.
@@ -204,6 +205,38 @@ pub const Buffer = struct {
             pos = .{ .line = up, .ch = b.lines.items[up].chars };
         }
         return pos;
+    }
+
+    /// The position after the grapheme cluster at `p` (UAX #29). The
+    /// newline at the end of a line is a cluster of its own.
+    pub fn nextCluster(b: *const Buffer, p: Pos) Pos {
+        const pos = b.clamp(p);
+        if (pos.line >= b.lineCount()) return b.end();
+        const l = &b.lines.items[pos.line];
+        if (pos.ch >= l.chars or l.ascii()) return b.forward(pos, 1);
+        const s = l.bytes.items;
+        const e = tseg.graphemeEnd(s, byteOf(s, pos.ch));
+        return .{ .line = pos.line, .ch = countChars(s[0..e]) };
+    }
+
+    /// The start of the grapheme cluster before `p`, at least 1.0.
+    pub fn prevCluster(b: *const Buffer, p: Pos) Pos {
+        const pos = b.clamp(p);
+        if (pos.line >= b.lineCount() or pos.ch == 0) return b.backward(pos, 1);
+        const l = &b.lines.items[pos.line];
+        if (l.ascii()) return b.backward(pos, 1);
+        const s = l.bytes.items;
+        const start = tseg.graphemeBefore(s, byteOf(s, pos.ch));
+        return .{ .line = pos.line, .ch = countChars(s[0..start]) };
+    }
+
+    /// The word segment of UAX #29 at `p`, in its line, as [a, z).
+    pub fn wordSegment(b: *const Buffer, p: Pos) [2]Pos {
+        const pos = b.clamp(p);
+        if (pos.line >= b.lineCount() or pos.ch >= b.lines.items[pos.line].chars) return .{ pos, b.forward(pos, 1) };
+        const s = b.lines.items[pos.line].bytes.items;
+        const r = tseg.wordAt(s, byteOf(s, pos.ch));
+        return .{ .{ .line = pos.line, .ch = countChars(s[0..r[0]]) }, .{ .line = pos.line, .ch = countChars(s[0..r[1]]) } };
     }
 
     /// The count of characters from `a` to `b`, with `a` before `b`.

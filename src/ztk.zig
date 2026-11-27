@@ -204,6 +204,7 @@ test {
     _ = @import("term/boxdraw.zig");
     _ = @import("tests/terminal.zig");
     _ = @import("tests/snapshot.zig");
+    _ = @import("tests/grapheme.zig");
     _ = @import("tests/debug.zig");
     _ = @import("debugtrace.zig");
     _ = @import("tests/inject.zig");

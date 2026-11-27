@@ -22,6 +22,7 @@ pack .name .pw .search -padx 12 -pady 4
 - Undo and redo: Control-z, Control-Shift-z, and Control-y, or `event generate .name <<Undo>>`. A run of typed text is one step.
 - Cut, copy, and paste use the `clipboard` command. In this version the clipboard is local to the app.
 - `xview` and `-xscrollcommand` connect an entry to a [scrollbar](range.md).
+- Left, Right, Backspace, and Delete move and delete by grapheme cluster (Unicode UAX #29), and a double click selects a word of UAX #29. The index of an entry still counts characters, as in Tk.
 
 ## Validation
 

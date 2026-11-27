@@ -8,7 +8,8 @@
 //! comes from one shape of its run, so a line costs one shape for each
 //! run and no search.
 //!
-//! The wrap walks the characters with their advances. A character that
+//! The wrap walks the characters with their advances, and it breaks only
+//! between grapheme clusters (UAX #29). A character that
 //! ends past the right margin starts a new display line: at the
 //! character for `-wrap char`, and after the last space of the display
 //! line for `-wrap word` (at the character when the display line has no
@@ -217,7 +218,9 @@ fn nextTab(w: *Widget, tabs: []const u8, x: f32) f32 {
     return base + k * step;
 }
 
-const Char = struct { adv: f32, run: u32, space: bool, tab: bool, emb: ?*const textembed.Embed = null };
+/// `inside` is true for a character after the first one of its grapheme
+/// cluster: a wrap never goes before it.
+const Char = struct { adv: f32, run: u32, space: bool, tab: bool, emb: ?*const textembed.Embed = null, inside: bool = false };
 
 /// Lays out a line of the text for a content width `avail`.
 pub fn layout(w: *Widget, line: u32, avail: i32, a: std.mem.Allocator) !Para {
@@ -245,6 +248,21 @@ pub fn layout(w: *Widget, line: u32, avail: i32, a: std.mem.Allocator) !Para {
         }
     }
     byte_of[n] = s.len;
+    // The clusters of UAX #29: each character after the first of its
+    // cluster is inside it.
+    {
+        var bi: usize = 0;
+        var ci: usize = 0;
+        while (bi < s.len and ci < n) {
+            const e = @import("ztcl").text.graphemeEnd(s, bi);
+            var first_char = true;
+            while (ci < n and byte_of[ci] < e) : (ci += 1) {
+                chars[ci].inside = !first_char;
+                first_char = false;
+            }
+            bi = e;
+        }
+    }
     // The character of an embed has the width of its box.
     for (d.embeds.items) |e| if (e.pos.line == line and e.pos.ch < n) {
         const c = &chars[e.pos.ch];
@@ -271,6 +289,15 @@ pub fn layout(w: *Widget, line: u32, avail: i32, a: std.mem.Allocator) !Para {
                     while (k > d0 and !chars[k - 1].space) k -= 1;
                     if (k > d0) brk = k;
                 }
+                // The wrap goes at a cluster boundary: before the cluster,
+                // or after it when it is the first of the display line.
+                var k = brk.?;
+                while (k > d0 and chars[k].inside) k -= 1;
+                if (k == d0) {
+                    k = brk.?;
+                    while (k < n and chars[k].inside) k += 1;
+                }
+                brk = if (k >= n) null else k;
                 break;
             }
             x += adv;
