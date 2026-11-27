@@ -43,7 +43,7 @@ An option with a CSS property is `-background`, `-foreground`, `-borderwidth`, `
 
 `ztk::debug why .ok` with no option gives a list of these dicts: one for each option that a call set or that the style gives. Add `-all` for each option of the widget.
 
-ztk has no option database. `option add` does not exist, so no source is `option`.
+A value from the option database (`option add`, `option readfile`) has the source `optiondb`.
 
 ## The geometry chain
 

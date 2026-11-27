@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Adds the Wayland client of ztk, with no C library: the wire protocol, the XKB key map, the pointer shapes, the clipboard, and the input method. The static Linux programs of a release open a window. The main window renders with Vulkan into dma-bufs, or with the CPU renderer. See [On Linux](docs/linux.md).
+- Adds an X11 client for a Linux desktop with no Wayland compositor.
+- Adds drops of files and text from other apps (`tkdnd::drop_target`) and drags to them (`ztk::dnd drag`) on Windows, macOS, and Wayland. See [ztk::dnd](docs/commands/dnd.md).
+- Adds `ztk::tray` on Windows, macOS, and Linux (StatusNotifierItem), and `ztk::has`. See [ztk::tray](docs/commands/tray.md).
+- Adds `ztk::taskbar` (Windows and macOS), `ztk::recent`, and `ztk::hotkey` (Windows). See [ztk::taskbar](docs/commands/taskbar.md).
+- Adds `ztk::win::backdrop`, `ztk::win::jumplist`, and `ztk::win::thumbbar`, and `ztk::mac::dockmenu` and `ztk::mac::tabbing`. See [ztk::win](docs/commands/win.md) and [On macOS](docs/macos.md).
+- Adds the native look of each platform: Core Text with SF Pro, the native message box, color dialog, and file dialogs on macOS; DirectWrite with Segoe UI Variable, the Fluent controls of WinUI 3, the title bar in the scheme of the app, and the native dialogs on Windows; the `FileChooser` portal on Linux.
+- Adds `wm attributes -fullscreen` and `-topmost`, and follows the less-motion setting of the system, on macOS, Windows, and Wayland.
+- Adds `ztk bundle --target` for each platform from any host: a signed macOS app folder with `-o Name.app`, a Windows program with its icon, manifest, and version info, and a Linux program with a desktop entry. `ZTK_HEADLESS=1` runs a bundled app with no display.
+- Runs famous Tk apps on ztk, and adds the option database: `option add`, `clear`, `get`, and `readfile`. See [Runs on ztk](docs/apps.md).
+- Moves `ztk::terminal` to libghostty-vt through `ztcl::vt`, and adds `-shell` for the shell of ztcl. Runs the program of the terminal on the pseudo console of Windows.
+- Adds the reference pages of the `ztk::` commands in `docs/commands/`.
+- Adds builds for aarch64-windows, and an Arch Linux PKGBUILD in `packaging/arch/ztk-git`.
 - Adds `zig build runtimes`: the `ztk` program of each target of `ztk bundle --target`, with the full GUI backend of its platform, in `zig-out/lib/ztk/runtime/`. The release programs for Linux now have the Vulkan renderer.
 - `wm iconphoto` sets the window icon on Linux: `_NET_WM_ICON` on X11, and `xdg-toplevel-icon-v1` on Wayland.
 - Adds `ztk::debug sources`, `ztk::debug why`, and `ztk::debug geometry`: the source of each option of a widget and its geometry chain.
