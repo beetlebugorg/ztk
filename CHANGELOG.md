@@ -6,6 +6,7 @@
 - Adds `ztk::debug trace`: records of events, bindings, commands, option writes, geometry passes, dirty widgets, frames, focus, and grabs, with filters.
 - Adds `ztk::debug mark` and `ztk::debug diff`: the pixels and the widgets that changed between two captures.
 - Adds `ztk::debug explain`, `click`, `type`, `ran`, `changes`, and `tree`, short answers for agents, and `ztk --mcp`, which serves them as MCP tools.
+- Adds the page "Debug a form": a live form with three bugs to find with `ztk::debug`, and the Console of the live snippets.
 - The Inspect panel of the live snippets has tabs: the options with the source of each value, the bindings, the geometry chain, the scripts and procs, and the trace of the widget. A change of an option goes into the line of the code that set it.
 - Adds the `ttk` widgets `ttk::button`, `ttk::checkbutton`, `ttk::radiobutton`, `ttk::label`, `ttk::frame`, `ttk::labelframe`, `ttk::entry`, `ttk::separator`, and `ttk::sizegrip`, the command `ttk::style`, and the `classic` theme.
 - Adds `spinbox`, entry validation, `-placeholder`, the search field, undo, and the `clipboard` command.

@@ -102,6 +102,17 @@ const tabs = await value(`(async () => {
 const tabsOk = tabs && tabs.same && tabs.worst < 16.7 && tabs.tabs.length === 5 && /line \d+/.test(tabs.src);
 console.log(`${tabsOk ? "ok" : "FAIL"}: the tabs of Inspect on ${tabs?.path}: ${tabs?.tabs?.join(", ")}; same box ${tabs?.same}; slowest change ${tabs?.worst?.toFixed(1)} ms; source of -text "${tabs?.src}"`);
 if (!tabsOk) fail = 1;
+// The console runs a command in the window and shows the answer.
+const con = await value(`(async () => {
+  const d = ${fig}.ztkDemo;
+  d.consoleBox.hidden = false;
+  d.consoleInput.value = "winfo class .";
+  d.consoleInput.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+  return d.consoleOut.textContent;
+})()`);
+const conOk = typeof con === "string" && con.endsWith("% winfo class .\nZtk");
+console.log(`${conOk ? "ok" : "FAIL"}: the console gives ${JSON.stringify(con)}`);
+if (!conOk) fail = 1;
 clearTimeout(timer);
 child.kill();
 process.exit(fail);

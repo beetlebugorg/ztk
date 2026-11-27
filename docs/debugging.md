@@ -1,6 +1,6 @@
 # Debugging
 
-`ztk::debug` answers the question "why is this widget like this". It gives the source of each option of a widget and the geometry chain that sets its size and place. Its trace records what ran for each event, and its visual diffs show what an action changed. The answers are Tcl dicts, so a script, a test, or an agent can read them.
+`ztk::debug` answers the question "why is this widget like this". It gives the source of each option of a widget and the geometry chain that sets its size and place. Its trace records what ran for each event, and its visual diffs show what an action changed. [Debug a form](debug-a-form.md) has a live form with three bugs to find with these tools. The answers are Tcl dicts, so a script, a test, or an agent can read them.
 
 ## The source of an option
 
