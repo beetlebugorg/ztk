@@ -327,6 +327,7 @@ pub const App = struct {
     fn addPlatformSheet(app: *App) !u32 {
         const look = app.platform.nativeLook() orelse "";
         if (std.mem.eql(u8, look, "windows")) return app.styles.add(.platform, "fluent-windows", @embedFile("themes/fluent-windows.css"));
+        if (std.mem.eql(u8, look, "macos")) return app.styles.add(.platform, "aqua-macos", @embedFile("themes/aqua-macos.css"));
         return app.styles.add(.platform, "modern-linux", @embedFile("themes/modern-linux.css"));
     }
 

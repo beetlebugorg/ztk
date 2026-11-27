@@ -205,6 +205,7 @@ pub const AppKit = struct {
     const vtable: Platform.VTable = .{
         .deinit = vDeinit,
         .textSystem = vTextSystem,
+        .nativeLook = vNativeLook,
         .setLiveResize = vSetLiveResize,
         .createWindow = vCreateWindow,
         .destroyWindow = vDestroyWindow,
@@ -631,6 +632,11 @@ pub const AppKit = struct {
 
     fn vSetLiveResize(ptr: *anyopaque, hook: plat.LiveResize) void {
         self(ptr).live_resize = hook;
+    }
+
+    /// The Aqua sheet of the modern theme (themes/aqua-macos.css).
+    fn vNativeLook(_: *anyopaque) ?[]const u8 {
+        return "macos";
     }
 
     fn vTextSystem(ptr: *anyopaque) ?@import("../text/system.zig").System {

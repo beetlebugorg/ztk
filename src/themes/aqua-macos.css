@@ -1,0 +1,188 @@
+/* The platform sheet of macOS: the look of AppKit on macOS 27 over the
+   modern theme (step 4 of the macOS part of docs/dev/native-look.md).
+   The colors are the system colors of AppKit (NSColor), resolved for the
+   Aqua and the Dark Aqua appearances; each comment names the color. The
+   sizes, radii, and fills of the controls are measured from the renders
+   of AppKit itself (`zig build native-ref`, at the scale of 2): each
+   comment names the control and its size. --system-accent is the accent
+   of the user (controlAccentColor), which the app sets from the backend;
+   the fallback is the default blue. */
+
+:root {
+  font-size: 13px;                                  /* NSFont.systemFontSize */
+  --bg: #ffffff;                                    /* windowBackgroundColor */
+  --fg: rgba(0, 0, 0, 0.847);                       /* labelColor */
+  --muted: rgba(0, 0, 0, 0.498);                    /* secondaryLabelColor */
+  --disabled-fg: rgba(0, 0, 0, 0.247);              /* disabledControlTextColor */
+  --accent: var(--system-accent, #007aff);          /* controlAccentColor */
+  --accent-fg: #ffffff;                             /* alternateSelectedControlTextColor */
+  --bezel: rgba(0, 0, 0, 0.078);                    /* NSButton rounded, regular: the fill of its bezel */
+  --bezel-pressed: rgba(0, 0, 0, 0.157);            /* twice the bezel fill while pressed */
+  --field-bg: rgba(255, 255, 255, 0.976);           /* NSTextField, regular: the fill */
+  --off: rgba(0, 0, 0, 0.098);                      /* NSButton check box, NSSwitch, NSSlider: the fill when off (quaternaryLabelColor) */
+  --knob: #ffffff;                                  /* NSSwitch and NSSlider: the knob */
+  --separator: rgba(0, 0, 0, 0.098);                /* separatorColor */
+  --focus-ring: rgba(0, 103, 244, 0.498);           /* keyboardFocusIndicatorColor */
+  --selection: rgba(0, 100, 225, 1);                /* selectedContentBackgroundColor */
+  --placeholder: rgba(0, 0, 0, 0.498);              /* placeholderTextColor */
+  --tip-bg: #f6f6f6;                                /* underPageBackgroundColor, the material of a tooltip as a solid */
+  --tip-fg: rgba(0, 0, 0, 0.847);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1e1e1e;                                  /* windowBackgroundColor */
+    --fg: rgba(255, 255, 255, 0.847);               /* labelColor */
+    --muted: rgba(255, 255, 255, 0.549);            /* secondaryLabelColor */
+    --disabled-fg: rgba(255, 255, 255, 0.247);      /* disabledControlTextColor */
+    --bezel: rgba(255, 255, 255, 0.078);            /* NSButton rounded, regular */
+    --bezel-pressed: rgba(255, 255, 255, 0.157);
+    --field-bg: rgba(23, 23, 23, 0.976);            /* NSTextField, regular */
+    --off: rgba(255, 255, 255, 0.098);              /* quaternaryLabelColor */
+    --knob: rgba(255, 255, 255, 0.86);              /* NSSwitch and NSSlider: the knob in Dark Aqua */
+    --separator: rgba(255, 255, 255, 0.098);        /* separatorColor */
+    --focus-ring: rgba(26, 169, 255, 0.498);        /* keyboardFocusIndicatorColor */
+    --selection: rgba(0, 89, 209, 1);               /* selectedContentBackgroundColor */
+    --placeholder: rgba(255, 255, 255, 0.549);      /* placeholderTextColor */
+    --tip-bg: #282828;                              /* underPageBackgroundColor */
+    --tip-fg: rgba(255, 255, 255, 0.847);
+  }
+}
+
+/* The push button (NSButton, bezel style rounded, regular size): 24
+   points high, a corner of 6 points, the fill of the bezel and no
+   stroke. "Button" in the system font makes it 64.5 points wide, so
+   the label has 12 points on each side. The focus ring of AppKit is 3
+   points outside the shape. */
+Button {
+  color: var(--fg);
+  background-color: var(--bezel);
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 12px;
+  min-height: 24px;
+  transition: background-color 100ms linear;
+}
+
+Button:active {
+  background-color: var(--bezel-pressed);
+}
+
+Button:focus {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 0px;
+}
+
+Button:disabled {
+  color: var(--disabled-fg);
+  opacity: 1;
+}
+
+/* The default button (key equivalent Return): the accent fill, at the
+   same size and corner, with white text. */
+Button.primary {
+  color: var(--accent-fg);
+  background-color: var(--accent);
+}
+
+Button.primary:active {
+  opacity: 0.85;
+}
+
+/* The text field (NSTextField, regular): 24 points high, a corner of 3
+   points, the fill and no stroke. */
+Entry, Spinbox {
+  background-color: var(--field-bg);
+  border: 0;
+  border-radius: 3px;
+  padding: 4px 6px;
+  min-height: 24px;
+}
+
+Entry:focus, Spinbox:focus {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 0px;
+}
+
+Entry:disabled, Spinbox:disabled {
+  color: var(--disabled-fg);
+}
+
+Entry::placeholder, Spinbox::placeholder {
+  color: var(--placeholder);
+}
+
+/* The check box and the radio button (NSButton switch and radio,
+   regular): 16 points high, the fill when off and the accent with a
+   white mark when on, with no stroke. */
+Checkbutton, Radiobutton {
+  padding: 4px 2px;
+}
+
+Checkbutton:focus, Radiobutton:focus {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 0px;
+}
+
+Checkbutton:disabled, Radiobutton:disabled {
+  color: var(--disabled-fg);
+}
+
+Checkbutton::indicator, Radiobutton::indicator {
+  background-color: var(--off);
+  border: 0;
+  border-radius: 4px;
+  color: var(--accent-fg);
+  transition: background-color 100ms linear;
+}
+
+Radiobutton::indicator {
+  border-radius: 50%;
+}
+
+Checkbutton:checked::indicator, Checkbutton:indeterminate::indicator, Radiobutton:checked::indicator {
+  background-color: var(--accent);
+}
+
+/* The switch (NSSwitch, regular): a capsule of 54 by 24 points, the
+   fill when off, the accent when on, and a white knob. */
+Checkbutton.switch::indicator {
+  color: var(--knob);
+  background-color: var(--off);
+  border: 0;
+  border-radius: 50%;
+  transition: all 200ms cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+Checkbutton.switch:checked::indicator {
+  color: var(--knob);
+  background-color: var(--accent);
+}
+
+/* The slider (NSSlider, regular): the accent to the left of the knob,
+   the fill when off to the right, and a white knob. */
+Scale::trough {
+  background-color: var(--off);
+  border-radius: 50%;
+}
+
+Scale::fill {
+  background-color: var(--accent);
+}
+
+Scale::slider {
+  background-color: var(--knob);
+  border: 0;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.25);
+}
+
+/* The tooltip: the system font at 11 points (NSFont.toolTipsFont), a
+   corner of 6 points. */
+:root::tooltip, Toplevel::tooltip {
+  color: var(--tip-fg);
+  background-color: var(--tip-bg);
+  border: 1px solid var(--separator);
+  border-radius: 6px;
+  padding: 3px 7px;
+  font-size: 11px;
+}
