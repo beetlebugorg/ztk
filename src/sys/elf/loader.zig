@@ -34,8 +34,13 @@
 //! `dl_iterate_phdr` of the table use the same modules, so the Vulkan
 //! loader can open a driver and the unwinder of C++ finds the frames.
 //!
+//! On AArch64 the same relocations have the numbers of the Arm ELF ABI,
+//! and a TLS descriptor (`TLSDESC`) gets `tlsdescDynamic`, which calls
+//! `__tls_get_addr` of this file and gives the offset from the thread
+//! pointer.
+//!
 //! The code follows the System V gABI (the ELF format), the x86-64 psABI
-//! (the relocations), and the paper "ELF Handling For Thread-Local
+//! and the AArch64 ELF ABI (the relocations), and the paper "ELF Handling For Thread-Local
 //! Storage" (docs/references/elf-loader.md). A library is never unloaded.
 //! SPDX-License-Identifier: BSD-2-Clause
 
@@ -43,8 +48,9 @@ const std = @import("std");
 const builtin = @import("builtin");
 const linux = std.os.linux;
 
-/// True where the loader works: a static x86-64 Linux program.
-pub const supported = builtin.os.tag == .linux and builtin.cpu.arch == .x86_64 and builtin.link_mode == .static and builtin.link_libc;
+/// True where the loader works: a static x86-64 or AArch64 Linux program.
+pub const supported = builtin.os.tag == .linux and (builtin.cpu.arch == .x86_64 or builtin.cpu.arch == .aarch64) and builtin.link_mode == .static and builtin.link_libc;
+const is_arm = builtin.cpu.arch == .aarch64;
 
 pub const Error = error{ NotFound, BadElf, Unsupported, Unresolved, OutOfMemory, MapFailed };
 
@@ -77,6 +83,8 @@ const Vernaux = extern struct { vna_hash: u32, vna_flags: u16, vna_other: u16, v
 
 const ET_DYN = 3;
 const EM_X86_64 = 62;
+const EM_AARCH64 = 183;
+const em_self = if (is_arm) EM_AARCH64 else EM_X86_64;
 const PT_LOAD = 1;
 const PT_DYNAMIC = 2;
 const PT_TLS = 7;
@@ -249,7 +257,8 @@ fn defaultDirs() []const []const u8 {
     if (search_dirs) |d| return d;
     var list: std.ArrayList([]const u8) = .empty;
     readConf(&list, "/etc/ld.so.conf", 0);
-    for ([_][]const u8{ "/lib64", "/usr/lib64", "/lib/x86_64-linux-gnu", "/usr/lib/x86_64-linux-gnu", "/lib", "/usr/lib" }) |d| list.append(gpa(), d) catch {};
+    const multiarch = if (is_arm) "aarch64-linux-gnu" else "x86_64-linux-gnu";
+    for ([_][]const u8{ "/lib64", "/usr/lib64", "/lib/" ++ multiarch, "/usr/lib/" ++ multiarch, "/lib", "/usr/lib" }) |d| list.append(gpa(), d) catch {};
     search_dirs = list.items;
     return list.items;
 }
@@ -352,7 +361,7 @@ fn tryOpen(path: []const u8) ?Opened {
     if (fd < 0) return null;
     var eh: Ehdr = undefined;
     const n = std.c.pread(fd, @ptrCast(&eh), @sizeOf(Ehdr), 0);
-    if (n != @sizeOf(Ehdr) or !std.mem.eql(u8, eh.e_ident[0..4], "\x7fELF") or eh.e_ident[4] != 2 or eh.e_ident[5] != 1 or eh.e_machine != EM_X86_64 or eh.e_type != ET_DYN) {
+    if (n != @sizeOf(Ehdr) or !std.mem.eql(u8, eh.e_ident[0..4], "\x7fELF") or eh.e_ident[4] != 2 or eh.e_ident[5] != 1 or eh.e_machine != em_self or eh.e_type != ET_DYN) {
         _ = std.c.close(fd);
         return null;
     }
@@ -678,16 +687,34 @@ fn scopedLookup(h: *Module, name: []const u8, ver: ?[]const u8) ?usize {
 
 // ---- Relocation ----
 
-const R_X86_64_NONE = 0;
-const R_X86_64_64 = 1;
-const R_X86_64_COPY = 5;
-const R_X86_64_GLOB_DAT = 6;
-const R_X86_64_JUMP_SLOT = 7;
-const R_X86_64_RELATIVE = 8;
-const R_X86_64_DTPMOD64 = 16;
-const R_X86_64_DTPOFF64 = 17;
-const R_X86_64_TPOFF64 = 18;
-const R_X86_64_IRELATIVE = 37;
+/// The relocation types of the target, by the names of the x86-64 psABI.
+/// The AArch64 numbers come from the ELF ABI of the Arm architecture. An
+/// AArch64 `GLOB_DAT` and `JUMP_SLOT` add the addend.
+const R = if (is_arm) struct {
+    const NONE = 0;
+    const ABS64 = 257;
+    const COPY = 1024;
+    const GLOB_DAT = 1025;
+    const JUMP_SLOT = 1026;
+    const RELATIVE = 1027;
+    const DTPMOD64 = 1028;
+    const DTPOFF64 = 1029;
+    const TPOFF64 = 1030;
+    const TLSDESC = 1031;
+    const IRELATIVE = 1032;
+} else struct {
+    const NONE = 0;
+    const ABS64 = 1;
+    const COPY = 5;
+    const GLOB_DAT = 6;
+    const JUMP_SLOT = 7;
+    const RELATIVE = 8;
+    const DTPMOD64 = 16;
+    const DTPOFF64 = 17;
+    const TPOFF64 = 18;
+    const TLSDESC = 36;
+    const IRELATIVE = 37;
+};
 
 const Missing = struct { at: usize, name: [*:0]const u8 };
 
@@ -735,12 +762,12 @@ fn applyRela(m: *Module, relas: [*]const Rela, n: usize, missing: *std.ArrayList
         const si: u32 = @truncate(r.r_info >> 32);
         const addend: usize = @bitCast(r.r_addend);
         switch (ty) {
-            R_X86_64_NONE => {},
-            R_X86_64_RELATIVE => slot.* = m.base +% addend,
+            R.NONE => {},
+            R.RELATIVE => slot.* = m.base +% addend,
             // An IRELATIVE resolver can call a function of the module, so
             // it runs after the other relocations.
-            R_X86_64_IRELATIVE => irel.append(gpa(), r) catch return error.OutOfMemory,
-            R_X86_64_64, R_X86_64_GLOB_DAT, R_X86_64_JUMP_SLOT => {
+            R.IRELATIVE => irel.append(gpa(), r) catch return error.OutOfMemory,
+            R.ABS64, R.GLOB_DAT, R.JUMP_SLOT => {
                 const s = m.symtab[si];
                 const name = std.mem.span(m.str(s.st_name));
                 const f = resolve(m, si) orelse {
@@ -748,16 +775,16 @@ fn applyRela(m: *Module, relas: [*]const Rela, n: usize, missing: *std.ArrayList
                         slot.* = 0;
                         continue;
                     }
-                    if (ty == R_X86_64_JUMP_SLOT or s.kind() == STT_FUNC or s.kind() == STT_NOTYPE) {
+                    if (ty == R.JUMP_SLOT or s.kind() == STT_FUNC or s.kind() == STT_NOTYPE) {
                         missing.append(gpa(), .{ .at = at, .name = m.str(s.st_name) }) catch return error.OutOfMemory;
                         continue;
                     }
                     setReason("{s}: the object {s} has no definition", .{ m.name, name });
                     return error.Unresolved;
                 };
-                slot.* = if (ty == R_X86_64_64) f.addr +% addend else f.addr;
+                slot.* = if (ty == R.ABS64 or is_arm) f.addr +% addend else f.addr;
             },
-            R_X86_64_DTPMOD64 => {
+            R.DTPMOD64 => {
                 if (si == 0) {
                     slot.* = m.tls_id;
                 } else {
@@ -765,7 +792,7 @@ fn applyRela(m: *Module, relas: [*]const Rela, n: usize, missing: *std.ArrayList
                     slot.* = if (f.mod) |d| d.tls_id else 0;
                 }
             },
-            R_X86_64_DTPOFF64 => {
+            R.DTPOFF64 => {
                 if (si == 0) {
                     slot.* = addend;
                 } else {
@@ -774,12 +801,30 @@ fn applyRela(m: *Module, relas: [*]const Rela, n: usize, missing: *std.ArrayList
                     slot.* = d.symtab[f.index].st_value +% addend;
                 }
             },
-            R_X86_64_TPOFF64 => {
-                setReason("{s}: initial-exec TLS (R_X86_64_TPOFF64) needs the static TLS of glibc", .{m.name});
+            R.TLSDESC => {
+                if (!is_arm and !hasXsave()) {
+                    setReason("{s}: TLS descriptors need XSAVE, and the processor has none", .{m.name});
+                    return error.Unsupported;
+                }
+                // The descriptor is two words: the function and its argument,
+                // a `tls_index` (module id and offset) of this loader.
+                const ti = gpa().create([2]usize) catch return error.OutOfMemory;
+                if (si == 0) {
+                    ti.* = .{ m.tls_id, addend };
+                } else {
+                    const f = resolve(m, si) orelse return unresolvedTls(m, si);
+                    const d = f.mod orelse return unresolvedTls(m, si);
+                    ti.* = .{ d.tls_id, d.symtab[f.index].st_value +% addend };
+                }
+                const desc: *[2]usize = @ptrCast(slot);
+                desc.* = .{ @intFromPtr(&tlsdescDynamic), @intFromPtr(ti) };
+            },
+            R.TPOFF64 => {
+                setReason("{s}: initial-exec TLS (TPOFF64) needs the static TLS of glibc", .{m.name});
                 return error.Unsupported;
             },
-            R_X86_64_COPY => {
-                setReason("{s}: R_X86_64_COPY in a library", .{m.name});
+            R.COPY => {
+                setReason("{s}: a COPY relocation in a library", .{m.name});
                 return error.Unsupported;
             },
             else => {
@@ -789,8 +834,17 @@ fn applyRela(m: *Module, relas: [*]const Rela, n: usize, missing: *std.ArrayList
         }
     }
     for (irel.items) |r| {
-        const resolver: *const fn () callconv(.c) usize = @ptrFromInt(m.base +% @as(usize, @bitCast(r.r_addend)));
-        @as(*usize, @ptrFromInt(m.base + r.r_offset)).* = resolver();
+        const at = m.base +% @as(usize, @bitCast(r.r_addend));
+        @as(*usize, @ptrFromInt(m.base + r.r_offset)).* = if (is_arm) blk: {
+            // An AArch64 resolver gets the hardware capabilities and a pointer to
+            // { size, AT_HWCAP, AT_HWCAP2 }. AT_HWCAP is 16 and AT_HWCAP2 is 26. The bit 62 says that the pointer is there.
+            const resolver: *const fn (u64, *const [3]u64) callconv(.c) usize = @ptrFromInt(at);
+            const arg = [3]u64{ 24, std.c.getauxval(16), std.c.getauxval(26) };
+            break :blk resolver(arg[1] | (1 << 62), &arg);
+        } else blk: {
+            const resolver: *const fn () callconv(.c) usize = @ptrFromInt(at);
+            break :blk resolver();
+        };
     }
 }
 
@@ -888,6 +942,142 @@ fn tlsGetAddr(ti: *const [2]usize) callconv(.c) ?*anyopaque {
         break :blk b;
     };
     return block + ti[1];
+}
+
+/// The dynamic TLS descriptor function of AArch64. Its argument in x0 is
+/// the address of the descriptor, and it returns in x0 the offset of the
+/// variable from the thread pointer (TPIDR_EL0). It keeps each other
+/// register, so it saves the registers that a call to `tlsGetAddr` can
+/// change: x1 to x18, x29, x30, and q0 to q31.
+fn tlsdescDynamic() callconv(.naked) void {
+    asm volatile (if (!supported) (if (is_arm) "brk #0" else "ud2") else if (is_arm) tlsdesc_arm else tlsdesc_x86);
+}
+
+/// The same function for x86-64: the descriptor is in rax, and the offset
+/// from the thread pointer (`%fs:0`) goes back in rax. It saves rcx, rdx,
+/// rsi, rdi, and r8 to r11 on the stack, and the x87, SSE, AVX, and
+/// AVX-512 state with XSAVE (mask 0xe7) in a 64-byte aligned area.
+const tlsdesc_x86 =
+    \\ push %rbp
+    \\ mov %rsp, %rbp
+    \\ push %rcx
+    \\ push %rdx
+    \\ push %rsi
+    \\ push %rdi
+    \\ push %r8
+    \\ push %r9
+    \\ push %r10
+    \\ push %r11
+    \\ mov 8(%rax), %rsi
+    \\ sub $3136, %rsp
+    \\ and $-64, %rsp
+    \\ movq $0, 512(%rsp)
+    \\ movq $0, 520(%rsp)
+    \\ movq $0, 528(%rsp)
+    \\ movq $0, 536(%rsp)
+    \\ movq $0, 544(%rsp)
+    \\ movq $0, 552(%rsp)
+    \\ movq $0, 560(%rsp)
+    \\ movq $0, 568(%rsp)
+    \\ mov $0xe7, %eax
+    \\ xor %edx, %edx
+    \\ xsave64 (%rsp)
+    \\ mov %rsi, %rdi
+    \\ call ztk_elf_tls_get_addr
+    \\ sub %fs:0, %rax
+    \\ mov %rax, %r11
+    \\ mov $0xe7, %eax
+    \\ xor %edx, %edx
+    \\ xrstor64 (%rsp)
+    \\ mov %r11, %rax
+    \\ lea -64(%rbp), %rsp
+    \\ pop %r11
+    \\ pop %r10
+    \\ pop %r9
+    \\ pop %r8
+    \\ pop %rdi
+    \\ pop %rsi
+    \\ pop %rdx
+    \\ pop %rcx
+    \\ pop %rbp
+    \\ ret
+;
+
+/// XSAVE with the OS support (CPUID leaf 1, ECX bit 27: OSXSAVE).
+fn hasXsave() bool {
+    if (is_arm) return true;
+    var ecx: u32 = undefined;
+    asm volatile ("cpuid"
+        : [_] "={ecx}" (ecx),
+        : [_] "{eax}" (@as(u32, 1)),
+          [_] "{ecx}" (@as(u32, 0)),
+        : .{ .ebx = true, .edx = true });
+    return ecx & (1 << 27) != 0;
+}
+
+const tlsdesc_arm =
+    \\ stp x29, x30, [sp, #-16]!
+    \\ mov x29, sp
+    \\ stp x1, x2, [sp, #-16]!
+    \\ stp x3, x4, [sp, #-16]!
+    \\ stp x5, x6, [sp, #-16]!
+    \\ stp x7, x8, [sp, #-16]!
+    \\ stp x9, x10, [sp, #-16]!
+    \\ stp x11, x12, [sp, #-16]!
+    \\ stp x13, x14, [sp, #-16]!
+    \\ stp x15, x16, [sp, #-16]!
+    \\ stp x17, x18, [sp, #-16]!
+    \\ stp q0, q1, [sp, #-32]!
+    \\ stp q2, q3, [sp, #-32]!
+    \\ stp q4, q5, [sp, #-32]!
+    \\ stp q6, q7, [sp, #-32]!
+    \\ stp q8, q9, [sp, #-32]!
+    \\ stp q10, q11, [sp, #-32]!
+    \\ stp q12, q13, [sp, #-32]!
+    \\ stp q14, q15, [sp, #-32]!
+    \\ stp q16, q17, [sp, #-32]!
+    \\ stp q18, q19, [sp, #-32]!
+    \\ stp q20, q21, [sp, #-32]!
+    \\ stp q22, q23, [sp, #-32]!
+    \\ stp q24, q25, [sp, #-32]!
+    \\ stp q26, q27, [sp, #-32]!
+    \\ stp q28, q29, [sp, #-32]!
+    \\ stp q30, q31, [sp, #-32]!
+    \\ ldr x0, [x0, #8]
+    \\ bl ztk_elf_tls_get_addr
+    \\ mrs x1, tpidr_el0
+    \\ sub x0, x0, x1
+    \\ ldp q30, q31, [sp], #32
+    \\ ldp q28, q29, [sp], #32
+    \\ ldp q26, q27, [sp], #32
+    \\ ldp q24, q25, [sp], #32
+    \\ ldp q22, q23, [sp], #32
+    \\ ldp q20, q21, [sp], #32
+    \\ ldp q18, q19, [sp], #32
+    \\ ldp q16, q17, [sp], #32
+    \\ ldp q14, q15, [sp], #32
+    \\ ldp q12, q13, [sp], #32
+    \\ ldp q10, q11, [sp], #32
+    \\ ldp q8, q9, [sp], #32
+    \\ ldp q6, q7, [sp], #32
+    \\ ldp q4, q5, [sp], #32
+    \\ ldp q2, q3, [sp], #32
+    \\ ldp q0, q1, [sp], #32
+    \\ ldp x17, x18, [sp], #16
+    \\ ldp x15, x16, [sp], #16
+    \\ ldp x13, x14, [sp], #16
+    \\ ldp x11, x12, [sp], #16
+    \\ ldp x9, x10, [sp], #16
+    \\ ldp x7, x8, [sp], #16
+    \\ ldp x5, x6, [sp], #16
+    \\ ldp x3, x4, [sp], #16
+    \\ ldp x1, x2, [sp], #16
+    \\ ldp x29, x30, [sp], #16
+    \\ ret
+;
+
+comptime {
+    if (supported) @export(&tlsGetAddr, .{ .name = "ztk_elf_tls_get_addr" });
 }
 
 // ---- The dl functions of the table ----
@@ -1012,7 +1202,26 @@ fn dlIteratePhdrFn(cb: PhdrCallback, data: ?*anyopaque) callconv(.c) c_int {
 
 // ---- The table ----
 
-const libc_names = @import("libc_names.zig").names;
+/// The names of `libc_names.zig` that the C library of this target has.
+/// The C library of AArch64 has no x86 port functions and no `arch_prctl`.
+const libc_names = blk: {
+    const all = @import("libc_names.zig").names;
+    if (!is_arm) break :blk all;
+    const x86_only = [_][]const u8{ "arch_prctl", "ioperm", "iopl" };
+    @setEvalBranchQuota(400_000);
+    var out: [all.len][2][]const u8 = undefined;
+    var n: usize = 0;
+    for (all) |p| {
+        const skip = for (x86_only) |x| {
+            if (std.mem.eql(u8, p[0], x)) break true;
+        } else false;
+        if (skip) continue;
+        out[n] = p;
+        n += 1;
+    }
+    const final = out[0..n].*;
+    break :blk final;
+};
 
 /// The functions of this file under their glibc names.
 const own = [_]struct { []const u8, *const anyopaque }{
@@ -1064,9 +1273,9 @@ test "elf: a system library loads and its functions run" {
         std.debug.print("elf: {s}\n", .{lastError()});
         return e;
     };
-    const version: *const fn () callconv(.c) [*:0]const u8 = @ptrCast(sym(h, "zlibVersion") orelse return error.NoSymbol);
+    const version: *const fn () callconv(.c) [*:0]const u8 = @ptrCast(@alignCast(sym(h, "zlibVersion") orelse return error.NoSymbol));
     try t.expect(std.mem.startsWith(u8, std.mem.span(version()), "1."));
-    const crc32: *const fn (c_ulong, [*]const u8, c_uint) callconv(.c) c_ulong = @ptrCast(sym(h, "crc32") orelse return error.NoSymbol);
+    const crc32: *const fn (c_ulong, [*]const u8, c_uint) callconv(.c) c_ulong = @ptrCast(@alignCast(sym(h, "crc32") orelse return error.NoSymbol));
     try t.expectEqual(@as(c_ulong, 0x352441c2), crc32(0, "abc", 3));
     // A second open gives the same module.
     try t.expectEqual(h, try open("libz.so.1"));
@@ -1081,7 +1290,7 @@ test "elf: a missing library gives its name in the reason" {
 test "elf: dlopen(NULL) and dlsym find the functions of the table" {
     if (!supported) return error.SkipZigTest;
     const g = dlopenFn(null, 0);
-    const strlen_fn: *const fn ([*:0]const u8) callconv(.c) usize = @ptrCast(dlsymFn(g, "strlen") orelse return error.NoSymbol);
+    const strlen_fn: *const fn ([*:0]const u8) callconv(.c) usize = @ptrCast(@alignCast(dlsymFn(g, "strlen") orelse return error.NoSymbol));
     try t.expectEqual(@as(usize, 3), strlen_fn("abc"));
     try t.expect(dlsymFn(g, "no_such_function_here") == null);
     try t.expect(dlerrorFn() != null);
@@ -1092,7 +1301,7 @@ test "elf: each thread has its own TLS block of a library" {
     if (!supported) return error.SkipZigTest;
     // __cxa_get_globals of libstdc++ gives the address of a thread-local object.
     const h = open("libstdc++.so.6") catch return error.SkipZigTest;
-    const get: *const fn () callconv(.c) ?*anyopaque = @ptrCast(sym(h, "__cxa_get_globals") orelse return error.NoSymbol);
+    const get: *const fn () callconv(.c) ?*anyopaque = @ptrCast(@alignCast(sym(h, "__cxa_get_globals") orelse return error.NoSymbol));
     const here = get() orelse return error.NoTls;
     try t.expectEqual(here, get().?);
     var there: ?*anyopaque = null;
@@ -1120,3 +1329,31 @@ test "elf: a recursive mutex from the glibc initializer locks twice" {
     try t.expectEqual(@as(c_int, 0), unlock_fn(&m));
 }
 
+
+test "elf: the TLS of a test library is per thread (libztktls.so.1)" {
+    if (!supported) return error.SkipZigTest;
+    // tests/elf-tls.sh builds the library from tests/elf/tls.c and puts its folder in LD_LIBRARY_PATH.
+    const h = open("libztktls.so.1") catch |e| {
+        if (e == error.NotFound) return error.SkipZigTest;
+        std.debug.print("elf: {s}\n", .{lastError()});
+        return e;
+    };
+    const bump: *const fn () callconv(.c) c_long = @ptrCast(@alignCast(sym(h, "bump") orelse return error.NoSymbol));
+    const addr: *const fn () callconv(.c) *c_int = @ptrCast(@alignCast(sym(h, "counter_addr") orelse return error.NoSymbol));
+    try t.expectEqual(@as(c_long, 6017), bump());
+    try t.expectEqual(@as(c_long, 7027), bump());
+    const here = addr();
+    try t.expectEqual(@as(c_int, 7), here.*);
+    var there: c_long = 0;
+    var there_addr: ?*c_int = null;
+    const th = try std.Thread.spawn(.{}, struct {
+        fn run(f: *const fn () callconv(.c) c_long, g: *const fn () callconv(.c) *c_int, out: *c_long, out_addr: *?*c_int) void {
+            out.* = f();
+            out_addr.* = g();
+        }
+    }.run, .{ bump, addr, &there, &there_addr });
+    th.join();
+    // A new thread starts from the initial values of the PT_TLS block.
+    try t.expectEqual(@as(c_long, 6017), there);
+    try t.expect(there_addr.? != here);
+}
