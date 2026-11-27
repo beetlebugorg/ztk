@@ -6,7 +6,7 @@
 # gdb prints the stack of each thread of the test program first.
 # Use: tests/static-vulkan.sh
 set -u
-VK_LOADER_DEBUG=error,warn zig build test -Dtarget=x86_64-linux-musl -Dtest-filter=vulkan --summary all &
+VK_LOADER_DEBUG=error,warn zig build test -Dtarget="$(uname -m)-linux-musl" -Dtest-filter=vulkan --summary all &
 pid=$!
 n=0
 while kill -0 "$pid" 2>/dev/null; do

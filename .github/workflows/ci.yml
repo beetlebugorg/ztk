@@ -121,6 +121,31 @@ jobs:
         if: hashFiles('build.zig') != '' && runner.os == 'Linux'
         run: sh tests/bundle-headless.sh
 
+  test-arm:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    # The ELF loader on AArch64: a static (musl) build loads the TLS test
+    # library, libz, libstdc++, the Vulkan loader, and lavapipe.
+    name: Test (Linux AArch64)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+      - name: Install the build dependencies and the Vulkan driver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y glslc mesa-vulkan-drivers libvulkan1 gdb
+      - name: Test the ELF loader and the Vulkan renderer in a static build
+        run: |
+          timeout 900 sh tests/elf-tls.sh
+          sh tests/static-vulkan.sh
+
   test-macos:
     # The core, the headless backend, and the AppKit backend with Metal on
     # macOS. The runner has a desktop session, so the window tests run.

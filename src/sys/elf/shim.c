@@ -265,10 +265,16 @@ unsigned int ztk_arc4random_uniform(unsigned int bound) {
     }
 }
 
-// __float128 with the precision of long double.
-__float128 ztk_strtof128(const char *s, char **end) { return (__float128)strtold(s, end); }
+// __float128 with the precision of long double. On AArch64, long double
+// is the IEEE quad type.
+#if defined(__aarch64__)
+typedef long double ztk_f128;
+#else
+typedef __float128 ztk_f128;
+#endif
+ztk_f128 ztk_strtof128(const char *s, char **end) { return (ztk_f128)strtold(s, end); }
 
-int ztk_strfromf128(char *s, size_t n, const char *fmt, __float128 v) {
+int ztk_strfromf128(char *s, size_t n, const char *fmt, ztk_f128 v) {
     // fmt is "%[.precision]conversion" with no length modifier: add L.
     char f[32];
     size_t len = strlen(fmt);
@@ -280,6 +286,15 @@ int ztk_strfromf128(char *s, size_t n, const char *fmt, __float128 v) {
     return snprintf(s, n, f, (long double)v);
 }
 
+#if defined(__aarch64__)
+// The exceptions with traps on: the trap enable bits 8 to 12 of FPCR, in
+// the order of the FE_ bits of AArch64.
+int ztk_fegetexcept(void) {
+    unsigned long m;
+    __asm__ volatile("mrs %0, fpcr" : "=r"(m));
+    return (int)(m >> 8) & 0x1f;
+}
+#else
 // The exceptions with traps on: the mask bits of MXCSR are 1 for an
 // exception with no trap.
 int ztk_fegetexcept(void) {
@@ -287,6 +302,7 @@ int ztk_fegetexcept(void) {
     __asm__("stmxcsr %0" : "=m"(m));
     return (int)(~m >> 7) & 0x3f;
 }
+#endif
 
 // The function forms of isnan of glibc. musl has only the macro.
 int ztk_isnan(double x) { return __builtin_isnan(x); }

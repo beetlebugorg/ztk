@@ -26,7 +26,7 @@ const protocols = [_]Protocol{
 /// loader of `src/sys/elf`, which gives the libraries the glibc functions
 /// of `shim.c`.
 fn addElfShim(b: *std.Build, m: *std.Build.Module, target: std.Build.ResolvedTarget) void {
-    if (target.result.os.tag != .linux or !target.result.abi.isMusl() or target.result.cpu.arch != .x86_64) return;
+    if (target.result.os.tag != .linux or !target.result.abi.isMusl() or (target.result.cpu.arch != .x86_64 and target.result.cpu.arch != .aarch64)) return;
     m.addCSourceFile(.{ .file = b.path("src/sys/elf/shim.c"), .flags = &.{ "-std=c11", "-Wall", "-Wno-unused-result" } });
 }
 
