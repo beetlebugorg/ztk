@@ -47,6 +47,7 @@ The features of ztk go through `Platform.VTable`, as the menus do: optional entr
   The call is synchronous on each platform. With a parent window, macOS begins a sheet and runs a modal loop until the completion handler of the sheet, so `tk_getOpenFile` keeps its result as in Tk.
 - `colorDialog(opts) ?Color` for `tk_chooseColor`: the parent window, the title, and the first color. Windows has it (`ChooseColorW`). A font dialog follows when ztk has a `tk fontchooser`.
 - A backend without the entry gets the dialogs that the core draws, from task 17 of the widget stage.
+- Linux (Wayland): `fileDialog` is the `FileChooser` portal over our own D-Bus client (`src/platform/dbus.zig`, `src/platform/portal.zig`). The backend has the entry only when the session bus has `org.freedesktop.portal.Desktop`, running or activatable, so a desktop with no portal gets the dialogs that the core draws. The call is synchronous: it waits for the `Response` signal and reads the events of the compositor every 50 ms, so the window answers the pings of `xdg_wm_base`. The parent window is empty until the backend exports its surface with `xdg-foreign`.
 
 **Drags out (ztk#62).**
 

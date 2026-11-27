@@ -50,6 +50,8 @@ const geom = @import("../geom.zig");
 const event = @import("../event.zig");
 const plat = @import("platform.zig");
 const wire = @import("wl/wire.zig");
+const dbus = @import("dbus.zig");
+const portal = @import("portal.zig");
 const xkb = @import("wl/xkb.zig");
 const host = @import("../sys/host.zig");
 const Event = event.Event;
@@ -156,6 +158,9 @@ pub const Options = struct {
     debug: bool = false,
     /// ZTK_RENDERER: cpu, vulkan, or auto.
     renderer: Renderer = .auto,
+    /// DBUS_SESSION_BUS_ADDRESS, for the portals. Null: `unix:path=` the
+    /// file `bus` in the runtime folder.
+    bus_address: ?[]const u8 = null,
 };
 
 /// The renderer of the main window. `auto` uses Vulkan when the device and
@@ -187,6 +192,9 @@ pub const Wayland = struct {
     gbufs: [3]?*GpuBuf = .{ null, null, null },
     /// A hash of the last scene that the GPU path drew, to skip a frame with no change.
     scene_hash: u64 = 0,
+    /// The session bus, for the portals: opened at the first dialog.
+    bus: ?*dbus.Conn = null,
+    bus_failed: bool = false,
     pointer: u32 = 0,
     keyboard: u32 = 0,
     cursor_device: u32 = 0,
@@ -288,6 +296,7 @@ pub const Wayland = struct {
             v.deinit();
         };
         if (w.dmabuf != 0) w.destroy(w.dmabuf, 0);
+        if (w.bus) |b| b.deinit();
         w.atlas.deinit();
         if (w.prev) |p| w.gpa.free(p.pixels);
         if (w.last_image) |p| w.gpa.free(p.pixels);
@@ -317,7 +326,7 @@ pub const Wayland = struct {
     }
 
     pub fn platform(w: *Wayland) Platform {
-        return .{ .ptr = w, .vtable = &vtable, .live = true, .popups = true };
+        return .{ .ptr = w, .vtable = if (w.portalFiles()) &vtable_portal else &vtable, .live = true, .popups = true };
     }
 
     const vtable: Platform.VTable = .{
@@ -336,6 +345,14 @@ pub const Wayland = struct {
         .clipboardSet = vClipboardSet,
         .clipboardGet = vClipboardGet,
         .textInput = vTextInput,
+    };
+
+    /// With a file chooser portal: `tk_getOpenFile` and the others use it.
+    /// Without one, the core draws the file dialogs.
+    const vtable_portal: Platform.VTable = blk: {
+        var v = vtable;
+        v.fileDialog = vFileDialog;
+        break :blk v;
     };
 
     fn self(ptr: *anyopaque) *Wayland {
@@ -1368,6 +1385,69 @@ pub const Wayland = struct {
         w.req(surface, 6, .{});
         w.frames_committed += 1;
         w.flush();
+    }
+
+    // ---- The portals ----
+
+    /// The session bus, opened once. A failure prints its cause once.
+    fn sessionBus(w: *Wayland) ?*dbus.Conn {
+        if (w.bus) |b| return b;
+        if (w.bus_failed) return null;
+        var buf: [300]u8 = undefined;
+        const addr = w.opts.bus_address orelse blk: {
+            const dir = w.opts.runtime_dir orelse "";
+            break :blk std.fmt.bufPrint(&buf, "unix:path={s}/bus", .{dir}) catch "";
+        };
+        w.bus = dbus.Conn.connect(w.gpa, addr) catch |e| {
+            w.bus_failed = true;
+            std.debug.print("ztk: no session bus, so ztk draws the file dialogs: {s}\n", .{@errorName(e)});
+            return null;
+        };
+        return w.bus;
+    }
+
+    /// Whether the session bus has the desktop portal, running or activatable.
+    fn portalFiles(w: *Wayland) bool {
+        const bus = w.sessionBus() orelse return false;
+        return hasName(w.gpa, bus, "NameHasOwner", "org.freedesktop.portal.Desktop") or hasName(w.gpa, bus, "ListActivatableNames", "org.freedesktop.portal.Desktop");
+    }
+
+    fn hasName(gpa: std.mem.Allocator, bus: *dbus.Conn, member: []const u8, name: []const u8) bool {
+        var b: dbus.Writer = .{ .gpa = gpa };
+        defer b.deinit();
+        const ask = std.mem.eql(u8, member, "NameHasOwner");
+        if (ask) b.string(name);
+        const reply = bus.call(.{ .destination = "org.freedesktop.DBus", .path = "/org/freedesktop/DBus", .interface = "org.freedesktop.DBus", .member = member, .signature = if (ask) "s" else "", .body = b.bytes() catch return false }, 2000) catch return false;
+        defer reply.deinit(gpa);
+        var r = reply.reader();
+        if (ask) return r.boolean() catch false;
+        const end = r.beginArray(4) catch return false;
+        while (r.pos < end) {
+            const n = r.string() catch return false;
+            if (std.mem.eql(u8, n, name)) return true;
+        }
+        return false;
+    }
+
+    /// Reads the events of the compositor while a portal dialog is open,
+    /// so the window answers the pings of `xdg_wm_base`.
+    fn idleDispatch(ctx: *anyopaque) void {
+        const w: *Wayland = @ptrCast(@alignCast(ctx));
+        _ = w.readWait(0) catch {};
+        w.dispatchMain();
+    }
+
+    fn vFileDialog(ptr: *anyopaque, gpa: std.mem.Allocator, opts: *const plat.FileDialog) ?plat.FileDialogResult {
+        const w = self(ptr);
+        const bus = w.sessionBus() orelse return null;
+        return portal.fileDialog(gpa, bus, opts, "", .{ .ctx = w, .run = idleDispatch }) catch |e| {
+            std.debug.print("ztk: the file chooser portal failed: {s}\n", .{@errorName(e)});
+            if (e == error.Disconnected or e == error.BadMessage) {
+                bus.deinit();
+                w.bus = null;
+            }
+            return null;
+        };
     }
 
     // ---- Drawing with Vulkan into dma-bufs ----

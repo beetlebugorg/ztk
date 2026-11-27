@@ -164,6 +164,10 @@ test {
     _ = @import("text/edit.zig");
     _ = vulkan;
     if (@import("build_options").vulkan) _ = @import("tests/vulkan.zig");
+    if (@import("builtin").os.tag == .linux) {
+        _ = @import("platform/dbus.zig");
+        _ = @import("platform/portal.zig");
+    }
     _ = @import("tests/entry.zig");
     _ = @import("tests/entry2.zig");
     _ = @import("tests/spinbox.zig");

@@ -27,6 +27,6 @@ pack .ask .color -side left -anchor n -padx {12 0}
 - `tk_messageBox` has the options, the types, the icons, and the results of `messageBox.n`. Return invokes the button with the focus, and Escape gives `cancel`, or `no`, `abort`, or `ok` when the type has no cancel button. On Windows it is the message box of the system.
 - `tk_dialog` gives the number of the button, or -1 when the window closes.
 - `tk_chooseColor` has a grid of swatches, sliders for red, green, and blue, and a hex field. It gives a color such as `#2563eb`, or an empty string for a cancel. On Windows it is the color dialog of the system.
-- `tk_getOpenFile`, `tk_getSaveFile`, and `tk_chooseDirectory` list the folders and the files, with the filters of `-filetypes`. They need the file capability of the program. On Windows and macOS they are the dialogs of the system.
+- `tk_getOpenFile`, `tk_getSaveFile`, and `tk_chooseDirectory` list the folders and the files, with the filters of `-filetypes`. They need the file capability of the program. On Windows and macOS they are the dialogs of the system. On Wayland they are the file chooser of the desktop portal when the session bus has `org.freedesktop.portal.Desktop`, and else the dialogs that ztk draws.
 - Each dialog is a toplevel of the class `Dialog` with a grab, and it fades in.
 - `ztk::toast text ?-duration ms?` shows a short message at the bottom of the window. It slides in, stays for 2,500 ms by default, and slides out. The style class `banner` gives a frame the look of a message in the page.
