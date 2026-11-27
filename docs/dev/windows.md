@@ -134,3 +134,9 @@ Rule 12 of `AGENTS.md` forbids windows on the live desktop session of the develo
 ## Window state
 
 `wm attributes -fullscreen` and `-topmost` (ztk#68) go to `src/platform/winstate.zig`. Full screen gives the window the style `WS_POPUP` with no frame and the rect of its monitor from `MonitorFromWindow`, and the end of full screen puts back the style and the rect from before. `-topmost` is `SetWindowPos` with `HWND_TOPMOST` or `HWND_NOTOPMOST`. No call shows a hidden window, so the test changes a hidden window and reads the styles and the rect back. The setting for less motion comes from `SPI_GETCLIENTAREAANIMATION`: false when the animation effects are off in the settings of Windows.
+
+## Direct APIs
+
+`ztk::win::*` (ztk#66, `src/winapi.zig`) are the commands of Windows alone. They exist on each platform and give `ZTK WIN UNAVAILABLE` on a backend with no such entry, as `ztk::mac::*` give `ZTK MAC UNAVAILABLE`, and `ztk::has win` tells a script.
+
+- `ztk::win::backdrop window ?auto|none|mica|acrylic|tabbed?` sets `DWMWA_SYSTEMBACKDROP_TYPE` with `DwmSetWindowAttribute`, from Windows 11 22H2, and gives `ZTK WIN BACKDROP` on an older system. With no type it gives the backdrop that it set last. The surface of ztk is opaque, so the backdrop shows in the title bar. The whole window needs a surface with alpha, with the native look (ztk#154).

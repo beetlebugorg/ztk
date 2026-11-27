@@ -170,6 +170,9 @@ pub const MessageBox = struct {
     pub const Button = enum { abort, retry, ignore, ok, cancel, no, yes };
 };
 
+/// The system backdrop of a window on Windows 11 (`ztk::win::backdrop`),
+/// in the order of DWM_SYSTEMBACKDROP_TYPE.
+pub const Backdrop = enum(u32) { auto = 0, none = 1, mica = 2, acrylic = 3, tabbed = 4 };
 /// The state of a window that `wm attributes` sets (ztk#68).
 pub const WindowState = struct {
     /// The window covers its monitor with no frame.
@@ -419,6 +422,9 @@ pub const Platform = struct {
         /// The tabs of a window: the tabbing mode, and the group of the
         /// windows that join one tab bar. An empty group is the default.
         macTabbing: ?*const fn (ptr: *anyopaque, w: *Window, mode: Tabbing, group: []const u8) void = null,
+        /// The direct API of Windows (ztk#66): the system backdrop of a
+        /// window. False when the system has none (before Windows 11 22H2).
+        winBackdrop: ?*const fn (ptr: *anyopaque, w: *Window, kind: Backdrop) bool = null,
 
         // The taskbar or dock button (ztk#61).
 

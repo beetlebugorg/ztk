@@ -196,7 +196,9 @@ pub fn cmdHas(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.
         app.platform.hasNativeMenus()
     else if (std.mem.eql(u8, name, "mac"))
         app.platform.vtable.macDockMenu != null and app.platform.vtable.macTabbing != null
+    else if (std.mem.eql(u8, name, "win"))
+        app.platform.vtable.winBackdrop != null
     else
-        return it.fail("bad feature \"{s}\": must be mac, native-menus, recent, taskbar, or tray", .{name});
+        return it.fail("bad feature \"{s}\": must be mac, native-menus, recent, taskbar, tray, or win", .{name});
     return .{ .int = @intFromBool(on) };
 }

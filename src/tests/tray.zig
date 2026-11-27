@@ -35,7 +35,7 @@ test "tray: the errors of the options and of the names" {
     try t.expectEqualStrings("image \"none\" doesn't exist", try h.evalError("ztk::tray create -image none"));
     try t.expectEqualStrings("bad option \"-icon\": must be -command, -image, -menu, -template, or -tooltip", try h.evalError("ztk::tray create -icon x"));
     try t.expectEqualStrings("tray \"tray9\" doesn't exist", try h.evalError("ztk::tray destroy tray9"));
-    try t.expectEqualStrings("bad feature \"teleport\": must be mac, native-menus, recent, taskbar, or tray", try h.evalError("ztk::has teleport"));
+    try t.expectEqualStrings("bad feature \"teleport\": must be mac, native-menus, recent, taskbar, tray, or win", try h.evalError("ztk::has teleport"));
     try t.expectEqualStrings("0", try h.eval("ztk::has native-menus"));
 }
 
@@ -46,4 +46,13 @@ test "ztk::mac: the direct APIs of macOS give an error on another backend" {
     try t.expectEqualStrings("0", try h.eval("ztk::has mac"));
     try t.expectEqualStrings("ztk::mac::dockmenu is only on macOS", try h.evalError("ztk::mac::dockmenu"));
     try t.expectEqualStrings("ztk::mac::tabbing is only on macOS", try h.evalError("ztk::mac::tabbing . -mode preferred"));
+}
+
+test "tray: a direct command of Windows gives ZTK WIN UNAVAILABLE on another backend" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    try t.expectEqualStrings("0", try h.eval("ztk::has win"));
+    try t.expectEqualStrings("ztk::win::backdrop is only on Windows", try h.evalError("ztk::win::backdrop . mica"));
+    try t.expectEqualStrings("ZTK WIN UNAVAILABLE", try h.eval("catch {ztk::win::backdrop .}; set ::errorCode"));
 }

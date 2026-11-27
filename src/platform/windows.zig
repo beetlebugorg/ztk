@@ -221,6 +221,7 @@ pub const Win32 = struct {
         .messageBox = vMessageBox,
         .setWindowState = vSetWindowState,
         .reducedMotion = vReducedMotion,
+        .winBackdrop = vWinBackdrop,
         .taskbarSet = vTaskbarSet,
         .attention = vAttention,
         .recentAdd = vRecentAdd,
@@ -695,6 +696,11 @@ pub const Win32 = struct {
 
     fn vReducedMotion(_: *anyopaque) bool {
         return winstate.reducedMotion();
+    }
+
+    fn vWinBackdrop(ptr: *anyopaque, w: *Window, kind: plat.Backdrop) bool {
+        const r = self(ptr).recOf(w) orelse return false;
+        return winstate.setBackdrop(r.hwnd, kind);
     }
 
     // ---- Appearance ----

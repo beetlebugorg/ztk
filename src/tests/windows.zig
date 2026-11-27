@@ -600,6 +600,24 @@ test "windows: a tray icon in the notification area, its actions, and its menu" 
     try t.expect(has(events.items, .tray).?.tray.action == .menu);
 }
 
+test "windows: ztk::win::backdrop sets the system backdrop of a hidden window" {
+    if (!enabled()) return;
+    const ws = @import("../platform/winstate.zig");
+    var events: std.ArrayListUnmanaged(Event) = .empty;
+    defer events.deinit(t.allocator);
+    const o = try openHidden(&events);
+    defer o.b.deinit();
+    try t.expect(o.b.platform().vtable.winBackdrop != null);
+    // Windows 11 22H2 and later have the attribute; an older system gives
+    // false.
+    if (!ws.setBackdrop(o.hwnd, .mica)) {
+        std.debug.print("SKIP: no system backdrop on this Windows\n", .{});
+        return;
+    }
+    try t.expect(ws.setBackdrop(o.hwnd, .acrylic));
+    try t.expect(ws.setBackdrop(o.hwnd, .auto));
+}
+
 test "windows: full screen and topmost of wm attributes change the window and come back" {
     if (!enabled()) return;
     const ws = @import("../platform/winstate.zig");

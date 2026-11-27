@@ -96,3 +96,12 @@ pub fn reducedMotion() bool {
     if (SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION, 0, &on, 0) == 0) return false;
     return on == 0;
 }
+
+extern "dwmapi" fn DwmSetWindowAttribute(h: w32.HWND, attr: u32, value: *const anyopaque, size: u32) callconv(.winapi) i32;
+
+/// DWMWA_SYSTEMBACKDROP_TYPE, from Windows 11 22H2. False on a system
+/// with no such attribute.
+pub fn setBackdrop(hwnd: w32.HWND, kind: plat.Backdrop) bool {
+    const v: u32 = @backingInt(kind);
+    return DwmSetWindowAttribute(hwnd, 38, &v, 4) >= 0;
+}
