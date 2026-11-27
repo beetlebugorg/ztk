@@ -37,6 +37,7 @@ systemd-run --user --scope -q -p MemoryMax=4G -p MemorySwapMax=0 -- <command>
 | `ZTK_HEADLESS=1 ./app` | Runs a bundled app (`ztk bundle`) or `ztk` with the headless backend. A bundled app reads no flag. |
 | `tests/bundle-headless.sh [ztk]` | Bundles a script into one program file and runs it with `ZTK_HEADLESS=1` and no display. |
 | `zig build test -Dtarget=x86_64-linux-musl -Dtest-filter=vulkan` | Runs the Vulkan tests in a static program, which opens the Vulkan loader and the driver with `src/sys/elf/loader.zig` (docs/dev/elf-loader.md). `-Dtest-filter=elf` runs the tests of the loader. |
+| `tests/static-vulkan.sh` | Runs the same tests with `VK_LOADER_DEBUG=error,warn`. After 600 seconds it prints the stack of each thread with gdb and stops the run. |
 | `tests/wayland-smoke.sh` | Runs `ztk` on a private headless compositor. |
 | `tests/wayland-input.sh [ztk]` | Sends keys, a resize, the scale 1.5, and the clipboard to `ztk` on a private headless sway, with `wtype` and `wl-copy`. |
 | `ZTK_WAYLAND_DEBUG=1 zig-out/bin/ztk script.tcl` | Prints each Wayland event to stderr: the interface number, the object, and the opcode. |
