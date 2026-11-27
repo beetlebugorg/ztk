@@ -195,6 +195,12 @@ pub const Wayland = struct {
     /// The session bus, for the portals: opened at the first dialog.
     bus: ?*dbus.Conn = null,
     bus_failed: bool = false,
+    /// The setting for less motion of the portal, read once, and then
+    /// from its `SettingChanged` signals.
+    less_motion: ?bool = null,
+    motion_read: bool = false,
+    /// The state of `wm attributes` that the backend sent.
+    win_state: plat.WindowState = .{},
     pointer: u32 = 0,
     keyboard: u32 = 0,
     cursor_device: u32 = 0,
@@ -345,6 +351,8 @@ pub const Wayland = struct {
         .clipboardSet = vClipboardSet,
         .clipboardGet = vClipboardGet,
         .textInput = vTextInput,
+        .setWindowState = vSetWindowState,
+        .reducedMotion = vReducedMotion,
     };
 
     /// With a file chooser portal: `tk_getOpenFile` and the others use it.
@@ -411,11 +419,16 @@ pub const Wayland = struct {
         var pfd = [_]linux.pollfd{
             .{ .fd = w.conn.fd, .events = linux.POLL.IN, .revents = 0 },
             .{ .fd = w.wake_ui[0], .events = linux.POLL.IN, .revents = 0 },
+            .{ .fd = -1, .events = linux.POLL.IN, .revents = 0 },
         };
-        const n: usize = if (w.wake_ui[0] >= 0) 2 else 1;
-        const r = linux.poll(&pfd, n, ms);
+        // The session bus, when the backend reads its SettingChanged signals.
+        if (w.motion_read) if (w.bus) |b| {
+            pfd[2].fd = b.fd;
+        };
+        const r = linux.poll(&pfd, 3, ms);
         if (@as(isize, @bitCast(r)) <= 0) return false;
         drainFd(w.wake_ui[0]);
+        if (pfd[2].fd >= 0 and pfd[2].revents != 0) w.onBus();
         if (pfd[0].revents & (linux.POLL.IN | linux.POLL.HUP | linux.POLL.ERR) == 0) return false;
         const got = try w.conn.read();
         if (got & 2 != 0) w.wakeInput();
@@ -1427,6 +1440,60 @@ pub const Wayland = struct {
             if (std.mem.eql(u8, n, name)) return true;
         }
         return false;
+    }
+
+    /// Reads one message of the session bus, and the signals that waited.
+    /// A change of the setting for less motion gives an appearance event.
+    fn onBus(w: *Wayland) void {
+        const bus = w.bus orelse return;
+        if (bus.read(100)) |m| {
+            if (m.type == .signal) bus.pending.append(w.gpa, m) catch m.deinit(w.gpa) else bus.other(m);
+        } else |e| {
+            if (e != error.Timeout) {
+                bus.deinit();
+                w.bus = null;
+                return;
+            }
+        }
+        var k: usize = 0;
+        while (k < bus.pending.items.len) {
+            const m = bus.pending.items[k];
+            if (!std.mem.eql(u8, m.member, "SettingChanged")) {
+                k += 1;
+                continue;
+            }
+            _ = bus.pending.orderedRemove(k);
+            defer m.deinit(w.gpa);
+            if (portal.motionChange(m.body)) |v| if (w.less_motion != v) {
+                w.less_motion = v;
+                if (w.window) |win| w.push(.{ .appearance = .{ .window = win } });
+            };
+        }
+    }
+
+    fn vReducedMotion(ptr: *anyopaque) bool {
+        const w = self(ptr);
+        if (!w.motion_read) {
+            w.motion_read = true;
+            if (w.sessionBus()) |bus| {
+                w.less_motion = portal.reducedMotion(w.gpa, bus);
+                bus.addMatch(portal.setting_rule) catch {};
+            }
+        }
+        return w.less_motion orelse false;
+    }
+
+    /// Full screen with `xdg_toplevel.set_fullscreen` on the output of the
+    /// compositor's choice. Wayland has no request for topmost, so the
+    /// backend keeps that value only.
+    fn vSetWindowState(ptr: *anyopaque, win: *Window, s: plat.WindowState) void {
+        const w = self(ptr);
+        if (popOf(win) != null or w.toplevel == 0) return;
+        if (s.fullscreen != w.win_state.fullscreen) {
+            if (s.fullscreen) w.req(w.toplevel, 11, .{@as(u32, 0)}) else w.req(w.toplevel, 12, .{});
+            w.flush();
+        }
+        w.win_state = s;
     }
 
     /// Reads the events of the compositor while a portal dialog is open,

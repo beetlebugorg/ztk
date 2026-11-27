@@ -184,7 +184,86 @@ pub fn fileDialog(gpa: std.mem.Allocator, conn: *dbus.Conn, opts: *const plat.Fi
     return readResponse(gpa, sig.body, opts);
 }
 
+// ---- Settings ----
+
+/// The keys of the setting for less motion: GNOME has `enable-animations`
+/// (false: less motion), and KDE has `AnimationDurationFactor` (0: no
+/// animations).
+pub const motion_keys = [_][2][]const u8{
+    .{ "org.gnome.desktop.interface", "enable-animations" },
+    .{ "org.kde.kdeglobals.KDE", "AnimationDurationFactor" },
+};
+
+/// Reads a value of a setting body: a variant, maybe in a second variant
+/// (`Read` of version 1 of the portal). A boolean or a number gives true
+/// for less motion.
+pub fn motionValue(r: *dbus.Reader) !?bool {
+    var sig = try r.signature();
+    if (std.mem.eql(u8, sig, "v")) sig = try r.signature();
+    if (std.mem.eql(u8, sig, "b")) return !(try r.boolean());
+    if (std.mem.eql(u8, sig, "d")) return (try r.double()) == 0;
+    return null;
+}
+
+/// The setting for less motion from `org.freedesktop.portal.Settings`, or
+/// null when the portal has none of `motion_keys`.
+pub fn reducedMotion(gpa: std.mem.Allocator, conn: *dbus.Conn) ?bool {
+    for (motion_keys) |k| {
+        for ([_][]const u8{ "ReadOne", "Read" }) |member| {
+            var w: dbus.Writer = .{ .gpa = gpa };
+            defer w.deinit();
+            w.string(k[0]);
+            w.string(k[1]);
+            const reply = conn.call(.{ .destination = dest, .path = obj, .interface = "org.freedesktop.portal.Settings", .member = member, .signature = "ss", .body = w.bytes() catch return null }, 2000) catch continue;
+            defer reply.deinit(gpa);
+            var r = reply.reader();
+            if (motionValue(&r) catch null) |v| return v;
+        }
+    }
+    return null;
+}
+
+/// The less-motion value of a `SettingChanged` signal (namespace, key,
+/// value), or null for another setting.
+pub fn motionChange(body: []const u8) ?bool {
+    var r: dbus.Reader = .{ .data = body };
+    const ns = r.string() catch return null;
+    const key = r.string() catch return null;
+    for (motion_keys) |k| if (std.mem.eql(u8, k[0], ns) and std.mem.eql(u8, k[1], key)) {
+        return motionValue(&r) catch null;
+    };
+    return null;
+}
+
+pub const setting_rule = "type='signal',interface='org.freedesktop.portal.Settings',member='SettingChanged',path='/org/freedesktop/portal/desktop'";
+
 const t = std.testing;
+
+test "portal: SettingChanged of the animations of GNOME and of KDE" {
+    var w: dbus.Writer = .{ .gpa = t.allocator };
+    defer w.deinit();
+    w.string("org.gnome.desktop.interface");
+    w.string("enable-animations");
+    w.variant("b");
+    w.boolean(false);
+    try t.expectEqual(@as(?bool, true), motionChange(try w.bytes()));
+    var w2: dbus.Writer = .{ .gpa = t.allocator };
+    defer w2.deinit();
+    w2.string("org.kde.kdeglobals.KDE");
+    w2.string("AnimationDurationFactor");
+    w2.variant("v");
+    w2.variant("d");
+    w2.alignTo(8);
+    w2.raw(&@as([8]u8, @bitCast(@as(f64, 1.0))));
+    try t.expectEqual(@as(?bool, false), motionChange(try w2.bytes()));
+    var w3: dbus.Writer = .{ .gpa = t.allocator };
+    defer w3.deinit();
+    w3.string("org.freedesktop.appearance");
+    w3.string("color-scheme");
+    w3.variant("u");
+    w3.uint(1);
+    try t.expectEqual(@as(?bool, null), motionChange(try w3.bytes()));
+}
 
 test "portal: the request path of a unique name" {
     var buf: [128]u8 = undefined;

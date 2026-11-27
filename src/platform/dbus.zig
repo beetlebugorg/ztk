@@ -56,7 +56,7 @@ pub const Writer = struct {
         while (w.buf.items.len % n != 0) w.raw(&.{0});
     }
 
-    fn raw(w: *Writer, b: []const u8) void {
+    pub fn raw(w: *Writer, b: []const u8) void {
         w.buf.appendSlice(w.gpa, b) catch {
             w.failed = true;
         };
@@ -168,6 +168,11 @@ pub const Reader = struct {
 
     pub fn boolean(r: *Reader) Error!bool {
         return try r.uint() != 0;
+    }
+
+    pub fn double(r: *Reader) Error!f64 {
+        try r.alignTo(8);
+        return @bitCast(std.mem.readInt(u64, (try r.take(8))[0..8], .little));
     }
 
     pub fn string(r: *Reader) Error![]const u8 {
@@ -589,7 +594,7 @@ pub const Conn = struct {
 
     /// A message that is not the reply of a call: a signal waits in
     /// `pending`, and a method call gets an error reply.
-    fn other(c: *Conn, msg: Message) void {
+    pub fn other(c: *Conn, msg: Message) void {
         if (msg.type == .signal) {
             c.pending.append(c.gpa, msg) catch msg.deinit(c.gpa);
             return;
