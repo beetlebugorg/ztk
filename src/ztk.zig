@@ -120,6 +120,7 @@ test {
     if (appkit_enabled) _ = @import("platform/nsmenu.zig");
     if (appkit_enabled) _ = @import("platform/mactray.zig");
     if (appkit_enabled) _ = @import("platform/macdialog.zig");
+    if (appkit_enabled) _ = @import("platform/coretext.zig");
     if (direct_enabled) {
         _ = @import("sys/linux.zig");
         _ = @import("tests/direct.zig");
