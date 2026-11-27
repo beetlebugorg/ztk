@@ -50,6 +50,8 @@ pub const usage =
     \\  --menu-bar-only    no Dock icon (LSUIElement), for an app with a tray
     \\  --runner FILE      the ztk program to copy (default: this program, or for one
     \\                    program file of another target lib/ztk/runtime/T/ next to it)
+    \\  --desktop          with one program file of a Linux target: also write NAME.desktop
+    \\                    and NAME.png (from --icon, 256 pixels) next to it
     \\  --no-sign          leave the app folder unsigned (default: an ad hoc signature
     \\                    with the JIT entitlement, from codesign on macOS)
     \\  --console          a Windows program with a console window (default: the GUI
@@ -337,6 +339,7 @@ pub fn run(io: Io, a: std.mem.Allocator, args: []const [:0]const u8, err: *Io.Wr
     var target: ?[]const u8 = null;
     var sign = true;
     var console = false;
+    var desktop = false;
     var files: std.ArrayList([]const u8) = .empty;
     var i: usize = 0;
     while (i < args.len) : (i += 1) {
@@ -356,6 +359,8 @@ pub fn run(io: Io, a: std.mem.Allocator, args: []const [:0]const u8, err: *Io.Wr
             sign = false;
         } else if (std.mem.eql(u8, arg, "--console")) {
             console = true;
+        } else if (std.mem.eql(u8, arg, "--desktop")) {
+            desktop = true;
         } else if (arg.len > 1 and arg[0] == '-') {
             return usageError(err, "ztk bundle: unknown flag {s}\n", .{arg});
         } else try files.append(a, arg);
@@ -364,7 +369,13 @@ pub fn run(io: Io, a: std.mem.Allocator, args: []const [:0]const u8, err: *Io.Wr
     if (files.items.len == 0) return usageError(err, "ztk bundle: needs a main script\n", .{});
     if (Capability.parse(allow) == null) return usageError(err, "ztk bundle: unknown capability in \"{s}\"\n", .{allow});
     const is_app = std.mem.endsWith(u8, std.mem.trimEnd(u8, out_path, "/"), ".app");
-    if (!is_app) return single(io, a, err, out_path, target orelse ztcl.buildnative.hostTarget(), runner, allow, files.items, .{ .name = name, .version = version, .icon = icon, .console = console });
+    if (!is_app) {
+        const tg = target orelse ztcl.buildnative.hostTarget();
+        if (desktop and !std.mem.endsWith(u8, tg, "-linux")) return usageError(err, "ztk bundle: --desktop is for a Linux target, and the target is {s}\n", .{tg});
+        const status = try single(io, a, err, out_path, tg, runner, allow, files.items, .{ .name = name, .version = version, .icon = icon, .console = console });
+        if (status != 0 or !desktop) return status;
+        return desktopFiles(io, a, err, out_path, name, icon);
+    }
     if (target) |tg| if (!std.mem.endsWith(u8, tg, "-macos")) {
         return usageError(err, "ztk bundle: a .app folder is for a macOS target. Leave out .app for one program file of {s}.\n", .{tg});
     };
@@ -596,6 +607,50 @@ fn single(io: Io, a: std.mem.Allocator, err: *Io.Writer, out_path: []const u8, t
     try cwd.writeFile(io, .{ .sub_path = out_path, .data = bin, .flags = .{ .permissions = exe_permissions } });
     try err.print("{s}: {d} bytes ({s} runtime: {d} bytes)\n", .{ out_path, bin.len, target, runtime.len });
     return 0;
+}
+
+/// The desktop entry of a program file. The file name, `Icon`, and
+/// `StartupWMClass` are the name of the program, which is the app id of
+/// its Wayland toplevel. `Exec` has no folder: the program goes in a
+/// folder of PATH.
+pub fn desktopEntry(gpa: std.mem.Allocator, program: []const u8, name: []const u8, has_icon: bool) ![]u8 {
+    var out: Io.Writer.Allocating = .init(gpa);
+    errdefer out.deinit();
+    const w = &out.writer;
+    try w.print("[Desktop Entry]\nType=Application\nName={s}\nExec={s}\nTerminal=false\nCategories=Utility;\nStartupWMClass={s}\n", .{ name, program, program });
+    if (has_icon) try w.print("Icon={s}\n", .{program});
+    return out.toOwnedSlice();
+}
+
+/// Writes NAME.desktop and, with an icon, NAME.png next to a program file.
+fn desktopFiles(io: Io, a: std.mem.Allocator, err: *Io.Writer, out_path: []const u8, name: ?[]const u8, icon: ?[]const u8) !u8 {
+    const cwd = Io.Dir.cwd();
+    const program = std.fs.path.basename(out_path);
+    const dir = std.fs.path.dirname(out_path) orelse ".";
+    if (icon) |p| {
+        const bytes = cwd.readFileAlloc(io, p, a, .limited(64 << 20)) catch |e| {
+            try err.print("ztk bundle: {s}: {s}\n", .{ p, @errorName(e) });
+            return 1;
+        };
+        const src = png.decode(a, bytes) catch |e| {
+            try err.print("ztk bundle: {s}: not a PNG file: {s}\n", .{ p, @errorName(e) });
+            return 1;
+        };
+        const img = try scale(a, src, @min(256, @max(src.width, src.height)));
+        const icon_path = try std.fmt.allocPrint(a, "{s}/{s}.png", .{ dir, program });
+        try cwd.writeFile(io, .{ .sub_path = icon_path, .data = try png.encode(a, img) });
+        try err.print("{s}: {d} pixels\n", .{ icon_path, img.width });
+    }
+    const entry_path = try std.fmt.allocPrint(a, "{s}/{s}.desktop", .{ dir, program });
+    try cwd.writeFile(io, .{ .sub_path = entry_path, .data = try desktopEntry(a, program, name orelse program, icon != null) });
+    try err.print("{s}\n", .{entry_path});
+    return 0;
+}
+
+test "bundle: the desktop entry of a program" {
+    const e = try desktopEntry(std.testing.allocator, "notes", "My Notes", true);
+    defer std.testing.allocator.free(e);
+    try std.testing.expectEqualStrings("[Desktop Entry]\nType=Application\nName=My Notes\nExec=notes\nTerminal=false\nCategories=Utility;\nStartupWMClass=notes\nIcon=notes\n", e);
 }
 
 fn usageError(err: *Io.Writer, comptime fmt: []const u8, args: anytype) !u8 {

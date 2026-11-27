@@ -161,6 +161,9 @@ pub const Options = struct {
     /// DBUS_SESSION_BUS_ADDRESS, for the portals. Null: `unix:path=` the
     /// file `bus` in the runtime folder.
     bus_address: ?[]const u8 = null,
+    /// The app id of the toplevel. A compositor finds the `.desktop` file
+    /// of this name. A bundled app has the name of its program file.
+    app_id: []const u8 = "ztk",
 };
 
 /// The renderer of the main window. `auto` uses Vulkan when the device and
@@ -697,7 +700,7 @@ pub const Wayland = struct {
         w.req(w.wm_base, 2, .{ w.xdg_surface, w.surface });
         w.toplevel = try w.new(I.toplevel, .main, 0);
         w.req(w.xdg_surface, 1, .{w.toplevel});
-        w.req(w.toplevel, 3, .{wire.Str{ .s = "ztk" }});
+        w.req(w.toplevel, 3, .{wire.Str{ .s = w.opts.app_id }});
         if (opts.title.len > 0) vSetTitle(ptr, win, opts.title) else w.req(w.toplevel, 2, .{wire.Str{ .s = "ztk" }});
         if (w.decoration_mgr != 0) {
             const dec = try w.new(I.deco, .main, 0);
