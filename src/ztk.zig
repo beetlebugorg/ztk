@@ -131,6 +131,7 @@ test {
         _ = @import("platform/windows.zig");
         _ = @import("tests/windows.zig");
         _ = @import("platform/windialog.zig");
+        _ = @import("platform/winbox.zig");
         _ = @import("platform/tsf.zig");
         _ = @import("tests/tsf.zig");
         _ = @import("platform/winkeys.zig");

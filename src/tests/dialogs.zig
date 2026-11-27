@@ -82,12 +82,24 @@ test "dialogs: tk_chooseColor with a swatch, the hex entry, and a cancel" {
     });
 }
 
+test "dialogs: tk_chooseColor gives a native color dialog its options" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    // A stand-in for the command of a backend with colorDialog.
+    try expectEvals(&h, &.{
+        .{ "proc ::ztk::priv::nativecolor {title r g b parent} {list $title $r $g $b $parent}; tk_chooseColor -initialcolor #102030 -title Pick", "Pick 16 32 48 ." },
+        .{ "tk_chooseColor", "{Choose a color} 128 128 128 ." },
+        .{ "rename ::ztk::priv::nativecolor {}; winfo exists .__tk__color", "0" },
+    });
+}
+
 test "dialogs: the file dialogs list a folder and give paths" {
     var h: Harness = undefined;
     try h.init();
     defer h.deinit();
     try expectErrors(&h, &.{.{ "::ztk::dialog::FileDialog open", "the file dialogs need the file capability" }});
-    try h.it.allow(@intFromEnum(ztcl.interp.Capability.file));
+    try h.it.allow(@backingInt(ztcl.interp.Capability.file));
     // The file commands see the folder examples/ as "/".
     const root = try std.fmt.allocPrint(t.allocator, "{s}/examples", .{build_options.repo_root});
     defer t.allocator.free(root);

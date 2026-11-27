@@ -170,6 +170,15 @@ pub const MessageBox = struct {
     pub const Button = enum { abort, retry, ignore, ok, cancel, no, yes };
 };
 
+/// The options of a native color dialog. The title is UTF-8 and is valid
+/// only during the call.
+pub const ColorDialog = struct {
+    /// The window that owns the dialog, or null.
+    parent: ?*Window = null,
+    title: []const u8 = "",
+    /// The color that the dialog shows first.
+    initial: geom.Color = .{ .r = 128, .g = 128, .b = 128 },
+};
 /// The answer of a file dialog, in memory of the allocator of the call.
 pub const FileDialogResult = struct {
     /// The paths in UTF-8 with `/` between the parts.
@@ -334,6 +343,9 @@ pub const Platform = struct {
         /// and gives the name of the button that closed it, or null when it
         /// could not show.
         messageBox: ?*const fn (ptr: *anyopaque, opts: *const MessageBox) ?MessageBox.Button = null,
+        /// Runs a native color dialog to its end, as `tk_chooseColor`
+        /// needs. Null: the dialog was canceled, or it could not show.
+        colorDialog: ?*const fn (ptr: *anyopaque, gpa: std.mem.Allocator, opts: *const ColorDialog) ?geom.Color = null,
 
         // The native menus. A backend with `native_menus` has each of these
         // functions. The core calls them on the UI thread. The backend
@@ -513,6 +525,13 @@ pub const Platform = struct {
     pub fn messageBox(p: Platform, opts: *const MessageBox) ?MessageBox.Button {
         const f = p.vtable.messageBox orelse return null;
         return f(p.ptr, opts);
+    }
+    pub fn hasColorDialog(p: Platform) bool {
+        return p.vtable.colorDialog != null;
+    }
+    pub fn colorDialog(p: Platform, gpa: std.mem.Allocator, opts: *const ColorDialog) ?geom.Color {
+        const f = p.vtable.colorDialog orelse return null;
+        return f(p.ptr, gpa, opts);
     }
     pub fn hasFileDialog(p: Platform) bool {
         return p.vtable.fileDialog != null;
