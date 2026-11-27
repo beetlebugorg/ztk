@@ -8,6 +8,7 @@ Read these pages before you work:
 2. [docs/dev/plan.md](docs/dev/plan.md), the design and the decisions.
 3. [docs/dev/tasks/README.md](docs/dev/tasks/README.md), the rules for a task, and then the file of your task.
 4. [docs/dev/review.md](docs/dev/review.md), the checklist that the reviewer uses on your work.
+5. [docs/dev/architecture.md](docs/dev/architecture.md), before you add or move a file in `src/`. It has the areas, the rules of the layers, and the folder of each kind of feature.
 
 Put plans, task lists, reports, and limits in `docs/dev/`. The docs site publishes only the user pages that `tools/build-docs.py` lists. A new widget gets a section on its page in `docs/widgets/` and a line in `docs/differences.md`.
 
@@ -30,6 +31,7 @@ systemd-run --user --scope -q -p MemoryMax=4G -p MemorySwapMax=0 -- <command>
 
 | `zig build` | Builds `zig-out/bin/ztk`. |
 | `zig build test` | Runs all unit tests. `-Dtest-filter=<text>` runs the tests with that text in the name. |
+| `zig run tools/modmap.zig` | Prints the module map of `src/`: the imports, the importers, and the tests of each file, the cycles, and the layering breaks (`docs/dev/architecture.md`). |
 | `zig build run -- file.tcl` | Runs a script. |
 | `tools/oracle.sh script.tcl args` | Runs a script in `wish` and in `ztk --headless`, and prints the difference. |
 | `tools/oracle.sh tools/oracle-pack.tcl seed count` | Compares random `pack` layouts with `wish`. `oracle-place.tcl` does the same for `place`. |

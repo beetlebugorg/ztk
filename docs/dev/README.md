@@ -5,6 +5,7 @@ These files are the plan, the task lists, the reviews, and the reports of ztk. T
 | File | What it has |
 |---|---|
 | [plan.md](plan.md) | The goal, the architecture, the decisions, the performance targets, the verification strategy, and the stages. |
+| [architecture.md](architecture.md) | The module map of `src/` by area, the target layout by folder, the rules of the layers, file sizes, names, and the folder of a new feature (#304). |
 | [tasks/](tasks/README.md) | The 22 tasks of Stage 1, the first demo. |
 | [stage1-report.md](stage1-report.md), [stage1-limits.md](stage1-limits.md) | The test counts, the reviews, the measures, and the limits of Stage 1. |
 | [stage2-tasks/](stage2-tasks/README.md) | The tasks of the widget stage. |

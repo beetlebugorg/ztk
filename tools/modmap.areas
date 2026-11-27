@@ -1,0 +1,118 @@
+# The areas of src/ for tools/modmap.zig (ztk#304).
+#
+# Each area is a folder of the target layout of docs/dev/architecture.md.
+# An `area` line names the areas that its files may import. A file may
+# always import a file of its own area. Test files and test blocks may
+# import any file. See the top of tools/modmap.zig for the format.
+
+area base
+area sys base
+area text base sys
+area style base
+area scene base text
+area render base scene text sys
+area iface base text scene render core
+area core base text style scene render iface
+area platform base sys text scene render core iface
+area widgets base core text style scene iface
+area ttk base core text style scene widgets iface
+area canvas base core text style scene widgets iface
+area terminal base core text style scene widgets iface
+area cmds base core text style scene widgets ttk canvas terminal debug iface
+area debug base core text style scene widgets cmds render iface
+area bundle base sys
+area api *
+area tests *
+
+module ztk src/ztk.zig
+
+dupwords base64 utf8 hex path uleb sleb crc escape quote trim clamp
+
+# Folders. style is the CSS parser and the values of the themes.
+src/sys/ sys
+src/text/ text
+src/css/ style
+src/render/ render
+src/platform/ platform
+src/widgets/ widgets
+src/text_widget/ widgets
+src/ttk/ ttk
+src/canvas/ canvas
+src/term/ terminal
+src/tests/ tests
+src/platform/platform.zig iface
+
+# base: types with no widget in them.
+src/geom.zig base
+src/num.zig base
+src/event.zig base
+src/keysym.zig base
+src/easing.zig base
+src/png.zig base
+src/gif.zig base
+src/tkcolors.zig base
+
+# scene: the quads of a frame and the shapes of a quad.
+src/scene.zig scene
+src/path.zig scene
+
+# core: the app, the widget tree, options, the computed style, events,
+# layout, and the loop.
+src/app.zig core
+src/widget.zig core
+src/options.zig core
+src/optiondb.zig core
+src/varlink.zig core
+src/dispatch.zig core
+src/bind.zig core
+src/focus.zig core
+src/grab.zig core
+src/loop.zig core
+src/layout.zig core
+src/pack.zig core
+src/place.zig core
+src/grid.zig core
+src/scroll.zig core
+src/compact.zig core
+src/stats.zig core
+src/image.zig core
+src/animate.zig core
+src/testing.zig tests
+src/style.zig core
+src/anim.zig core
+src/textinput.zig core
+src/paint.zig core
+
+# cmds: the commands of Tk and ztk on the core and the platform.
+src/cmds.zig cmds
+src/wm.zig cmds
+src/fontcmd.zig cmds
+src/clipboard.zig cmds
+src/dnd.zig cmds
+src/filedialog.zig cmds
+src/dialogs.zig cmds
+src/hotkey.zig cmds
+src/tray.zig cmds
+src/taskbar.zig cmds
+src/recent.zig cmds
+src/macapi.zig cmds
+src/winapi.zig cmds
+
+# debug: `ztk::debug`, `ztk::inject`, `ztk::snapshot`, and the checks.
+src/debug.zig debug
+src/debugdiff.zig debug
+src/debugtrace.zig debug
+src/checks.zig debug
+src/inject.zig debug
+src/snapshot.zig debug
+
+# bundle: `ztk bundle` and the formats of program files.
+src/bundle.zig bundle
+src/appbin.zig bundle
+src/machosign.zig bundle
+src/peres.zig bundle
+
+# api: the roots.
+src/ztk.zig api
+src/main.zig api
+src/web.zig api
