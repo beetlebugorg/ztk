@@ -521,7 +521,10 @@ pub fn makeNode(app: *App, class: *const Class, path: []const u8, parent: ?*Widg
     app.it.findCommand(owned).?.ctx = handle;
     try options.initSlots(w, app.it);
     errdefer options.freeSlots(w);
-    if (class.init) |f| f(w) catch return error.OutOfMemory;
+    if (class.init) |f| f(w) catch |e| {
+        if (e == error.OutOfMemory) return error.OutOfMemory;
+        return app.it.fail("can't create window {s}: {s}", .{ path, @errorName(e) });
+    };
     if (parent) |p| p.invalidate(.{ .style = false, .measure = true, .layout = true, .paint = true });
     return w;
 }

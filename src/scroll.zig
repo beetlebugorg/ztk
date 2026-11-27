@@ -67,11 +67,17 @@ pub const View = struct {
     /// The fractions that the scroll command got last.
     reported: [2]f64 = .{ -1, -1 },
 
+    /// True for the view of a canvas: content shorter than the window
+    /// can move inside the window, as in wish, so `pos` can be negative.
+    fit_inside: bool = false,
+
     pub fn maxPos(v: *const View) f64 {
         return @max(v.total - v.visible, 0);
     }
 
     pub fn clampPos(v: *const View, p: f64) f64 {
+        const room = v.total - v.visible;
+        if (v.fit_inside and room < 0) return std.math.clamp(p, room, 0);
         return std.math.clamp(p, 0, v.maxPos());
     }
 
@@ -175,7 +181,10 @@ pub fn command(w: *Widget, it: *ztcl.Interp, argv: []const Value, v: *View, step
         }
         const t = try it.str(argv[3]);
         const f = std.fmt.parseFloat(f64, std.mem.trim(u8, t, " ")) catch return it.fail("expected floating-point number but got \"{s}\"", .{t});
-        const p = std.math.clamp(f, 0, 1) * v.total;
+        if (!std.math.isFinite(f)) return it.fail("expected floating-point number but got \"{s}\"", .{t});
+        // A canvas view can move its content inside a larger window, so
+        // its fraction can be below 0, as in wish.
+        const p = (if (v.fit_inside) f else std.math.clamp(f, 0, 1)) * v.total;
         if (dragged(w)) v.jump(p) else v.moveTo(w, p, step_us);
         changed(w);
         return Value.empty;

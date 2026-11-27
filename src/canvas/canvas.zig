@@ -183,8 +183,8 @@ const Data = struct {
     sel_last: usize = 0,
     sel_anchor: usize = 0,
     /// The view of each axis when a scroll region is set.
-    vx: scroll.View = .{},
-    vy: scroll.View = .{},
+    vx: scroll.View = .{ .fit_inside = true },
+    vy: scroll.View = .{ .fit_inside = true },
     /// The origin with no scroll region: the canvas point at the top-left corner of the window.
     free_x: f64 = 0,
     free_y: f64 = 0,
@@ -288,6 +288,8 @@ fn configured(w: *Widget, list: []const usize) ztcl.Error!void {
         if (w.life == .dead) return;
         const name = w.class.specs[i].name;
         if (std.mem.eql(u8, name, "-scrollregion")) {
+            // The canvas point at the top-left corner before the change.
+            const before = origin(w);
             const text = w.opts[i].text;
             if (text.len == 0) {
                 d.region = null;
@@ -304,10 +306,17 @@ fn configured(w: *Widget, list: []const usize) ztcl.Error!void {
             }
             gpa.free(d.region_text);
             d.region_text = try gpa.dupe(u8, text);
-            // The view starts at the left and top of the new region.
-            d.vx = .{};
-            d.vy = .{};
+            // The view keeps its origin and then stays inside the new
+            // region, as in wish: a canvas with the region -250 -200 250
+            // 200 and a window of 400 by 300 shows x -150 at its left.
+            d.vx = .{ .fit_inside = true };
+            d.vy = .{ .fit_inside = true };
             syncViews(w);
+            if (d.region) |r| {
+                const in: f64 = @floatFromInt(inset(w));
+                d.vx.jump(before[0] - (r[0] - in));
+                d.vy.jump(before[1] - (r[1] - in));
+            }
         } else if (std.mem.eql(u8, name, "-state")) {
             w.state.disabled = canvasDisabled(w);
         }

@@ -48,6 +48,9 @@ fn cmdSnapshot(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl
     const path = try it.str(argv[1]);
     if (app.lookup(path) == null) return it.fail("bad window path name \"{s}\"", .{path});
     try app.flush();
+    // The render thread can still have the frame of the flush: wait for
+    // it, so the last frame is complete.
+    app.flushRender();
     // A script in the flush can delete the widget.
     const w = app.lookup(path) orelse return it.fail("bad window path name \"{s}\"", .{path});
     const gpa = app.gpa;

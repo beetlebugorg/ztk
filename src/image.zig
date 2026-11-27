@@ -229,16 +229,24 @@ pub const Registry = struct {
         r.list.deinit(gpa);
     }
 
+    /// The photo of `name`. `::a` and `a` are the same name.
     pub fn find(r: *const Registry, name: []const u8) ?*Photo {
-        for (r.list.items) |p| if (std.mem.eql(u8, p.name, name)) return p;
+        for (r.list.items) |p| if (std.mem.eql(u8, key(p.name), key(name))) return p;
         return null;
     }
 
     fn index(r: *const Registry, name: []const u8) ?usize {
-        for (r.list.items, 0..) |p, i| if (std.mem.eql(u8, p.name, name)) return i;
+        for (r.list.items, 0..) |p, i| if (std.mem.eql(u8, key(p.name), key(name))) return i;
         return null;
     }
 };
+
+/// The key of the command of an image in the command table of ztcl,
+/// which has no leading `::`: `::img::test` is the command `test` of the
+/// namespace `img`.
+fn key(name: []const u8) []const u8 {
+    return std.mem.trimStart(u8, name, ":");
+}
 
 fn changed(app: *App, p: *Photo) void {
     p.version +%= 1;
@@ -520,6 +528,84 @@ fn cmdPhoto(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
     return it.fail("bad option \"{s}\": must be blank, cget, configure, copy, data, get, put, read, redither, transparency, or write", .{sub});
 }
 
+/// A block of pixels of the C photo API (`Tk_PhotoPutBlock` of
+/// `FindPhoto.3`): `pitch` bytes from one row to the next, `pixel_size`
+/// bytes from one pixel to the next, and the byte of red, green, blue,
+/// and alpha at `offset` in a pixel. An alpha offset outside the pixel,
+/// or equal to the offset of a color, means that the block has no alpha.
+pub const Block = struct {
+    pixels: [*]const u8,
+    width: i32,
+    height: i32,
+    pitch: i32,
+    pixel_size: i32,
+    offset: [4]i32,
+};
+
+/// Puts `b` at `x`, `y` in `p`, over a region of `w` by `h` pixels. A
+/// region larger than the block repeats the block, as `FindPhoto.3`
+/// says. With `overlay`, alpha of the block blends over the photo; else
+/// the block pixels replace the photo pixels.
+pub fn putBlock(app: *App, p: *Photo, b: Block, x: i32, y: i32, w: i32, h: i32, overlay: bool) !void {
+    if (w <= 0 or h <= 0 or b.width <= 0 or b.height <= 0) return;
+    try growTo(app, p, @as(i64, x) + w, @as(i64, y) + h);
+    // An alpha offset that is the offset of a color is no alpha, as a
+    // block of RGB pixels gives it, and so is one outside the pixel.
+    const has_alpha = b.offset[3] >= 0 and b.offset[3] < b.pixel_size and
+        b.offset[3] != b.offset[0] and b.offset[3] != b.offset[1] and b.offset[3] != b.offset[2];
+    var yy: i32 = 0;
+    while (yy < h) : (yy += 1) {
+        const row: usize = @intCast(@mod(yy, b.height) * b.pitch);
+        var xx: i32 = 0;
+        while (xx < w) : (xx += 1) {
+            const o = row + @as(usize, @intCast(@mod(xx, b.width) * b.pixel_size));
+            const r = b.pixels[o + @as(usize, @intCast(b.offset[0]))];
+            const g = b.pixels[o + @as(usize, @intCast(b.offset[1]))];
+            const bl = b.pixels[o + @as(usize, @intCast(b.offset[2]))];
+            const a: u8 = if (has_alpha) b.pixels[o + @as(usize, @intCast(b.offset[3]))] else 255;
+            const px = @as(i64, x) + xx;
+            const py = @as(i64, y) + yy;
+            if (overlay and a < 255) {
+                if (px < 0 or py < 0 or px >= p.width or py >= p.height) continue;
+                const d = (@as(usize, @intCast(py)) * p.width + @as(usize, @intCast(px))) * 4;
+                const dst = p.pixels[d..][0..4];
+                const sa: u32 = a;
+                const da: u32 = dst[3];
+                const oa = sa + da * (255 - sa) / 255;
+                if (oa == 0) continue;
+                const src = [3]u8{ r, g, bl };
+                for (0..3) |k| {
+                    const v = (@as(u32, src[k]) * sa + @as(u32, dst[k]) * da * (255 - sa) / 255) / oa;
+                    dst[k] = @intCast(@min(v, 255));
+                }
+                dst[3] = @intCast(oa);
+            } else setPx(p, px, py, .{ .r = r, .g = g, .b = bl, .a = a });
+        }
+    }
+    changed(app, p);
+}
+
+/// Makes each pixel of `p` clear (`Tk_PhotoBlank`).
+pub fn blank(app: *App, p: *Photo) void {
+    @memset(p.pixels, 0);
+    changed(app, p);
+}
+
+/// Sets the size of `p` (`Tk_PhotoSetSize`). The size 0 lets the photo
+/// grow with each put.
+pub fn setSize(app: *App, p: *Photo, w: u32, h: u32) !void {
+    p.set_w = w;
+    p.set_h = h;
+    try p.resize(app.gpa, if (w > 0) w else p.width, if (h > 0) h else p.height);
+    changed(app, p);
+}
+
+/// Grows `p` to at least `w` by `h` pixels (`Tk_PhotoExpand`).
+pub fn expand(app: *App, p: *Photo, w: u32, h: u32) !void {
+    try p.resize(app.gpa, @max(w, p.width), @max(h, p.height));
+    changed(app, p);
+}
+
 fn growTo(app: *App, p: *Photo, x2: i64, y2: i64) !void {
     const w: u32 = if (p.set_w > 0) p.width else @intCast(std.math.clamp(@max(x2, p.width), 0, 8192));
     const h: u32 = if (p.set_h > 0) p.height else @intCast(std.math.clamp(@max(y2, p.height), 0, 8192));
@@ -565,7 +651,7 @@ pub fn cmdImage(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztc
             // The command map keys the command by the name of the old
             // photo, so the command goes before that name is freed.
             const i = reg.index(name).?;
-            _ = it.commands.remove(old.name);
+            _ = it.commands.remove(key(old.name));
             it.epoch += 1;
             old.deinit(gpa);
             gpa.destroy(old);
@@ -582,7 +668,7 @@ pub fn cmdImage(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztc
             return e;
         };
         try reg.list.append(gpa, p);
-        try it.register(p.name, if (is_bitmap) cmdBitmap else cmdPhoto);
+        try it.register(key(p.name), if (is_bitmap) cmdBitmap else cmdPhoto);
         return .{ .str = try a.dupe(u8, name) };
     }
     if (std.mem.eql(u8, sub, "delete")) {
@@ -590,7 +676,7 @@ pub fn cmdImage(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztc
             const n = try it.str(v);
             const i = reg.index(n) orelse return it.fail("image \"{s}\" doesn't exist", .{n});
             const p = reg.list.items[i];
-            _ = it.commands.remove(p.name);
+            _ = it.commands.remove(key(p.name));
             it.epoch += 1;
             _ = reg.list.orderedRemove(i);
             p.deinit(app.gpa);

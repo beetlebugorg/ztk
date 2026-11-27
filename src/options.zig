@@ -244,22 +244,22 @@ pub fn parseValue(w: *const Widget, it: *ztcl.Interp, spec: Spec, text: []const 
         },
         .anchor => {
             const i = anchorIndex(text) orelse
-                return it.fail("bad anchor \"{s}\": must be n, ne, e, se, s, sw, w, nw, or center", .{text});
+                return it.fail("{s} anchor \"{s}\": must be n, ne, e, se, s, sw, w, nw, or center", .{ badWord(text, &.{ "n", "ne", "e", "se", "s", "sw", "w", "nw", "center" }), text });
             return .{ .anchor = @enumFromInt(i) };
         },
         .relief => {
             const i = matchWord(text, &relief_words) orelse
-                return it.fail("bad relief \"{s}\": must be flat, groove, raised, ridge, solid, or sunken", .{text});
+                return it.fail("{s} relief \"{s}\": must be flat, groove, raised, ridge, solid, or sunken", .{ badWord(text, &relief_words), text });
             return .{ .relief = @enumFromInt(i) };
         },
         .justify => {
             const i = matchWord(text, &justify_words) orelse
-                return it.fail("bad justification \"{s}\": must be left, right, or center", .{text});
+                return it.fail("{s} justification \"{s}\": must be left, right, or center", .{ badWord(text, &justify_words), text });
             return .{ .justify = @enumFromInt(if (i == 1) 2 else if (i == 2) 1 else i) };
         },
         .word => {
             const i = matchWord(text, spec.words) orelse
-                return it.fail("bad {s} \"{s}\": must be {s}", .{ if (spec.word_name.len > 0) spec.word_name else spec.name[1..], text, try joinWords(it, spec.words) });
+                return it.fail("{s} {s} \"{s}\": must be {s}", .{ badWord(text, spec.words), if (spec.word_name.len > 0) spec.word_name else spec.name[1..], text, try joinWords(it, spec.words) });
             return .{ .word = @intCast(i) };
         },
         .double => {
@@ -278,7 +278,7 @@ pub fn parseValue(w: *const Widget, it: *ztcl.Interp, spec: Spec, text: []const 
         },
         .state => {
             const i = matchWord(text, spec.words) orelse
-                return it.fail("bad state \"{s}\": must be {s}", .{ text, try joinWords(it, spec.words) });
+                return it.fail("{s} state \"{s}\": must be {s}", .{ badWord(text, spec.words), text, try joinWords(it, spec.words) });
             return .{ .word = @intCast(i) };
         },
     }
@@ -375,7 +375,55 @@ pub fn configure(w: *Widget, it: *ztcl.Interp, args: []const ztcl.Value) ztcl.Er
 pub fn cget(w: *Widget, it: *ztcl.Interp, name: ztcl.Value) ztcl.Error!ztcl.Value {
     const specs = w.class.specs;
     const i = try resolve(it, specs, try find(it, specs, try it.str(name)));
-    return .{ .str = try it.alloc().dupe(u8, try textOf(w, it, i)) };
+    const text = try textOf(w, it, i);
+    if (!w.class.ttk and textClass(w.class.tk_class)) return .{ .str = try it.alloc().dupe(u8, text) };
+    return typed(it, specs[i].type, text) orelse .{ .str = try it.alloc().dupe(u8, text) };
+}
+
+/// True for a classic class whose options Tk 8.6 gives as text, not as
+/// numbers: the canvas, the scrollbar, and the menubutton. The tkinter
+/// tests of CPython check this difference.
+fn textClass(class: []const u8) bool {
+    for ([_][]const u8{ "Canvas", "Scrollbar", "Menubutton" }) |c| {
+        if (std.mem.eql(u8, c, class)) return true;
+    }
+    return false;
+}
+
+/// "ambiguous" when `text` is the start of two or more of `words`, as
+/// the empty text is, else "bad": the first word of the error of a value
+/// that is not one of `words`, as in wish.
+fn badWord(text: []const u8, words: []const []const u8) []const u8 {
+    var n: usize = 0;
+    for (words) |wd| {
+        if (std.mem.startsWith(u8, wd, text)) n += 1;
+    }
+    return if (n >= 2) "ambiguous" else "bad";
+}
+
+/// The value of an option of type int, pixels, or double as a number,
+/// as Tk gives the object of the option, so an embedder that reads the
+/// type of the result (Python's `_tkinter`) gets a number. Only a text
+/// that the number gives back with no change is a number, so the string
+/// form stays the same: `5` is an int, `1c` and `1.50` stay text.
+fn typed(it: *ztcl.Interp, t: Type, text: []const u8) ?ztcl.Value {
+    switch (t) {
+        .int, .pixels => {
+            const n = std.fmt.parseInt(i64, text, 10) catch return null;
+            var buf: [24]u8 = undefined;
+            const back = std.fmt.bufPrint(&buf, "{d}", .{n}) catch return null;
+            if (!std.mem.eql(u8, back, text)) return null;
+            return .{ .int = n };
+        },
+        .double => {
+            const d = std.fmt.parseFloat(f64, text) catch return null;
+            const v: ztcl.Value = .{ .double = d };
+            const back = v.toStr(it.alloc()) catch return null;
+            if (!std.mem.eql(u8, back, text)) return null;
+            return v;
+        },
+        else => return null,
+    }
 }
 
 pub fn apply(w: *Widget, it: *ztcl.Interp, pairs: []const ztcl.Value) ztcl.Error!void {

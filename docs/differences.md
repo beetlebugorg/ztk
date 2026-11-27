@@ -47,9 +47,10 @@ Each platform has a native backend of its own, with no toolkit library between z
 
 ### Windows
 
-- `tk windowingsystem` gives `ztk`, so a script that tests for `x11`, `win32`, or `aqua` gets none of them. The flag `--windowingsystem NAME` of the `ztk` program gives the name that such an app needs ([Install](install.md)).
+- `tk windowingsystem` gives `ztk`, so a script that tests for `x11`, `win32`, or `aqua` gets none of them. The flag `--windowingsystem NAME` of the `ztk` program gives the name that such an app needs ([Install](install.md)). libztk, the library for Python's tkinter ([Python tkinter](python-tkinter.md)), gives `x11` on Linux.
 - `winfo rootx` and `rooty` of a widget in a second toplevel count from the corner of its own window on Wayland, because a Wayland program does not know the position of its windows.
 - `grab -global` acts as a local grab, and `grab status` reports `global`.
+- `tk_setPalette` makes the other colors from the background with its own rule: the foreground is black or white, and the active, select, and trough colors are the background 10 or 20 percent lighter or darker. The colors of `wish` differ a little.
 
 ### The look
 
