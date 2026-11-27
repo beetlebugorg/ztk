@@ -99,6 +99,20 @@ pub fn uriPath(gpa: std.mem.Allocator, uri: []const u8) !?[]u8 {
     return try out.toOwnedSlice(gpa);
 }
 
+/// Adds the `file://` URI of an absolute path to `out`. Each byte other
+/// than a letter, a digit, and `/-._~` becomes `%XX`.
+pub fn appendFileUri(gpa: std.mem.Allocator, out: *std.ArrayListUnmanaged(u8), path: []const u8) !void {
+    try out.appendSlice(gpa, "file://");
+    for (path) |b| {
+        if (std.ascii.isAlphanumeric(b) or std.mem.indexOfScalar(u8, "/-._~", b) != null) {
+            try out.append(gpa, b);
+        } else {
+            var buf: [3]u8 = undefined;
+            try out.appendSlice(gpa, std.fmt.bufPrint(&buf, "%{X:0>2}", .{b}) catch unreachable);
+        }
+    }
+}
+
 /// Reads the body of a `Response` signal. A response other than 0 (the
 /// user canceled, or the dialog ended in another way) gives null.
 pub fn readResponse(gpa: std.mem.Allocator, body: []const u8, opts: *const plat.FileDialog) !?plat.FileDialogResult {
@@ -276,6 +290,16 @@ test "portal: a file URI gives its decoded path" {
     try t.expectEqualStrings("/data/a/My File.txt", p);
     try t.expect(try uriPath(t.allocator, "https://example.com/x") == null);
     try t.expect(try uriPath(t.allocator, "file://other/x") == null);
+}
+
+test "portal: a path gives its file URI and back" {
+    var out: std.ArrayListUnmanaged(u8) = .empty;
+    defer out.deinit(t.allocator);
+    try appendFileUri(t.allocator, &out, "/data/a/My File%é.txt");
+    try t.expectEqualStrings("file:///data/a/My%20File%25%C3%A9.txt", out.items);
+    const p = (try uriPath(t.allocator, out.items)).?;
+    defer t.allocator.free(p);
+    try t.expectEqualStrings("/data/a/My File%é.txt", p);
 }
 
 /// A `Response` body: the response code, the URIs, and the filter name.
