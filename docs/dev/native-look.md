@@ -72,4 +72,52 @@ The target is an app of Windows 11 that the system and WinUI 3 draw: Settings, F
 
 ## macOS
 
-The macOS session writes this section.
+The target is an app that AppKit draws on macOS 13 and later: Finder, System Settings, TextEdit, Mail, Xcode, and the controls of Interface Builder at their regular size. These apps have the SF Pro font with its optical sizes, the accent color and the highlight of the user, light and dark appearances, vibrant materials behind sidebars, menus, and popovers, the focus ring of the system, and the control sizes of AppKit (mini, small, regular, large).
+
+### Theme: Aqua
+
+- A platform sheet `aqua-macos.css`, the default on macOS (`nativeLook` gives `macos`). Its values come from AppKit itself, measured, not guessed: a tool of the build (`tools/native-ref/macos/`) makes each control with `NSButton`, `NSPopUpButton`, `NSTextField`, `NSSlider`, `NSSegmentedControl`, `NSProgressIndicator`, `NSScroller`, `NSTableView`, `NSOutlineView`, `NSTabView`, and the rest, in each state and control size, in a window that is never on screen, asks each for its `fittingSize`, `alignmentRectInsets`, and `intrinsicContentSize`, and renders it with `cacheDisplayInRect:toBitmapImageRep:` in the light and the dark `NSAppearance`. The sheet takes its sizes, radii, paddings, and colors from those measures, and each value names the control and the property it comes from. Apple's Human Interface Guidelines and the public AppKit headers name the controls and their sizes; no Apple artwork or code goes into the repository.
+- The colors are the system colors of AppKit, resolved for the appearance: `controlAccentColor`, `selectedContentBackgroundColor`, `unemphasizedSelectedContentBackgroundColor`, `keyboardFocusIndicatorColor`, `labelColor` and its secondary, tertiary, and quaternary forms, `controlBackgroundColor`, `windowBackgroundColor`, `separatorColor`, and `gridColor`. The backend gives them to the sheet as variables, and they change with the appearance, the accent, and the highlight, as the `appearance` event says (the backend already reads the accent).
+- The controls and states of the Windows list, with the AppKit forms: push button (and the default button, which pulses with the accent), check box, radio button, switch (`NSSwitch`), slider (with tick marks), pop-up and pull-down button, combo box, text field (and search field, secure field), stepper, segmented control, progress bar and spinner, scroll bar (the overlay and the legacy style of the setting), table and outline view (with the alternating rows of the source list), tab view, disclosure triangle, help button, color well, date picker, and the menu. Each state: rest, pressed, disabled, focused, inactive window (AppKit draws the controls of a window that is not key with less color), and checked.
+- The control size: `-controlsize mini|small|regular|large` on each ttk widget, as in Tk's aqua theme, with the metrics of each.
+
+### Text: Core Text
+
+- A Core Text backend of the text interface of step 2 (`text/system.zig`): `CTFontCreateWithFontDescriptor` with the system font (`kCTFontUIFontSystem`, which gives SF Pro with its optical sizes, SF Pro Text below 20 pt and SF Pro Display above), the cascade list of the system for fallback (`CTFontCopyDefaultCascadeListForLanguages`), `CTLine` for shaping, bidi, and the clusters, and the metrics of Core Text. Glyph images come from `CTFontDrawGlyphs` into a gray bitmap at the scale of the screen, with the font smoothing of macOS (none since macOS 10.14 on Retina screens, so the images are gray-scale coverage, as AppKit draws them).
+- The sizes of the text styles of AppKit (`NSFont.preferredFont(forTextStyle:)`: body 13, callout 12, subheadline 11, footnote 10, caption 10 and 10, headline 13 bold, title 22, 17, and 15, large title 26) become the named fonts of Tk (`TkDefaultFont` is body, `TkCaptionFont` is the system bold, `TkSmallCaptionFont` 11, `TkMenuFont` 13, `TkTooltipFont` 11).
+
+### Window chrome
+
+- The title bar, the traffic lights, the full screen, the tabs, and the resize of AppKit stay: ztk windows are `NSWindow`s already. The window gets the unified toolbar style when a script asks for it (`ztk::mac::titlebar -style unified|transparent`), and the content can go under a transparent title bar, as Finder and Settings do.
+- Vibrancy: `NSVisualEffectView` behind the layer of the window for the materials that a sheet asks for (`backdrop: sidebar | menu | popover | titlebar | hud | under-window`), with the blending of behind-window, and the state that follows the key window. The sheet makes the background of such a region clear, so the material shows. Menus and tooltips that ztk draws get the menu and tooltip materials.
+
+### Behavior
+
+- Scrolling: the momentum and rubber band of the trackpad come from the phases of `NSEvent` (`phase`, `momentumPhase`) and `scrollingDeltaY` with its precise deltas; the elastic edge of AppKit (`NSScrollElasticity`), and overlay scrollers that show while a scroll runs and fade after it, as `NSScroller.preferredScrollerStyle` says.
+- Motion: the durations and curves of AppKit (`NSAnimationContext` defaults of 0.25 s with ease-in-out, the 0.2 s of a button, the spring of a sheet), and none with Reduce motion.
+- Text: the Cocoa key bindings of the system (`StandardKeyBinding.dict` and the user's `DefaultKeyBinding.dict`) through `interpretKeyEvents:`, which the backend already uses for the input method, so each Emacs key and each move of AppKit works; the Services, the dictation, the spell check of `NSSpellChecker`, autocorrect, and Look Up in the context menu of text.
+- Focus: the focus ring of the system (`keyboardFocusIndicatorColor`, 3 px outside the shape of the control, with the corner radius of the control), Full Keyboard Access (the setting decides whether Tab reaches each control or only the text fields and lists), the default button with Return and the cancel button with Escape.
+- The settings: dark mode, accent and highlight, Increase contrast (`accessibilityDisplayShouldIncreaseContrast`), Reduce transparency (no vibrancy), Reduce motion (done in ztk#68), and the text size of the system.
+
+### Accessibility: NSAccessibility
+
+- The accessible tree of the core (shared with Windows) maps onto `NSAccessibilityElement` objects: the role (`NSAccessibilityButtonRole` and the rest), the label, the value, the states, the frame in screen coordinates, the actions (`accessibilityPerformPress`), and the notifications of change (`NSAccessibilityPostNotification` for the focus, the value, the selection, and the layout). The content view of the window is the root, so VoiceOver, Voice Control, and Switch Control find each widget.
+
+### Proof
+
+- The reference renders come from AppKit itself, with no window on the screen: the tool of the theme makes each control in a window that it never orders front, and renders it with `cacheDisplayInRect:toBitmapImageRep:` in light and dark. The harness renders the same controls with ztk on the headless backend (the same sheet, the Core Text backend, the scale of 2) and compares the pixels of each control and state: a control passes when each channel of each pixel is within a small difference. CI runs it on the macOS runner, and no test opens a window on a desktop.
+- Behavior tests from the Human Interface Guidelines: the keys of each control, the focus with Full Keyboard Access on and off, the default and cancel buttons, and the scroll phases from recorded events.
+- The blind test of the shared plan, with the reference app and the ztk app side by side.
+
+### Steps
+
+1. This section.
+2. The reference tool: AppKit controls rendered offscreen in light and dark, with their measures as JSON.
+3. The Core Text backend of `text/system.zig`, with a test that compares glyph images with the images of Core Text.
+4. `aqua-macos.css` with the system colors as variables, control by control, from the measures of step 2, and `nativeLook` = `macos`.
+5. The pixel harness in CI against the renders of step 2.
+6. Vibrancy and the title bar styles.
+7. Scrolling with momentum and overlay scrollers, and the motion timings.
+8. The text bindings of Cocoa, the Services, spell check, and the context menu of text.
+9. Increase contrast, Reduce transparency, and the text size.
+10. The NSAccessibility adapter of the accessible tree.
