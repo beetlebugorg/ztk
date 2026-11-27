@@ -551,3 +551,17 @@ figure.showcase { margin: 24px 0 32px; max-width: none; position: relative; z-in
   .stage .st-view figure { zoom: 1; width: 600px; }
   .stage .st-view .ld-frame { width: 560px; }
 }
+/* A phone: the links of the top bar fit with less space, so the page
+   has no sideways scroll. */
+@media (max-width: 480px) {
+  .top .wrap { gap: 8px; }
+  .logo { gap: 6px; font-size: 16px; }
+  .toplinks { gap: 0; min-width: 0; }
+  .toplinks a { padding: 6px 4px; font-size: 13.5px; }
+  .toplinks .sib { gap: 4px; }
+}
+/* The landing page has six links: its GitHub link is also at the end of
+   the page. */
+@media (max-width: 420px) {
+  .toplinks a[href^="https://github.com"]:nth-child(6) { display: none; }
+}
