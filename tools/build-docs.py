@@ -48,8 +48,9 @@ PAGES = [
     ("docs/apps.md", "apps/", "Start", "Runs on ztk"),
     ("docs/widgets/README.md", "widgets/", "Widgets", "All widgets"),
     ("docs/toys.md", "toys/", "Widgets", "Toys"),
-    ("docs/build/backspin.md", "toys/backspin/", "Widgets", "Backspin, part by part"),
-    ("docs/build/tinmoon.md", "toys/tinmoon/", "Widgets", "Tin Moon, part by part"),
+    ("docs/build/lamplighter.md", "toys/lamplighter/", "Widgets", "Lamplighter: the design"),
+    ("docs/build/skatepond.md", "toys/skatepond/", "Widgets", "Skate Pond: the design"),
+    ("docs/build/tinmoon.md", "toys/tinmoon/", "Widgets", "Tin Moon: the design"),
     ("docs/widgets/basic.md", "widgets/basic/", "Widgets", "Frames, labels, and buttons"),
     ("docs/widgets/toggles.md", "widgets/toggles/", "Widgets", "Check and radio buttons"),
     ("docs/widgets/entry.md", "widgets/entry/", "Widgets", "Entry and spinbox"),
@@ -100,6 +101,7 @@ REDIRECTS = {
     "review/": f"{REPO}/blob/main/docs/dev/review.md",
     "tasks/": f"{REPO}/blob/main/docs/dev/tasks/README.md",
     "stage2-tasks/": f"{REPO}/blob/main/docs/dev/stage2-tasks/README.md",
+    "toys/backspin/": "toys/",
 }
 for folder in ("tasks", "stage2-tasks"):
     for task in sorted((ROOT / "docs/dev" / folder).glob("[0-9]*.md")):
@@ -109,6 +111,7 @@ FOLDED = {"References"}
 PAGE_OF = {src: page for src, page, _, _ in PAGES}
 
 SITE_DIR = ROOT / "docs" / "site"
+TOY_DIR = ROOT / "docs" / "toys"
 
 
 def slug(text):
@@ -185,6 +188,14 @@ class Build:
                 t.content = (f'<div class="replay" data-src="{root}assets/replays/{m.group(1)}.json"><h2 class="rp-title">{html.escape(rec["title"])}</h2></div>'
                              + self.live_figure({"live": True, "name": None, "id": f"live-replay-{m.group(1)}"}, first, root)
                              + f'<script type="module" src="{root}assets/replay.js"></script>\n')
+                continue
+            m = re.match(r"^<!-- toy-(picker|card: ([a-z]+)) -->$", t.content.strip()) if t.type == "inline" else None
+            if m:
+                # The games: the picker of the Toys page, or a card of a widget page.
+                tokens[i - 1].type = tokens[i + 1].type = "html_block"
+                tokens[i - 1].content, tokens[i + 1].content = "", ""
+                t.type, t.children = "html_block", None
+                t.content = self.toy_picker(page) if m.group(1) == "picker" else self.toy_card(page, m.group(2))
                 continue
             m = re.match(r"^<!-- stage: (toy-[a-z0-9-]+) -->$", t.content.strip()) if t.type == "inline" else None
             if m:
@@ -327,26 +338,58 @@ class Build:
         return re.sub(r"<blockquote>\s*<p>\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(.*?)</p>\s*</blockquote>", replace, body, flags=re.S)
 
     @staticmethod
-    def toy_games(root):
-        """The code of each toy of the widget pages, with its name, its
-        page, and its shot, in hidden pre elements."""
+    def toys():
+        """The games of docs/toys/NAME.tcl, in the order of their header:
+        dicts of name, title, widget, page, pitch, design, and code. The
+        header is the first comment lines, `# key: value`."""
         games = []
-        for f in sorted((ROOT / "docs" / "widgets").glob("*.md")):
-            text = f.read_text(encoding="utf-8")
-            page = PAGE_OF[f"docs/widgets/{f.name}"]
-            # The game of a marker is the last "### Play: NAME" heading before it.
-            for m in re.finditer(r"<!-- widget: (toy-[a-z]+);[^\n]*-->\n```tcl\n(.*?)```\n", text, re.S):
-                heads = re.findall(r"^### Play: (.+)$", text[:m.start()], re.M)
-                if not heads:
-                    raise SystemExit(f"{f}: the toy {m.group(1)} has no heading \"### Play: NAME\"")
-                title, name, code = heads[-1].strip(), m.group(1), m.group(2)
-                stage = PAGE_OF.get(f"docs/build/{name.removeprefix('toy-')}.md")
-                build = f' data-build="{root}{stage}"' if stage else ""
-                games.append(f'<pre hidden class="toy-game" data-name="{name}" data-slug="{slug(title)}" data-title="{html.escape(title, quote=True)}" '
-                             f'data-page="{root}{page}#play-{slug(title)}" data-shot="{root}assets/shots/widget-{name}"'
-                             # A toy with a stage (docs/build/NAME.md) links to it.
-                             f'{build}>{html.escape(code)}</pre>')
-        return "".join(games)
+        for f in sorted(TOY_DIR.glob("*.tcl")):
+            code = f.read_text(encoding="utf-8")
+            meta = dict(re.findall(r"^# ([a-z]+): (.+)$", code.split("\n\n", 1)[0], re.M))
+            for key in ("title", "widget", "page", "pitch", "order"):
+                if key not in meta:
+                    raise SystemExit(f"{f}: the header has no line \"# {key}: ...\"")
+            meta.update(name=f"toy-{f.stem}", code=code, design=f"docs/build/{f.stem}.md")
+            games.append(meta)
+        return sorted(games, key=lambda g: int(g["order"]))
+
+    def toy_picker(self, page):
+        """The Toys page: a button for each game, one frame, the code of each
+        game in a hidden pre (assets/toys.js), and the notes of each game."""
+        root = rel(page, "")
+        games = self.toys()
+        buttons, pres, notes = [], [], []
+        for g in games:
+            buttons.append(f'<button type="button" data-game="{g["name"]}" aria-pressed="false">'
+                           f'<img src="{root}assets/shots/widget-{g["name"]}-dark.png" width="160" height="90" alt="">'
+                           f'<span>{html.escape(g["title"])}</span></button>')
+            pres.append(f'<pre hidden class="toy-game" data-name="{g["name"]}" data-slug="{slug(g["title"])}" data-title="{html.escape(g["title"], quote=True)}" '
+                        f'data-shot="{root}assets/shots/widget-{g["name"]}">{html.escape(g["code"])}</pre>')
+            other, design = PAGE_OF[g["page"]], PAGE_OF[g["design"]]
+            hidden = "" if g is games[0] else " hidden"
+            notes.append(f'<div class="toy-note" data-for="{g["name"]}"{hidden}>'
+                         f'<p><b>{html.escape(g["title"])}</b>. {html.escape(g["pitch"])}</p>'
+                         f'<p class="muted">The widget: <a href="{rel(page, other)}"><code>{html.escape(g["widget"])}</code></a>. '
+                         f'<a href="{rel(page, design)}">The design of {html.escape(g["title"])}</a>.</p></div>')
+        first = games[0]
+        meta = {"live": True, "name": first["name"], "id": "live-toys", "alt": f"The title screen of {first['title']}", "still": True,
+                "shot": (SITE_DIR / "shots" / f"widget-{first['name']}-light.png").is_file()}
+        return (f'<div class="toy-picker"><div class="toy-pick" role="group" aria-label="Pick a game">{"".join(buttons)}</div>'
+                f'{self.live_figure(meta, first["code"], root)}{"".join(notes)}{"".join(pres)}</div>\n')
+
+    def toy_card(self, page, name):
+        """A card of a widget page: the shot, the name, and a link to the
+        game on the Toys page."""
+        root = rel(page, "")
+        g = next((g for g in self.toys() if g["name"] == f"toy-{name}"), None)
+        if g is None:
+            raise SystemExit(f"{page}: no game docs/toys/{name}.tcl")
+        toys = PAGE_OF["docs/toys.md"]
+        return (f'<a class="toy-card" href="{rel(page, toys)}?game={slug(g["title"])}">'
+                f'<picture><source srcset="{root}assets/shots/widget-{g["name"]}-dark.png" media="(prefers-color-scheme: dark)">'
+                f'<img src="{root}assets/shots/widget-{g["name"]}-light.png" width="240" height="135" alt="" loading="lazy"></picture>'
+                f'<span class="tc-text"><span class="tc-kicker">A game on this widget</span><b>{html.escape(g["title"])}</b>'
+                f'<span>{html.escape(g["pitch"])}</span><span class="tc-go">Play {html.escape(g["title"])} &#8594;</span></span></a>\n')
 
     @staticmethod
     def live_figure(meta, code, root):
@@ -363,16 +406,6 @@ class Build:
         # A shot of a plain run ("shot: update") equals the first frame of the snippet.
         data += ' data-still="1"' if meta.get("still") and meta.get("shot") else ""
         code_html = f'<div class="ld-code"><pre><code class="language-tcl">{html.escape(code)}</code></pre></div>'
-        if name == "toy-console":
-            # The handheld of the Toys page: the game list first, and the
-            # code of the game next to the handheld. The code of each toy
-            # of the widget pages is in a hidden pre, for assets/toys.js.
-            return (f'<figure class="live-demo toy toy-console" id="{meta["id"]}"{data}>'
-                    f'<div class="ld-view"><div class="ld-frame">{pic}</div></div>'
-                    f'{code_html}'
-                    f'<figcaption class="ld-bar"><span class="ld-tag">Live</span>'
-                    f'<a class="toy-page" hidden></a><span class="toy-status" role="status"></span></figcaption>'
-                    f'<div class="ld-err" role="status" hidden></div>{Build.toy_games(root)}</figure>\n')
         if meta.get("showcase"):
             # A showcase: the app in the page itself, over the width of
             # the page and with no toolbar (assets/showcase.js). The size is
@@ -384,12 +417,15 @@ class Build:
                     f'<div class="sc-stage"><p class="sc-poster">The piece starts when it comes into view. It needs JavaScript and WebAssembly.</p></div>'
                     f'<details class="sc-code"><summary>The code: {lines} lines of Tcl</summary>{code_html}</details></figure>\n')
         if name and name.startswith("toy-"):
-            # A toy: the handheld first and large, and its code under a
-            # toggle, so that the page next to the game is short.
-            return (f'<figure class="live-demo toy" id="{meta["id"]}"{data}>'
+            # A game: a closed frame of 480 by 270 logical pixels
+            # (assets/toys.js), and the code and the tools of the snippet
+            # under a toggle.
+            lines = code.count("\n")
+            pic = pic.replace('width="360" height="240"', 'width="480" height="270"')
+            return (f'<figure class="live-demo toy" id="{meta["id"]}"{data} data-size="480x270">'
                     f'<div class="ld-view"><div class="ld-frame">{pic}</div></div>'
-                    f'<details class="ld-more"><summary>Show the code</summary>{code_html}</details>'
-                    f'<figcaption class="ld-bar"><span class="ld-tag">Live</span></figcaption>'
+                    f'<details class="ld-more"><summary>The code: {lines} lines of Tcl</summary>{code_html}'
+                    f'<div class="ld-bar"><span class="ld-tag">Live</span></div></details>'
                     f'<div class="ld-err" role="status" hidden></div></figure>\n')
         return (f'<figure class="live-demo" id="{meta["id"]}"{data}>'
                 f'{code_html}'
@@ -525,10 +561,9 @@ class Build:
         landing = landing.replace("<!-- live: hero -->", figure)
         # A toy of a widget page on the landing page: `<!-- live: toy-NAME -->`.
         for name in re.findall(r"<!-- live: (toy-[a-z]+) -->", landing):
-            code = next((m.group(1) for f in sorted((ROOT / "docs" / "widgets").glob("*.md"))
-                         for m in [re.search(rf"<!-- widget: {name};[^\n]*-->\n```tcl\n(.*?)```\n", f.read_text(encoding="utf-8"), re.S)] if m), None)
+            code = next((g["code"] for g in self.toys() if g["name"] == name), None)
             if code is None:
-                raise SystemExit(f"docs/site/index.html: no widget page has the toy {name}")
+                raise SystemExit(f"docs/site/index.html: no game docs/toys/{name[4:]}.tcl")
             meta = {"live": True, "name": name, "id": f"live-{name}", "alt": f"The toy {name[4:]} before it runs", "still": True,
                     "shot": (SITE_DIR / "shots" / f"widget-{name}-light.png").is_file()}
             landing = landing.replace(f"<!-- live: {name} -->", self.live_figure(meta, code, ""))
@@ -544,7 +579,7 @@ class Build:
             (folder / "index.html").write_text(self.document(page, title, body), encoding="utf-8")
         (out / "index.html").write_text(landing, encoding="utf-8")
         (out / "assets").mkdir()
-        for name in ("site.css", "favicon.svg", "live.js", "replay.js", "stage.js", "toys.js", "showcase.js"):
+        for name in ("site.css", "favicon.svg", "live.js", "replay.js", "stage.js", "toys.js", "toysound.js", "showcase.js"):
             shutil.copy(SITE_DIR / name, out / "assets" / name)
         # The screenshots of the examples (tools/shots.sh).
         shutil.copytree(SITE_DIR / "shots", out / "assets" / "shots")

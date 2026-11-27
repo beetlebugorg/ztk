@@ -62,6 +62,30 @@ done
 # widget-NAME-dark.png.
 snippet="$(mktemp)"
 trap 'rm -f "$log" "$hero" "$snippet"' EXIT
+# The title screen of each game of docs/toys/NAME.tcl, in a window of
+# 480 by 270 logical pixels, as widget-toy-NAME-light.png and -dark.png.
+# A header line `# shot: SCRIPT` runs SCRIPT after the game starts.
+for game in "$root"/docs/toys/*.tcl; do
+    name="toy-$(basename "$game" .tcl)"
+    {
+        echo 'wm geometry . 480x270'
+        cat "$game"
+        echo 'update'
+        sed -n 's/^# shot: //p' "$game" | head -1
+    } >"$snippet"
+    for scheme in light dark; do
+        flag=""
+        [ "$scheme" = dark ] && flag="--dark"
+        file="$out/widget-$name-$scheme.png"
+        if ! ZTK_NO_ANIMATION=1 timeout 60 "$ztk" --headless $flag --scale 2 \
+            --exit-after-frames 30 --screenshot "$file" "$snippet" >/dev/null 2>"$log" || grep -qv '^frames: ' "$log"; then
+            echo "error: the game $name failed:" >&2
+            cat "$log" >&2
+            exit 1
+        fi
+        echo "wrote $file ($(wc -c <"$file") bytes)"
+    done
+done
 for page in "$root"/docs/widgets/*.md "$root"/docs/toys.md; do
     grep -o '<!-- widget: [a-z0-9-]*' "$page" | sed 's/<!-- widget: //' | while read -r name; do
         {
