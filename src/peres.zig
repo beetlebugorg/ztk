@@ -407,3 +407,25 @@ test "peres: the images of an ico file and of a png" {
     const p = try iconFromPng(&png);
     try std.testing.expectEqual(@as(u16, 48), p.width);
 }
+
+/// The subsystem of a program in its optional header: GUI (2) starts
+/// with no console window, and console (3) opens one when no terminal
+/// started it. The checksum follows the change.
+pub fn setSubsystem(b: []u8, gui: bool) Error!void {
+    if (b.len < 0x40 or b[0] != 'M' or b[1] != 'Z') return error.NotPe;
+    const pe = rd32(b, 0x3c);
+    if (@as(u64, pe) + 24 + 72 > b.len or !std.mem.eql(u8, b[pe..][0..4], "PE\x00\x00")) return error.NotPe;
+    const opt = pe + 24;
+    if (rd16(b, opt) != 0x20b) return error.NotPe32Plus;
+    wr16(b, opt + 68, if (gui) 2 else 3);
+    wr32(b, opt + 64, 0);
+    wr32(b, opt + 64, checksum(b, opt + 64));
+}
+
+/// The subsystem of a program, 2 for GUI and 3 for console, or null.
+pub fn subsystem(b: []const u8) ?u16 {
+    if (b.len < 0x40) return null;
+    const pe = rd32(b, 0x3c);
+    if (@as(u64, pe) + 24 + 72 > b.len) return null;
+    return rd16(b, pe + 24 + 68);
+}

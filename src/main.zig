@@ -8,6 +8,7 @@
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
+const builtin = @import("builtin");
 
 /// libghostty-vt logs the sequences that it does not handle, each with a
 /// scope of its own. The program writes only the log of the default scope.
@@ -138,6 +139,7 @@ pub fn main(init: std.process.Init) !void {
     const arena = init.arena.allocator();
     const io = init.io;
     const args = try init.minimal.args.toSlice(arena);
+    if (comptime builtin.os.tag == .windows) attachConsole();
 
     var err_buf: [1024]u8 = undefined;
     // Streaming writers: a positional write to a pipe fails on Windows.
@@ -469,4 +471,32 @@ pub fn main(init: std.process.Init) !void {
     out.flush() catch {};
     err.flush() catch {};
     if (status != 0) exitNow(status);
+}
+
+/// A program of the GUI subsystem (`ztk bundle` for Windows) starts with
+/// no console. When a terminal started it, the program attaches to the
+/// console of the terminal, and stdout and stderr with no handle go to
+/// it, so `puts` and the errors show there. A handle that the parent gave,
+/// such as a pipe or a file, stays.
+fn attachConsole() void {
+    const W = struct {
+        extern "kernel32" fn GetConsoleWindow() callconv(.winapi) ?*anyopaque;
+        extern "kernel32" fn AttachConsole(pid: u32) callconv(.winapi) i32;
+        extern "kernel32" fn GetStdHandle(n: u32) callconv(.winapi) ?*anyopaque;
+        extern "kernel32" fn SetStdHandle(n: u32, h: ?*anyopaque) callconv(.winapi) i32;
+        extern "kernel32" fn CreateFileW(name: [*:0]const u16, access: u32, share: u32, security: ?*anyopaque, disposition: u32, flags: u32, template: ?*anyopaque) callconv(.winapi) ?*anyopaque;
+    };
+    // A console program has its console already.
+    if (W.GetConsoleWindow() != null) return;
+    // ATTACH_PARENT_PROCESS
+    if (W.AttachConsole(0xffff_ffff) == 0) return;
+    // STD_OUTPUT_HANDLE and STD_ERROR_HANDLE
+    for ([_]u32{ @bitCast(@as(i32, -11)), @bitCast(@as(i32, -12)) }) |n| {
+        const h = W.GetStdHandle(n);
+        if (h != null and @intFromPtr(h) != ~@as(usize, 0)) continue;
+        // GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, OPEN_EXISTING
+        const con = W.CreateFileW(std.unicode.utf8ToUtf16LeStringLiteral("CONOUT$"), 0xC000_0000, 0x3, null, 3, 0, null);
+        if (@intFromPtr(con) == ~@as(usize, 0)) return;
+        _ = W.SetStdHandle(n, con);
+    }
 }
