@@ -26,13 +26,13 @@
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
-const num = @import("../num.zig");
-const geom = @import("../geom.zig");
+const num = @import("../base/num.zig");
+const geom = @import("../base/geom.zig");
 const widget = @import("../widget.zig");
 const paint = @import("../paint.zig");
 const scene_mod = @import("../scene.zig");
 const plat = @import("../platform/platform.zig");
-const event = @import("../event.zig");
+const event = @import("../base/event.zig");
 const render_thread = @import("../render/thread.zig");
 const Atlas = @import("../text/atlas.zig").Atlas;
 const menu = @import("menu.zig");

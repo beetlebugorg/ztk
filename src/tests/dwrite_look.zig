@@ -60,7 +60,7 @@ test "dwrite look: the type ramp of Fluent" {
         }
         y += -m.descent + 12;
     }
-    const png = try @import("../png.zig").encode(t.allocator, .{ .width = w, .height = h, .pixels = px });
+    const png = try @import("../base/png.zig").encode(t.allocator, .{ .width = w, .height = h, .pixels = px });
     defer t.allocator.free(png);
     try std.Io.Dir.cwd().writeFile(t.io, .{ .sub_path = ".zig-cache/dwrite-look.png", .data = png });
 }

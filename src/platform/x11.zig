@@ -17,8 +17,8 @@
 
 const std = @import("std");
 const linux = std.os.linux;
-const geom = @import("../geom.zig");
-const event = @import("../event.zig");
+const geom = @import("../base/geom.zig");
+const event = @import("../base/event.zig");
 const plat = @import("platform.zig");
 const xkb = @import("wl/xkb.zig");
 const Event = event.Event;

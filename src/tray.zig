@@ -16,7 +16,7 @@ const std = @import("std");
 const ztcl = @import("ztcl");
 const App = @import("app.zig").App;
 const plat = @import("platform/platform.zig");
-const event = @import("event.zig");
+const event = @import("base/event.zig");
 const menu = @import("widgets/menu.zig");
 const Value = ztcl.Value;
 

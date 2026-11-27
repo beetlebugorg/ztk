@@ -46,8 +46,8 @@
 
 const std = @import("std");
 const linux = std.os.linux;
-const geom = @import("../geom.zig");
-const event = @import("../event.zig");
+const geom = @import("../base/geom.zig");
+const event = @import("../base/event.zig");
 const plat = @import("platform.zig");
 const wire = @import("wl/wire.zig");
 const dbus = @import("dbus.zig");

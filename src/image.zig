@@ -10,8 +10,8 @@
 
 const std = @import("std");
 const ztcl = @import("ztcl");
-const png = @import("png.zig");
-const geom = @import("geom.zig");
+const png = @import("base/png.zig");
+const geom = @import("base/geom.zig");
 const App = @import("app.zig").App;
 const Value = ztcl.Value;
 
@@ -262,7 +262,7 @@ fn changed(app: *App, p: *Photo) void {
 const photo_opts = "-data, -density, -file, -format, -gamma, -height, -palette, or -width";
 
 fn loadPng(app: *App, it: *ztcl.Interp, p: *Photo, bytes: []const u8) ztcl.Error!void {
-    const gif = @import("gif.zig");
+    const gif = @import("base/gif.zig");
     const img = (if (gif.isGif(bytes)) gif.decodeGif(app.gpa, bytes) else if (gif.isPpm(bytes)) gif.decodePpm(app.gpa, bytes) else png.decode(app.gpa, bytes)) catch return it.fail("couldn't recognize image data", .{});
     app.gpa.free(p.pixels);
     p.pixels = img.pixels;
@@ -312,7 +312,7 @@ fn colorRows(it: *ztcl.Interp, rows: []const Value) bool {
 /// Decodes image data: base64 text or the bytes of a file, in PNG, GIF,
 /// or PPM. The caller frees `pixels` with the gpa of the App.
 fn decodeData(app: *App, it: *ztcl.Interp, text: []const u8) ztcl.Error!?@import("render/renderer.zig").Image {
-    const gif = @import("gif.zig");
+    const gif = @import("base/gif.zig");
     const bytes = (try base64Lenient(it.alloc(), text)) orelse try binaryBytes(it, .{ .str = text });
     const r = if (gif.isGif(bytes)) gif.decodeGif(app.gpa, bytes) else if (gif.isPpm(bytes)) gif.decodePpm(app.gpa, bytes) else png.decode(app.gpa, bytes);
     return r catch null;
@@ -421,7 +421,7 @@ fn cmdPhoto(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
         }
         const words = [_]Value{ .{ .str = "::ztk::priv::readbinary" }, argv[2] };
         const bytes = try binaryBytes(it, try it.eval(try it.str(try ztcl.value.newList(a, &words))));
-        const gif = @import("gif.zig");
+        const gif = @import("base/gif.zig");
         const img = (if (gif.isGif(bytes)) gif.decodeGif(app.gpa, bytes) else if (gif.isPpm(bytes)) gif.decodePpm(app.gpa, bytes) else png.decode(app.gpa, bytes)) catch
             return it.fail("couldn't recognize data in image file \"{s}\"", .{try it.str(argv[2])});
         defer app.gpa.free(img.pixels);

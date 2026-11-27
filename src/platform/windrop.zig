@@ -24,7 +24,7 @@ const std = @import("std");
 const w32 = @import("win32.zig");
 const com = @import("../sys/com.zig");
 const plat = @import("platform.zig");
-const event = @import("../event.zig");
+const event = @import("../base/event.zig");
 const GUID = com.GUID;
 const HRESULT = com.HRESULT;
 

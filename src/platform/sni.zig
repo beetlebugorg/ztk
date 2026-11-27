@@ -18,7 +18,7 @@
 const std = @import("std");
 const dbus = @import("dbus.zig");
 const plat = @import("platform.zig");
-const TrayAction = @import("../event.zig").TrayAction;
+const TrayAction = @import("../base/event.zig").TrayAction;
 
 pub const item_path = "/StatusNotifierItem";
 pub const item_iface = "org.kde.StatusNotifierItem";

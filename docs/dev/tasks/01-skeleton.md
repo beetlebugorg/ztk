@@ -8,13 +8,13 @@
 
 - `build.zig`, `build.zig.zon`
 - `src/ztk.zig`: the root of the module
-- `src/geom.zig`: points, sizes, rectangles, insets, colors
+- `src/base/geom.zig`: points, sizes, rectangles, insets, colors
 - `src/main.zig`: the `ztk` program
 
 ## Interfaces
 
 ```zig
-// src/geom.zig. The unit is the logical pixel.
+// src/base/geom.zig. The unit is the logical pixel.
 pub const Point = struct { x: i32 = 0, y: i32 = 0 };
 pub const Size = struct { w: i32 = 0, h: i32 = 0 };
 pub const Insets = struct {
@@ -61,7 +61,7 @@ pub const version = "0.0.0";
    - An option `-Dtest-filter=<text>` that goes in `TestOptions.filters`.
    - A step `run` that passes its arguments to the program.
    - The program and the tests link no library and no libc in this task. From the first task that links libc (task 16), set `use_llvm = true` and `use_lld = true` on each executable and test that links it. The reason is in [the task index](README.md).
-4. Write `src/geom.zig` with the tests below.
+4. Write `src/base/geom.zig` with the tests below.
 5. `parseTk` accepts the three `#` forms. For a 12-digit form, the high byte of each part is the value. It also accepts these names, in any letter case: `black`, `white`, `red`, `green`, `blue`, `yellow`, `cyan`, `magenta`, `gray`, `grey`, `orange`, `purple`, `brown`, `pink`. Get the value of each name from `wish`: `winfo rgb . <name>` gives three 16-bit numbers. The complete table of 760 names is Stage 2.
 6. Write `src/main.zig`. `ztk file.tcl` reads the file, makes a `ztcl.Interp`, sets `output` so that `puts` writes to stdout, and evaluates the text. On `error.TclError` it writes `it.result` to stderr and exits with status 1. With no argument it prints a usage line and exits with status 2. Use `src/main.zig` of the pinned ztcl as the example of the file and argument API of Zig 0.16.
 
@@ -74,7 +74,7 @@ zig build test -Dtest-filter=geom
 printf 'puts [expr {6 * 7}]\n' > /tmp/ztk-t01.tcl && zig-out/bin/ztk /tmp/ztk-t01.tcl
 ```
 
-Unit tests in `src/geom.zig`:
+Unit tests in `src/base/geom.zig`:
 
 - `Rect.contains`: a point on the left edge is inside, and a point on the right edge is outside.
 - `Rect.intersect` of two rectangles that do not touch is empty.

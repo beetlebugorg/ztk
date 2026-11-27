@@ -8,7 +8,7 @@
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
-const geom = @import("../geom.zig");
+const geom = @import("../base/geom.zig");
 const scene = @import("../scene.zig");
 
 /// The weights of the arms: up, down, left, right. 0 is none, 1 light,

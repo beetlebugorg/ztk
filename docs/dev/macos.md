@@ -39,7 +39,7 @@ The backend fills the `Platform.VTable` of `src/platform/platform.zig`. The tabl
 | `textInput(window, on, rect)` | Turns on input methods for a focused text widget and gives the caret rectangle for the candidate window | `NSTextInputClient` | TSF |
 | `appearance()` | The dark mode and the accent color | `NSApp.effectiveAppearance`, `NSColor.controlAccentColor` | The `UISettings` colors in the registry |
 
-Two event kinds go into `src/event.zig`: `preedit` (the marked text and the caret in it) and `commit` (the text to insert). The Wayland backend gets the same events from `text-input-v3` in Stage 8. The PR that adds them is PR 8, and it changes no widget beyond the entry and the text widget that read them.
+Two event kinds go into `src/base/event.zig`: `preedit` (the marked text and the caret in it) and `commit` (the text to insert). The Wayland backend gets the same events from `text-input-v3` in Stage 8. The PR that adds them is PR 8, and it changes no widget beyond the entry and the text widget that read them.
 
 ## The event loop
 

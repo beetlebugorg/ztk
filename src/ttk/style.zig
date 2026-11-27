@@ -10,7 +10,7 @@
 
 const std = @import("std");
 const ztcl = @import("ztcl");
-const geom = @import("../geom.zig");
+const geom = @import("../base/geom.zig");
 const options = @import("../options.zig");
 const style_mod = @import("../style.zig");
 const App = @import("../app.zig").App;

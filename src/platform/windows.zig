@@ -24,8 +24,8 @@
 
 const std = @import("std");
 const w32 = @import("win32.zig");
-const geom = @import("../geom.zig");
-const event = @import("../event.zig");
+const geom = @import("../base/geom.zig");
+const event = @import("../base/event.zig");
 const plat = @import("platform.zig");
 const host = @import("../sys/host.zig");
 const Event = event.Event;
@@ -39,7 +39,7 @@ const renderer = @import("../render/renderer.zig");
 const Image = renderer.Image;
 const d3d12 = @import("../render/d3d12.zig");
 const winkeys = @import("winkeys.zig");
-const keysym_mod = @import("../keysym.zig");
+const keysym_mod = @import("../base/keysym.zig");
 const Mods = event.Mods;
 const Cursor = plat.Cursor;
 const tsf = @import("tsf.zig");

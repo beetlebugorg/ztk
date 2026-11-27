@@ -25,7 +25,7 @@
 
 const std = @import("std");
 const Io = std.Io;
-const png = @import("png.zig");
+const png = @import("base/png.zig");
 const peres = @import("peres.zig");
 const Image = @import("render/renderer.zig").Image;
 const ztcl = @import("ztcl");

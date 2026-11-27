@@ -9,7 +9,7 @@ A scene is a list of quads. The CPU renderer draws a scene to an image. A test c
 - `src/scene.zig`: `Quad`, `Scene`, `Builder`
 - `src/render/renderer.zig`: the `Image` type and the shared math
 - `src/render/cpu.zig`
-- `src/png.zig`
+- `src/base/png.zig`
 - `src/testing.zig`: `expectGolden`, `expectScene`
 - `tests/golden/`
 - `build.zig`: the path of the repository for the tests
@@ -87,7 +87,7 @@ pub fn shadowCoverage(q: *const Quad, px: f32, py: f32) f32;
 // src/render/cpu.zig
 /// Draws the scene. `atlas` is null until task 07.
 pub fn render(scene: *const Scene, atlas: ?*const anyopaque, out: *Image) void;
-// src/png.zig
+// src/base/png.zig
 pub fn encode(gpa: std.mem.Allocator, img: Image) ![]u8;
 pub fn decode(gpa: std.mem.Allocator, bytes: []const u8) !Image;
 // src/testing.zig

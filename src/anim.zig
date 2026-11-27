@@ -19,9 +19,9 @@
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
-const num = @import("num.zig");
-const geom = @import("geom.zig");
-const easing = @import("easing.zig");
+const num = @import("base/num.zig");
+const geom = @import("base/geom.zig");
+const easing = @import("base/easing.zig");
 const style_mod = @import("style.zig");
 const widget_mod = @import("widget.zig");
 const App = @import("app.zig").App;

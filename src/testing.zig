@@ -8,7 +8,7 @@ const Headless = @import("platform/headless.zig").Headless;
 const Window = @import("platform/platform.zig").Window;
 const Io = std.Io;
 const build_options = @import("build_options");
-const png = @import("png.zig");
+const png = @import("base/png.zig");
 const Image = @import("render/renderer.zig").Image;
 const Scene = @import("scene.zig").Scene;
 

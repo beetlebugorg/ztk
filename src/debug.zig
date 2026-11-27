@@ -40,7 +40,7 @@ const Value = ztcl.Value;
 const trace_mod = @import("debugtrace.zig");
 const diff_mod = @import("debugdiff.zig");
 const bind = @import("bind.zig");
-const geom = @import("geom.zig");
+const geom = @import("base/geom.zig");
 
 pub const State = struct {
     /// True while an option write calls `note`: the sources or the

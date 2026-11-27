@@ -8,7 +8,7 @@ const std = @import("std");
 const t = std.testing;
 const Harness = @import("../testing.zig").Harness;
 const dwrite = @import("../platform/dwrite.zig");
-const png = @import("../png.zig");
+const png = @import("../base/png.zig");
 
 fn look(dark: bool, path: []const u8) !void {
     const d = dwrite.DWrite.init(t.allocator) orelse return error.SkipZigTest;

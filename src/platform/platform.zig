@@ -4,8 +4,8 @@
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
-const geom = @import("../geom.zig");
-const event = @import("../event.zig");
+const geom = @import("../base/geom.zig");
+const event = @import("../base/event.zig");
 const loop = @import("../loop.zig");
 const Event = event.Event;
 const Target = @import("../render/thread.zig").Target;

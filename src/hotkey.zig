@@ -22,8 +22,8 @@ const std = @import("std");
 const ztcl = @import("ztcl");
 const App = @import("app.zig").App;
 const plat = @import("platform/platform.zig");
-const event = @import("event.zig");
-const keysym = @import("keysym.zig");
+const event = @import("base/event.zig");
+const keysym = @import("base/keysym.zig");
 const Value = ztcl.Value;
 
 pub const Hotkey = struct {

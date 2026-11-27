@@ -65,7 +65,7 @@ pub const n_opts = option_names.len;
 /// The value of one tag option for the paint and the layout.
 pub const Value = union(enum) {
     none,
-    color: @import("../geom.zig").Color,
+    color: @import("../base/geom.zig").Color,
     pixels: i32,
     boolean: bool,
     word: u8,

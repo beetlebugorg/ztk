@@ -9,7 +9,7 @@
 const std = @import("std");
 const Io = std.Io;
 const flate = std.compress.flate;
-const Image = @import("render/renderer.zig").Image;
+const Image = @import("../render/renderer.zig").Image;
 
 const signature = [8]u8{ 0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a };
 

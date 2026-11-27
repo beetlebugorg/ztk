@@ -7,15 +7,15 @@ One interface describes a platform. The headless backend implements it in memory
 ## Files
 
 - `src/platform/platform.zig`: `Platform`, `Window`
-- `src/event.zig`: `Event`, `Mods`
-- `src/keysym.zig`: the names and numbers of key symbols
+- `src/base/event.zig`: `Event`, `Mods`
+- `src/base/keysym.zig`: the names and numbers of key symbols
 - `src/platform/headless.zig`
 - `src/app.zig`, `src/testing.zig`
 
 ## Interfaces
 
 ```zig
-// src/event.zig
+// src/base/event.zig
 pub const Mods = packed struct(u16) {
     shift: bool = false, lock: bool = false, control: bool = false,
     mod1: bool = false,   // Alt
@@ -45,7 +45,7 @@ pub const Event = union(enum) {
 ```
 
 ```zig
-// src/keysym.zig
+// src/base/keysym.zig
 /// The number of a key symbol name ("Return", "a", "space"), or null.
 pub fn fromName(name: []const u8) ?u32;
 /// The name of a number, or null.
@@ -123,7 +123,7 @@ pub const Headless = struct {
    - The pointer state (position and buttons) is in the backend. `pointerButton` uses the last position. The `mods` of each event have the button bits of the buttons that were down before the event, as in X11.
    - `typeText` adds a press and a release for each character, with the key symbol of the character and its UTF-8 in `text`. Add `shift` for a capital letter.
    - `draw` counts the call. Task 06 gives it the CPU renderer.
-5. `src/keysym.zig` has a table for Stage 1: the printable ASCII characters (the names are in `keysyms.n`: `space`, `exclam`, `a`, `A`, `0`, and so on), `Return`, `Tab`, `ISO_Left_Tab`, `Escape`, `BackSpace`, `Delete`, `Left`, `Right`, `Up`, `Down`, `Home`, `End`, `Prior`, `Next`, `Shift_L`, `Shift_R`, `Control_L`, `Control_R`, `Alt_L`, `Alt_R`, `Super_L`, and `F1` to `F12`. The numbers are the X11 key symbol values in `keysyms.n`. A Latin-1 character has its code point as the number. A test checks `a`, `Return`, and `space` against `keysyms.n`.
+5. `src/base/keysym.zig` has a table for Stage 1: the printable ASCII characters (the names are in `keysyms.n`: `space`, `exclam`, `a`, `A`, `0`, and so on), `Return`, `Tab`, `ISO_Left_Tab`, `Escape`, `BackSpace`, `Delete`, `Left`, `Right`, `Up`, `Down`, `Home`, `End`, `Prior`, `Next`, `Shift_L`, `Shift_R`, `Control_L`, `Control_R`, `Alt_L`, `Alt_R`, `Super_L`, and `F1` to `F12`. The numbers are the X11 key symbol values in `keysyms.n`. A Latin-1 character has its code point as the number. A test checks `a`, `Return`, and `space` against `keysyms.n`.
 6. `Harness` makes a `Headless` and gives it to the App. It gets these helpers: `h.head` (the backend), `h.win` (the window of `.`), and `h.update()` (the `update` command).
 
 ## Tests

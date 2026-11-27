@@ -18,7 +18,7 @@
 const std = @import("std");
 const w32 = @import("win32.zig");
 const plat = @import("platform.zig");
-const geom = @import("../geom.zig");
+const geom = @import("../base/geom.zig");
 
 pub const CHOOSECOLORW = extern struct {
     lStructSize: u32 = @sizeOf(CHOOSECOLORW),

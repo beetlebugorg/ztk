@@ -1,11 +1,11 @@
 //! The US key layout without a library. A table maps an evdev key code
 //! (the KEY_ numbers of linux/input-event-codes.h) to the key symbol of
 //! the plain level and of the Shift level. The key symbols are the X11
-//! numbers of `src/keysym.zig`. `text` gives the UTF-8 text of a symbol.
+//! numbers of `src/base/keysym.zig`. `text` gives the UTF-8 text of a symbol.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
-const event = @import("../event.zig");
+const event = @import("../base/event.zig");
 
 pub const Level = struct { plain: u32, shift: u32 };
 

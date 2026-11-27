@@ -23,10 +23,10 @@ const ztcl = @import("ztcl");
 const App = @import("app.zig").App;
 const Widget = @import("widget.zig").Widget;
 const plat = @import("platform/platform.zig");
-const event = @import("event.zig");
+const event = @import("base/event.zig");
 const bind = @import("bind.zig");
 const dispatch = @import("dispatch.zig");
-const num = @import("num.zig");
+const num = @import("base/num.zig");
 const Value = ztcl.Value;
 
 const Entry = struct { path: []u8, types: plat.DropTypes };

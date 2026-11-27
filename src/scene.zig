@@ -9,11 +9,11 @@
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
-const num = @import("num.zig");
-const geom = @import("geom.zig");
+const num = @import("base/num.zig");
+const geom = @import("base/geom.zig");
 const atlas_mod = @import("text/atlas.zig");
 const shape_mod = @import("text/shape.zig");
-const easing = @import("easing.zig");
+const easing = @import("base/easing.zig");
 
 pub const Kind = enum(u32) { box = 0, shadow = 1, glyph = 2, image = 3 };
 

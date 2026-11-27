@@ -3,7 +3,7 @@
 
 const std = @import("std");
 const Harness = @import("../testing.zig").Harness;
-const event = @import("../event.zig");
+const event = @import("../base/event.zig");
 const t = std.testing;
 
 fn drain(h: *Harness) !std.ArrayListUnmanaged(event.Event) {

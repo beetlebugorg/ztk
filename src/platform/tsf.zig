@@ -23,7 +23,7 @@
 const std = @import("std");
 const com = @import("../sys/com.zig");
 const w32 = @import("win32.zig");
-const geom = @import("../geom.zig");
+const geom = @import("../base/geom.zig");
 
 const HRESULT = com.HRESULT;
 const GUID = com.GUID;
