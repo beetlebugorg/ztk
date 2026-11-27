@@ -1548,10 +1548,10 @@ const Painter = struct {
                 cell.x = ax + indent;
                 cell.w = col.width - lvl * indent - indent - p.ist.padding.right;
                 if (item.image.len > 0) if (app.images.find(item.image)) |ph| {
-                    const ih: i32 = @intCast(ph.height);
+                    const ih: i32 = @intCast(ph.logicalHeight());
                     try label.drawPhoto(p.b, &app.atlas, ph, cell.x, p.y + @divTrunc(p.rh - ih, 2), 1);
-                    cell.x += @as(i32, @intCast(ph.width)) + 4;
-                    cell.w -= @as(i32, @intCast(ph.width)) + 4;
+                    cell.x += @as(i32, @intCast(ph.logicalWidth())) + 4;
+                    cell.w -= @as(i32, @intCast(ph.logicalWidth())) + 4;
                 };
                 txt = item.text;
             } else if (k - 1 < vals.len) {
