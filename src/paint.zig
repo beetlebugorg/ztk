@@ -248,6 +248,15 @@ pub fn zeroWidth(app: *App, desc: font_mod.FontDesc) i32 {
     return shape.measure(&app.fonts, font, "0");
 }
 
+/// The advance of "0" in logical pixels, with its fraction: the cell
+/// width of a terminal, which rounds it in device pixels.
+pub fn zeroAdvance(app: *App, desc: font_mod.FontDesc) f32 {
+    const font = measureFont(app, desc) orelse return 0;
+    var run = shape.shape(app.gpa, font, "0") catch return 0;
+    defer run.deinit(app.gpa);
+    return run.end_x / font.scale;
+}
+
 pub fn lineHeight(app: *App, desc: font_mod.FontDesc) i32 {
     const font = measureFont(app, desc) orelse return 0;
     return font_mod.Fonts.metrics(font).line_height;
