@@ -1,6 +1,8 @@
-//! `ztk bundle`: writes a macOS app, a folder `Name.app`, from any host,
-//! or with an output name that has no `.app`, one program file of a
-//! target with the app in its slot (`appbin.zig`).
+//! `ztk bundle`: writes a macOS app, a folder `Name.app`, from any host
+//! and for the macOS target of `--target`, or with an output name that
+//! has no `.app`, one program file of a target with the app in its slot
+//! (`appbin.zig`). The ad hoc signature of the app comes from `codesign`
+//! on macOS and from `machosign.zig` on the other hosts.
 //!
 //!   Name.app/Contents/Info.plist
 //!   Name.app/Contents/MacOS/Name           a copy of a macOS ztk program
@@ -28,11 +30,13 @@ const Image = @import("render/renderer.zig").Image;
 const ztcl = @import("ztcl");
 const Capability = ztcl.interp.Capability;
 const appbin = @import("appbin.zig");
+const machosign = @import("machosign.zig");
 
 pub const usage =
-    \\usage: ztk bundle -o Name.app [options] main.tcl [file or folder ...]
+    \\usage: ztk bundle -o Name.app [--target T] [options] main.tcl [file or folder ...]
     \\       ztk bundle -o app [--target T] [--runner FILE] [--allow CAPS] main.tcl [file or folder ...]
-    \\  -o FILE           without .app: one program file with the app in it
+    \\  -o FILE           with .app: a macOS app folder (with --target, x86_64-macos or
+    \\                    aarch64-macos); without .app: one program file with the app in it
     \\  --target T        the target of one program file: x86_64-linux, aarch64-linux,
     \\                    x86_64-macos, aarch64-macos, x86_64-windows, aarch64-windows
     \\                    (default: this computer)
@@ -44,7 +48,8 @@ pub const usage =
     \\  --menu-bar-only    no Dock icon (LSUIElement), for an app with a tray
     \\  --runner FILE      the ztk program to copy (default: this program, or for one
     \\                    program file of another target lib/ztk/runtime/T/ next to it)
-    \\  --no-sign          on macOS, leave the app unsigned (default: an ad hoc signature)
+    \\  --no-sign          leave the app folder unsigned (default: an ad hoc signature
+    \\                    with the JIT entitlement, from codesign on macOS)
     \\
 ;
 
@@ -326,7 +331,7 @@ pub fn run(io: Io, a: std.mem.Allocator, args: []const [:0]const u8, err: *Io.Wr
     var menu_bar_only = false;
     var runner: ?[]const u8 = null;
     var target: ?[]const u8 = null;
-    var sign = @import("builtin").os.tag == .macos;
+    var sign = true;
     var files: std.ArrayList([]const u8) = .empty;
     var i: usize = 0;
     while (i < args.len) : (i += 1) {
@@ -351,17 +356,19 @@ pub fn run(io: Io, a: std.mem.Allocator, args: []const [:0]const u8, err: *Io.Wr
     const out_path = output orelse return usageError(err, "ztk bundle: needs -o Name.app\n", .{});
     if (files.items.len == 0) return usageError(err, "ztk bundle: needs a main script\n", .{});
     if (Capability.parse(allow) == null) return usageError(err, "ztk bundle: unknown capability in \"{s}\"\n", .{allow});
-    if (target != null or !std.mem.endsWith(u8, std.mem.trimEnd(u8, out_path, "/"), ".app")) {
-        return single(io, a, err, out_path, target orelse ztcl.buildnative.hostTarget(), runner, allow, files.items);
-    }
+    const is_app = std.mem.endsWith(u8, std.mem.trimEnd(u8, out_path, "/"), ".app");
+    if (!is_app) return single(io, a, err, out_path, target orelse ztcl.buildnative.hostTarget(), runner, allow, files.items);
+    if (target) |tg| if (!std.mem.endsWith(u8, tg, "-macos")) {
+        return usageError(err, "ztk bundle: a .app folder is for a macOS target. Leave out .app for one program file of {s}.\n", .{tg});
+    };
     const base = std.fs.path.basename(std.mem.trimEnd(u8, out_path, "/"));
     const app_name = name orelse (if (std.mem.endsWith(u8, base, ".app")) base[0 .. base.len - 4] else base);
     if (app_name.len == 0 or std.mem.indexOfAny(u8, app_name, "/\\") != null) return usageError(err, "ztk bundle: bad name \"{s}\"\n", .{app_name});
     const opts: Options = .{ .name = app_name, .id = id orelse try defaultId(a, app_name), .version = version, .menu_bar_only = menu_bar_only };
 
     // The program to copy: a macOS ztk.
-    const runner_path = runner orelse try std.process.executablePathAlloc(io, a);
     const cwd = Io.Dir.cwd();
+    const runner_path = if (target) |tg| try runtimePath(io, a, tg, "ztk", runner) else runner orelse try std.process.executablePathAlloc(io, a);
     const exe = cwd.readFileAlloc(io, runner_path, a, .limited(512 << 20)) catch |e| {
         try err.print("ztk bundle: {s}: {s}\n", .{ runner_path, @errorName(e) });
         return 1;
@@ -405,25 +412,55 @@ pub fn run(io: Io, a: std.mem.Allocator, args: []const [:0]const u8, err: *Io.Wr
     try app.writeFile(io, .{ .sub_path = "Contents/Info.plist", .data = try plist(a, opts, icon != null) });
     try app.writeFile(io, .{ .sub_path = "Contents/PkgInfo", .data = "APPL????" });
     // The program has the ad hoc signature of the linker, which expects a
-    // signed bundle around it. On macOS, an ad hoc signature of the whole
-    // app seals the resources. A host with no codesign leaves the app as
-    // it is: docs/macos-app.md has the steps for a signature.
-    if (sign) {
-        // The entitlement of the JIT, which MAP_JIT needs under a
-        // signature with the hardened runtime.
-        const ents_path = try std.fmt.allocPrint(a, "{s}.entitlements", .{out_path});
-        try cwd.writeFile(io, .{ .sub_path = ents_path, .data = entitlements });
-        defer cwd.deleteFile(io, ents_path) catch {};
-        const r = std.process.run(a, io, .{ .argv = &.{ "codesign", "--force", "--sign", "-", "--entitlements", ents_path, out_path } }) catch |e| {
-            try err.print("ztk bundle: codesign: {s}; the app is not signed\n", .{@errorName(e)});
-            return 0;
-        };
-        if (r.term != .exited or r.term.exited != 0) {
-            try err.print("ztk bundle: codesign failed: {s}", .{r.stderr});
+    // signed bundle around it. An ad hoc signature of the whole app seals
+    // the resources. macOS signs with codesign. The other hosts sign with
+    // `machosign.zig`, which writes the same parts.
+    if (!sign) return 0;
+    if (@import("builtin").os.tag != .macos) {
+        signApp(io, a, app, exe_path, exe, opts.id) catch |e| {
+            try err.print("ztk bundle: {s}: the signature: {s}\n", .{ runner_path, @errorName(e) });
             return 1;
-        }
+        };
+        return 0;
+    }
+    // The entitlement of the JIT, which MAP_JIT needs under a
+    // signature with the hardened runtime.
+    const ents_path = try std.fmt.allocPrint(a, "{s}.entitlements", .{out_path});
+    try cwd.writeFile(io, .{ .sub_path = ents_path, .data = entitlements });
+    defer cwd.deleteFile(io, ents_path) catch {};
+    const r = std.process.run(a, io, .{ .argv = &.{ "codesign", "--force", "--sign", "-", "--entitlements", ents_path, out_path } }) catch |e| {
+        try err.print("ztk bundle: codesign: {s}; the app is not signed\n", .{@errorName(e)});
+        return 0;
+    };
+    if (r.term != .exited or r.term.exited != 0) {
+        try err.print("ztk bundle: codesign failed: {s}", .{r.stderr});
+        return 1;
     }
     return 0;
+}
+
+/// Signs the app in `app` with `machosign`: writes
+/// `Contents/_CodeSignature/CodeResources` and the signed program.
+fn signApp(io: Io, a: std.mem.Allocator, app: Io.Dir, exe_path: []const u8, exe: []const u8, id: []const u8) !void {
+    var res: std.ArrayList(machosign.Resource) = .empty;
+    var contents = try app.openDir(io, "Contents", .{ .iterate = true });
+    defer contents.close(io);
+    var walker = try contents.walk(a);
+    defer walker.deinit();
+    const exe_rel = exe_path["Contents/".len..];
+    while (try walker.next(io)) |entry| {
+        if (entry.kind != .file) continue;
+        const rel = try std.mem.replaceOwned(u8, a, entry.path, "\\", "/");
+        if (std.mem.eql(u8, rel, exe_rel) or std.mem.eql(u8, rel, "Info.plist") or std.mem.eql(u8, rel, "PkgInfo")) continue;
+        if (std.mem.startsWith(u8, rel, "_CodeSignature/")) continue;
+        try res.append(a, .{ .path = rel, .data = try contents.readFileAlloc(io, entry.path, a, .limited(512 << 20)) });
+    }
+    const code_res = try machosign.codeResources(a, res.items);
+    try app.createDirPath(io, "Contents/_CodeSignature");
+    try app.writeFile(io, .{ .sub_path = "Contents/_CodeSignature/CodeResources", .data = code_res });
+    const info = try app.readFileAlloc(io, "Contents/Info.plist", a, .limited(1 << 20));
+    const signed = try machosign.sign(a, exe, .{ .ident = id, .info_plist = info, .code_resources = code_res, .entitlements = &.{"com.apple.security.cs.allow-jit"} });
+    try app.writeFile(io, .{ .sub_path = exe_path, .data = signed, .flags = .{ .permissions = exe_permissions } });
 }
 
 /// The entitlements plist of an app.
@@ -471,6 +508,17 @@ fn collect(io: Io, a: std.mem.Allocator, paths: []const []const u8) ![]appbin.Fi
     return out.items;
 }
 
+/// The ztk program of `target`: `runner`, else
+/// `lib/ztk/runtime/TARGET/FILE` next to this program, else this program
+/// for the target of this computer.
+fn runtimePath(io: Io, a: std.mem.Allocator, target: []const u8, file: []const u8, runner: ?[]const u8) ![]const u8 {
+    if (runner) |r| return r;
+    const shipped = try std.fs.path.join(a, &.{ try std.process.executableDirPathAlloc(io, a), "..", "lib", "ztk", "runtime", target, file });
+    if (Io.Dir.cwd().access(io, shipped, .{})) |_| return shipped else |_| {}
+    if (std.mem.eql(u8, target, ztcl.buildnative.hostTarget())) return std.process.executablePathAlloc(io, a);
+    return shipped;
+}
+
 /// Writes one program file: a copy of the ztk program of `target` with
 /// the app in its slot (`appbin.zig`).
 fn single(io: Io, a: std.mem.Allocator, err: *Io.Writer, out_path: []const u8, target: []const u8, runner: ?[]const u8, allow: []const u8, paths: []const []const u8) !u8 {
@@ -481,12 +529,7 @@ fn single(io: Io, a: std.mem.Allocator, err: *Io.Writer, out_path: []const u8, t
     };
     if (file == null) return usageError(err, "ztk bundle: unknown target \"{s}\"\n", .{target});
     const cwd = Io.Dir.cwd();
-    const rt_path = runner orelse blk: {
-        const shipped = try std.fs.path.join(a, &.{ try std.process.executableDirPathAlloc(io, a), "..", "lib", "ztk", "runtime", target, file.? });
-        if (cwd.access(io, shipped, .{})) |_| break :blk shipped else |_| {}
-        if (std.mem.eql(u8, target, bn.hostTarget())) break :blk try std.process.executablePathAlloc(io, a);
-        break :blk shipped;
-    };
+    const rt_path = try runtimePath(io, a, target, file.?, runner);
     const runtime = cwd.readFileAlloc(io, rt_path, a, .limited(512 << 20)) catch |e| {
         try err.print("ztk bundle: the ztk program of {s}: {s}: {s}. Give it with --runner.\n", .{ target, rt_path, @errorName(e) });
         return 1;
@@ -599,4 +642,8 @@ test "bundle: each file keeps its path relative to the main script" {
     // The folder of the main script as a folder argument: its files go in at the top.
     const three = try layout(io, a, &.{ p(a, base, "a/main.tcl"), p(a, base, "a") });
     try t.expectEqualStrings("", three[1]);
+}
+
+test {
+    _ = machosign;
 }

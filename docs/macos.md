@@ -35,10 +35,11 @@ The app has a copy of the ztk program, the scripts and the files in `Contents/Re
 | `--icon FILE.png` | The icon: a square 8-bit RGBA PNG, 1,024 pixels or less. |
 | `--allow CAPS` | The capabilities of the app, as for `ztk --allow`. The default is `file,channels`. |
 | `--menu-bar-only` | No Dock icon and no menu bar (`LSUIElement`), for an app that lives in a tray icon. |
+| `--target T` | `aarch64-macos` or `x86_64-macos`: the macOS ztk program to copy is `lib/ztk/runtime/T/ztk` next to the folder of `ztk`, or `--runner`. |
 | `--runner FILE` | The macOS ztk program to copy. The default is the program that runs the command. |
-| `--no-sign` | Leave the app unsigned. |
+| `--no-sign` | Leave the app unsigned. The default is an ad hoc signature with the entitlement `com.apple.security.cs.allow-jit`. |
 
-A bundle can come from Linux or Windows too: give a macOS ztk with `--runner`. Windows has no mode bits for files, so an app from Windows needs `chmod +x Name.app/Contents/MacOS/Name` on the Mac. On macOS, `ztk bundle` signs the app with an ad hoc signature. Run the app on the Mac that made it, or sign it as below before you give it to others.
+A bundle can come from Linux or Windows too: give `--target aarch64-macos` or a macOS ztk with `--runner`, for example `ztk bundle -o Notes.app --target aarch64-macos notes.tcl`. Windows has no mode bits for files, so an app from Windows needs `chmod +x Name.app/Contents/MacOS/Name` on the Mac. `ztk bundle` signs the app with an ad hoc signature: on macOS with `codesign`, and on Linux and Windows with its own signer, which writes `Contents/_CodeSignature/CodeResources` and the signature of the program. Run the app on the Mac that made it, or sign it as below before you give it to others.
 
 ## Sign and notarize an app
 

@@ -155,10 +155,18 @@ jobs:
           version: ${{ env.ZIG_VERSION }}
       - name: Build on Linux
         run: zig build -Dtarget=aarch64-macos -Doptimize=ReleaseFast -Dbackends=appkit,headless -Dvulkan=false -Dstrip=true
+      - name: Make a signed app on Linux
+        # The Linux ztk writes the app folder and its ad hoc signature (machosign.zig).
+        run: |
+          zig build -Dbackends=headless -Dvulkan=false -p linux
+          linux/bin/ztk bundle -o Demo.app --target aarch64-macos --runner zig-out/bin/ztk examples/demo.tcl examples/demo.css
+          tar cf zig-out/bin/Demo.app.tar Demo.app
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ztk-aarch64-macos-cross
-          path: zig-out/bin/ztk
+          path: |
+            zig-out/bin/ztk
+            zig-out/bin/Demo.app.tar
 
   cross-macos-window:
     name: Show a window of the cross build (macOS)
@@ -180,6 +188,12 @@ jobs:
           screencapture -x shots/screen.png || true
           wait $!
           test -s shots/snapshot.png
+      - name: Check the signature of the app from Linux
+        run: |
+          tar xf cross/Demo.app.tar
+          codesign --verify --deep --strict --verbose=2 Demo.app
+          codesign -d --entitlements - Demo.app | grep -q allow-jit
+          plutil -lint Demo.app/Contents/Info.plist
       - name: Draw frames of the demo with Metal
         # As in the native job: the run ends after 3 frames that AppKit and Metal presented.
         run: perl -e 'alarm 120; exec @ARGV' cross/ztk --exit-after-frames 3 examples/demo.tcl
