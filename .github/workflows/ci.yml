@@ -298,27 +298,37 @@ jobs:
           if "$ztk" --headless --allow nonsense f.tcl; then exit 1; fi
 
   cross:
-    name: Build (${{ matrix.target }})
+    name: Bundle (${{ matrix.target }})
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    # Pull requests and pushes build one macOS and one Windows target.
-    # The Test job builds the Linux program. The scheduled run builds all
-    # five targets.
+    # Builds the runtime of a target with `zig build runtimes`, bundles a
+    # script for it with the Linux ztk, and checks that the bundle has the
+    # full GUI backend of its platform (tests/bundle-backends.sh).
+    # Pull requests and pushes check one target of each platform. The
+    # scheduled run checks all six targets.
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '[{"target":"x86_64-linux-musl","backends":"wayland,direct,headless"},{"target":"aarch64-linux-musl","backends":"wayland,direct,headless"},{"target":"x86_64-macos","backends":"appkit,headless"},{"target":"aarch64-macos","backends":"appkit,headless"},{"target":"x86_64-windows","backends":"headless"}]' || '[{"target":"aarch64-macos","backends":"appkit,headless"},{"target":"x86_64-windows","backends":"headless"}]') }}
+        target: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '["x86_64-linux","aarch64-linux","x86_64-macos","aarch64-macos","x86_64-windows","aarch64-windows"]' || '["x86_64-linux","aarch64-macos","x86_64-windows"]') }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
         if: hashFiles('build.zig') != ''
         with:
           version: ${{ env.ZIG_VERSION }}
-      # The flags of tools/release-build.sh. The job only compiles and links.
-      - name: Build the program
+      # The Vulkan renderer of a Linux runtime needs glslc.
+      - name: Install the Linux build dependencies
+        if: hashFiles('build.zig') != '' && endsWith(matrix.target, '-linux')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y glslc
+      - name: Build the runtime and a Linux ztk
         if: hashFiles('build.zig') != ''
-        run: zig build -Dtarget=${{ matrix.target }} -Doptimize=ReleaseFast -Dbackends=${{ matrix.backends }} -Dvulkan=false -Dstrip=true
+        run: zig build install runtimes -Dbackends=headless -Dvulkan=false -Druntime-targets=${{ matrix.target }}
+      - name: Check the backends of the bundles
+        if: hashFiles('build.zig') != ''
+        run: sh tests/bundle-backends.sh zig-out/bin/ztk ${{ matrix.target }}
 
   wasm:
     name: WebAssembly

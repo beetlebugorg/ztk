@@ -23,6 +23,9 @@ mkdir -p "$dist"
 options=$(zig build -h)
 
 # Prints the build flags for a target, if the build has the options.
+# Each program has the full GUI backend of its platform, the default of
+# the build: Wayland, X11, the direct backend, and Vulkan on Linux, and
+# AppKit and Metal on macOS.
 flags() {
     case "$1" in
         *linux*) backends=wayland,direct,headless ;;
@@ -30,7 +33,6 @@ flags() {
         *) backends=headless ;;
     esac
     case "$options" in *-Dbackends*) printf ' -Dbackends=%s' "$backends" ;; esac
-    case "$options" in *-Dvulkan*) printf ' -Dvulkan=false' ;; esac
     # Debug sections have the paths of the build machine.
     case "$options" in *-Dstrip*) printf ' -Dstrip=true' ;; esac
 }

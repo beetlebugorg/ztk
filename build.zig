@@ -38,38 +38,57 @@ fn vulkanC(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builti
     return tc.createModule();
 }
 
-pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
-    const filter = b.option([]const u8, "test-filter", "Run only the tests whose name has this text");
+/// The backends of one build of the ztk module, and the Vulkan renderer.
+const Config = struct { backends: []const u8, vulkan: bool };
 
-    const ztcl_dep = b.dependency("ztcl", .{ .target = target, .optimize = optimize });
-    const ztcl = ztcl_dep.module("ztcl");
+/// The full GUI backend of each platform: Wayland, X11, and the direct
+/// backend with Vulkan on Linux, AppKit with Metal on macOS, and Win32
+/// with Direct3D 12 on Windows. The Win32 backend has no flag: each
+/// Windows build has it.
+fn fullConfig(t: std.Target) Config {
+    return switch (t.os.tag) {
+        .linux => .{ .backends = "wayland,direct,headless", .vulkan = true },
+        .macos => .{ .backends = "appkit,headless", .vulkan = false },
+        else => .{ .backends = "headless", .vulkan = false },
+    };
+}
 
-    // The Wayland, direct, and Vulkan code exists for Linux only.
+/// The SPIR-V files of the Vulkan renderer. They are the same for each target.
+const Shaders = struct { vert: std.Build.LazyPath, frag: std.Build.LazyPath };
+
+/// The ztk module of one target and one configuration, with its ztcl.
+const Built = struct {
+    ztcl: *std.Build.Module,
+    ztk: *std.Build.Module,
+    libc: bool,
+    use_llvm: bool,
+    use_lld: bool,
+};
+
+/// `public`: other packages import the module as "ztk".
+fn addZtk(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, cfg: Config, shaders: Shaders, public: bool) Built {
+    const ztcl = b.dependency("ztcl", .{ .target = target, .optimize = optimize }).module("ztcl");
     const is_linux = target.result.os.tag == .linux;
     const is_macos = target.result.os.tag == .macos;
-    const backends = b.option([]const u8, "backends", "The backends to build, separated by commas: wayland, direct, appkit, headless (default: wayland, direct, and headless on Linux, appkit and headless on macOS, headless elsewhere)") orelse
-        if (is_linux) "wayland,direct,headless" else if (is_macos) "appkit,headless" else "headless";
-    const wayland_on = std.mem.indexOf(u8, backends, "wayland") != null;
+    // The Wayland and X11 code exists for Linux only.
+    const wayland_on = is_linux and std.mem.indexOf(u8, cfg.backends, "wayland") != null;
     // The AppKit backend links the frameworks through the text stubs in
     // `src/sys/macos-stubs`, so a build on each host has it.
-    const appkit_on = is_macos and std.mem.indexOf(u8, backends, "appkit") != null;
-    const vulkan_on = b.option(bool, "vulkan", "Build the Vulkan renderer (default: true on Linux)") orelse is_linux;
-    const strip = b.option(bool, "strip", "Remove the debug sections from the program");
+    const appkit_on = is_macos and std.mem.indexOf(u8, cfg.backends, "appkit") != null;
+    const vulkan_on = cfg.vulkan;
     const opts = b.addOptions();
     opts.addOptionPathUntracked("repo_root", b.path("."));
     opts.addOption(bool, "vulkan", vulkan_on);
     opts.addOption(bool, "wayland", wayland_on);
     opts.addOption(bool, "appkit", appkit_on);
 
-    const ztk = b.addModule("ztk", .{
+    const mod_opts: std.Build.Module.CreateOptions = .{
         .root_source_file = b.path("src/ztk.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{.{ .name = "ztcl", .module = ztcl }},
-    });
-
+    };
+    const ztk = if (public) b.addModule("ztk", mod_opts) else b.createModule(mod_opts);
     ztk.addOptions("build_options", opts);
     if (vulkan_on) {
         // The Vulkan loader opens at run time. The headers come from a pinned package, and the
@@ -78,8 +97,8 @@ pub fn build(b: *std.Build) void {
         ztk.addIncludePath(b.dependency("vulkan_headers", .{}).path("include"));
         ztk.addImport("vulkan_c", vulkanC(b, target, optimize));
         addElfShim(b, ztk, target);
-        ztk.addAnonymousImport("quad_vert_spv", .{ .root_source_file = shader(b, "vertex", "src/render/shaders/quad.vert", "quad.vert.spv") });
-        ztk.addAnonymousImport("quad_frag_spv", .{ .root_source_file = shader(b, "fragment", "src/render/shaders/quad.frag", "quad.frag.spv") });
+        ztk.addAnonymousImport("quad_vert_spv", .{ .root_source_file = shaders.vert });
+        ztk.addAnonymousImport("quad_frag_spv", .{ .root_source_file = shaders.frag });
     }
     if (appkit_on) {
         ztk.link_libc = true;
@@ -100,24 +119,79 @@ pub fn build(b: *std.Build) void {
     const libc_on = vulkan_on or appkit_on;
     // The self-hosted backend covers x86-64 Linux. Each other target uses LLVM.
     const use_llvm = libc_on or !is_linux or target.result.cpu.arch != .x86_64;
-    // Zig links Mach-O files with its own linker.
-    const use_lld = use_llvm and target.result.ofmt != .macho;
+    return .{
+        .ztcl = ztcl,
+        .ztk = ztk,
+        .libc = libc_on,
+        .use_llvm = use_llvm,
+        // Zig links Mach-O files with its own linker.
+        .use_lld = use_llvm and target.result.ofmt != .macho,
+    };
+}
 
-    const exe = b.addExecutable(.{ .name = "ztk", .use_llvm = use_llvm, .use_lld = use_lld, .root_module = b.createModule(.{
+/// The `ztk` program of one target.
+fn addProgram(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, cfg: Config, strip: ?bool, shaders: Shaders) *std.Build.Step.Compile {
+    const m = addZtk(b, target, optimize, cfg, shaders, false);
+    const exe = b.addExecutable(.{ .name = "ztk", .use_llvm = m.use_llvm, .use_lld = m.use_lld, .root_module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
         .strip = strip,
-        .link_libc = libc_on,
+        .link_libc = m.libc,
         .imports = &.{
-            .{ .name = "ztcl", .module = ztcl },
-            .{ .name = "ztk", .module = ztk },
+            .{ .name = "ztcl", .module = m.ztcl },
+            .{ .name = "ztk", .module = m.ztk },
         },
     }) });
     // Space after the load commands, for the code signature that
     // `ztk bundle --target` adds to a Mach-O file.
-    if (is_macos) exe.headerpad_size = 0x1000;
+    if (target.result.os.tag == .macos) exe.headerpad_size = 0x1000;
+    return exe;
+}
+
+/// The targets of `ztk bundle --target`, and of `zig build runtimes`.
+const runtime_targets = [_][]const u8{ "x86_64-linux", "aarch64-linux", "x86_64-macos", "aarch64-macos", "x86_64-windows", "aarch64-windows" };
+
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+    const filter = b.option([]const u8, "test-filter", "Run only the tests whose name has this text");
+    const full = fullConfig(target.result);
+    const backends = b.option([]const u8, "backends", "The backends to build, separated by commas: wayland, direct, appkit, headless (default: wayland, direct, and headless on Linux, appkit and headless on macOS, headless elsewhere)") orelse full.backends;
+    const vulkan_on = b.option(bool, "vulkan", "Build the Vulkan renderer (default: true on Linux)") orelse full.vulkan;
+    const strip = b.option(bool, "strip", "Remove the debug sections from the program");
+    const cfg: Config = .{ .backends = backends, .vulkan = vulkan_on };
+    const shaders: Shaders = .{
+        .vert = shader(b, "vertex", "src/render/shaders/quad.vert", "quad.vert.spv"),
+        .frag = shader(b, "fragment", "src/render/shaders/quad.frag", "quad.frag.spv"),
+    };
+
+    const main_ztk = addZtk(b, target, optimize, cfg, shaders, true);
+    const ztk = main_ztk.ztk;
+
+    const exe = addProgram(b, target, optimize, cfg, strip, shaders);
     b.installArtifact(exe);
+
+    // `zig build runtimes`: the ztk program of each target of
+    // `ztk bundle --target`, with the full GUI backend of its platform, in
+    // ReleaseFast and stripped, in lib/ztk/runtime/TARGET/. `ztk bundle`
+    // finds it there next to bin/ztk. `-Druntime-targets` builds a part of
+    // the list.
+    const runtimes = b.step("runtimes", "Build the ztk program of each target of ztk bundle into lib/ztk/runtime");
+    const rt_only = b.option([]const u8, "runtime-targets", "The targets of zig build runtimes, separated by commas (default: all six)");
+    for (runtime_targets) |name| {
+        if (rt_only) |list| {
+            var it = std.mem.splitScalar(u8, list, ',');
+            const found = while (it.next()) |t| {
+                if (std.mem.eql(u8, t, name)) break true;
+            } else false;
+            if (!found) continue;
+        }
+        const rt = b.resolveTargetQuery(std.Target.Query.parse(.{ .arch_os_abi = name }) catch unreachable);
+        const rexe = addProgram(b, rt, .ReleaseFast, fullConfig(rt.result), true, shaders);
+        const inst = b.addInstallArtifact(rexe, .{ .dest_dir = .{ .override = .{ .custom = b.fmt("lib/ztk/runtime/{s}", .{name}) } } });
+        runtimes.dependOn(&inst.step);
+    }
 
     // The WebAssembly build for the browser: the core, the headless backend, and src/web.zig.
     {
@@ -152,39 +226,21 @@ pub fn build(b: *std.Build) void {
     b.step("run", "Run a script: zig build run -- script.tcl").dependOn(&run.step);
 
     // The benchmark builds in ReleaseFast, whatever the optimize option is.
-    const bench_ztcl = b.dependency("ztcl", .{ .target = target, .optimize = .fast }).module("ztcl");
-    const bench_ztk = b.createModule(.{
-        .root_source_file = b.path("src/ztk.zig"),
-        .target = target,
-        .optimize = .fast,
-        .imports = &.{.{ .name = "ztcl", .module = bench_ztcl }},
-    });
-    bench_ztk.addOptions("build_options", opts);
-    bench_ztk.addAnonymousImport("inter_regular", .{ .root_source_file = b.path("assets/fonts/Inter-Regular.ttf") });
-    bench_ztk.addAnonymousImport("inter_bold", .{ .root_source_file = b.path("assets/fonts/Inter-Bold.ttf") });
-    bench_ztk.addAnonymousImport("mono_regular", .{ .root_source_file = b.path("assets/fonts/JetBrainsMono-Regular.ttf") });
-    if (vulkan_on) {
-        bench_ztk.link_libc = true;
-        bench_ztk.addIncludePath(b.dependency("vulkan_headers", .{}).path("include"));
-        bench_ztk.addImport("vulkan_c", vulkanC(b, target, .fast));
-        addElfShim(b, bench_ztk, target);
-        bench_ztk.addAnonymousImport("quad_vert_spv", .{ .root_source_file = shader(b, "vertex", "src/render/shaders/quad.vert", "quad.vert.spv") });
-        bench_ztk.addAnonymousImport("quad_frag_spv", .{ .root_source_file = shader(b, "fragment", "src/render/shaders/quad.frag", "quad.frag.spv") });
-    }
-    const bench = b.addExecutable(.{ .name = "ztk-bench", .use_llvm = use_llvm, .use_lld = use_lld, .root_module = b.createModule(.{
+    const bench_m = addZtk(b, target, .fast, cfg, shaders, false);
+    const bench = b.addExecutable(.{ .name = "ztk-bench", .use_llvm = bench_m.use_llvm, .use_lld = bench_m.use_lld, .root_module = b.createModule(.{
         .root_source_file = b.path("bench/bench.zig"),
         .target = target,
         .optimize = .fast,
-        .link_libc = libc_on,
+        .link_libc = bench_m.libc,
         .imports = &.{
-            .{ .name = "ztcl", .module = bench_ztcl },
-            .{ .name = "ztk", .module = bench_ztk },
+            .{ .name = "ztcl", .module = bench_m.ztcl },
+            .{ .name = "ztk", .module = bench_m.ztk },
         },
     }) });
     // `zig build native-ref -- OUTDIR`: the reference renders and measures
     // of AppKit controls for the native look of macOS (ztk#154).
     if (target.result.os.tag == .macos) {
-        const ref = b.addExecutable(.{ .name = "native-ref", .use_llvm = use_llvm, .use_lld = use_lld, .root_module = b.createModule(.{
+        const ref = b.addExecutable(.{ .name = "native-ref", .use_llvm = main_ztk.use_llvm, .use_lld = main_ztk.use_lld, .root_module = b.createModule(.{
             .root_source_file = b.path("tools/native-ref/macos/main.zig"),
             .target = target,
             .optimize = optimize,
@@ -210,8 +266,8 @@ pub fn build(b: *std.Build) void {
     b.step("test-pointer", "Build the virtual pointer of the Wayland drag test").dependOn(&b.addInstallArtifact(test_pointer, .{}).step);
 
     const tests = b.addTest(.{
-        .use_llvm = use_llvm,
-        .use_lld = use_lld,
+        .use_llvm = main_ztk.use_llvm,
+        .use_lld = main_ztk.use_lld,
         .root_module = ztk,
         .filters = if (filter) |f| &.{f} else &.{},
     });

@@ -36,6 +36,8 @@ systemd-run --user --scope -q -p MemoryMax=4G -p MemorySwapMax=0 -- <command>
 | `zig-out/bin/ztk [flags] script.tcl` | Runs a script. See `ztk --version` and the flags in `docs/dev/tasks/17-wayland.md`. |
 | `ZTK_HEADLESS=1 ./app` | Runs a bundled app (`ztk bundle`) or `ztk` with the headless backend. A bundled app reads no flag. |
 | `tests/bundle-headless.sh [ztk]` | Bundles a script into one program file and runs it with `ZTK_HEADLESS=1` and no display. |
+| `zig build runtimes` | Builds the `ztk` program of each target of `ztk bundle --target` into `zig-out/lib/ztk/runtime/TARGET/`, with the full GUI backend of each platform. `-Druntime-targets=a,b` builds a part of them. |
+| `tests/bundle-backends.sh [ztk] [target ...]` | Bundles a script for each target in `zig-out/lib/ztk/runtime` and checks that each program file has the full GUI backend of its platform. |
 | `zig build test -Dtarget=x86_64-linux-musl -Dtest-filter=vulkan` | Runs the Vulkan tests in a static program, which opens the Vulkan loader and the driver with `src/sys/elf/loader.zig` (docs/dev/elf-loader.md). `-Dtest-filter=elf` runs the tests of the loader. |
 | `tests/static-vulkan.sh` | Runs the same tests with `VK_LOADER_DEBUG=error,warn`. After 600 seconds it prints the stack of each thread with gdb and stops the run. |
 | `tests/wayland-smoke.sh` | Runs `ztk` on a private headless compositor. |
