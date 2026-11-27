@@ -83,3 +83,20 @@ On Linux, `--desktop` also writes a desktop entry and an icon next to the progra
 With `--target` and an output name that ends in `.app`, the target is `aarch64-macos` or `x86_64-macos`, and `ztk bundle` writes a macOS app folder (see [macOS](macos.md#make-an-app)).
 
 The default target is the computer that runs `ztk bundle`, with the `ztk` program itself as the copy. For another target, give the `ztk` program of that target with `--runner`, or put it in `lib/ztk/runtime/TARGET/` next to the folder of `ztk`. `zig build runtimes` builds the program of each target into `zig-out/lib/ztk/runtime/`, so `zig-out/bin/ztk bundle --target T` finds it. Each one has the full GUI backend of its platform: Wayland, X11, the direct backend, and Vulkan on Linux (a static program), AppKit and Metal on macOS, and Win32 and Direct3D 12 on Windows. `-Druntime-targets=x86_64-linux,aarch64-macos` builds a part of them. The targets are `x86_64-linux`, `aarch64-linux`, `x86_64-macos`, `aarch64-macos`, `x86_64-windows`, and `aarch64-windows`. A macOS file gets an ad hoc signature. The form of the file is the form of `ztcl build` of ztcl.
+
+## A smaller app
+
+`ztk bundle --strip` writes one program file with a ztk program that has only the parts the scripts use. It is the strip mode of `ztcl build` ([Strip a program](https://github.com/beetlebugorg/ztcl/blob/main/docs/strip.md)) with the widget classes of ztk as features too: `text`, `terminal`, `canvas`, `treeview`, and `notebook`. The build scans the scripts, maps each command and `package require` to a feature, and runs `zig build runtimes -Ddrop=...` in the source folder of ztk, into a cache folder.
+
+```sh
+ztk bundle --strip --trust-scan -o notes notes.tcl lib/
+```
+
+- The source folder is `--src DIR`, or the folder of `ZTK_SRC`, or the folder two levels above the `ztk` program. Zig is `ZIG` or `zig` on the `PATH`.
+- A Tk program calls each widget through its path, such as `$w configure`, so the scan finds computed command names in most programs. By default each such site keeps every widget class and command group. `--trust-scan` keeps a class only when a literal word of the scripts names it, such as `canvas` or `ttk::treeview`.
+- `--keep LIST`, `--drop-module LIST`, `--check`, `--test FILE`, and `--profile` work as in `ztcl build`. The manifest is `ztk-strip.txt` in the current folder.
+- A call of a widget class that the build left out gives the error `command "canvas" is not in this build`, with the flag that keeps it.
+- The strip mode writes one program file: an output name with no `.app`.
+
+On x86-64 Linux, the full ztk program is 11,224,360 bytes. With `--strip --trust-scan`, the counter example (`examples/counter.tcl`) is 7,337,022 bytes, and 11,225,390 bytes with the full program. The gallery (`examples/gallery.tcl`) is 7,902,337 bytes, and 11,237,105 bytes with the full program: it keeps `text`, `canvas`, `treeview`, and `notebook`. A test of the counter (the window, one `update`, a click, and `exit`, with `ZTK_HEADLESS=1`) starts in 16.6 ms stripped and in 19.5 ms with the full program, as the mean of 50 runs.
+

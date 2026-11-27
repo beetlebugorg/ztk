@@ -20,11 +20,13 @@ const dispatch = @import("dispatch.zig");
 const focus = @import("focus.zig");
 const geom = @import("geom.zig");
 const options = @import("options.zig");
+const features = @import("features.zig");
 const App = app_mod.App;
 const Value = ztcl.Value;
 
 pub fn register(app: *App) !void {
     const it = app.it;
+    features.install();
     _ = try it.eval("namespace eval ::ztk::priv {}");
     it.user = app;
     try @import("filedialog.zig").register(app);
@@ -77,9 +79,9 @@ pub fn register(app: *App) !void {
     try @import("widgets/scale.zig").register(app);
     try @import("widgets/scrollbar.zig").register(app);
     try @import("widgets/listbox.zig").register(app);
-    try @import("widgets/text.zig").register(app);
+    if (comptime features.on("text")) try @import("widgets/text.zig").register(app);
     try @import("widgets/paned.zig").register(app);
-    try @import("term/widget.zig").register(app);
+    if (comptime features.on("terminal")) try @import("term/widget.zig").register(app);
     try @import("widgets/menu.zig").register(app);
     try @import("widgets/menubutton.zig").register(app);
     try entry.register(app);
@@ -87,13 +89,15 @@ pub fn register(app: *App) !void {
     try @import("ttk/widgets.zig").register(app);
     try @import("ttk/range.zig").register(app);
     try @import("ttk/combobox.zig").register(app);
-    try @import("ttk/notebook.zig").register(app);
-    try @import("ttk/treeview.zig").register(app);
+    if (comptime features.on("notebook")) try @import("ttk/notebook.zig").register(app);
+    if (comptime features.on("treeview")) try @import("ttk/treeview.zig").register(app);
     try it.register("font", @import("fontcmd.zig").cmdFont);
     try it.register("option", @import("optiondb.zig").cmdOption);
     try @import("fontcmd.zig").init(app);
     try it.register("clipboard", @import("clipboard.zig").command);
-    try @import("canvas/canvas.zig").register(app);
+    if (comptime features.on("canvas")) {
+        try @import("canvas/canvas.zig").register(app);
+    } else try it.register("image", @import("image.zig").cmdImage);
     try it.register("tk", wm.cmdTk);
     app.root = try widget.makeNode(app, &toplevel.root_class, ".", null);
     try toplevel.register(app);
