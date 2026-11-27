@@ -742,7 +742,7 @@ fn cmdTrace(it: *ztcl.Interp, app: *App, args: []const Value) ztcl.Error!Value {
             if (k + 1 >= args.len) return it.wrongArgs(trace_usage);
             const opt = try it.str(args[k]);
             if (std.mem.eql(u8, opt, "-kinds")) {
-                const items = try it.readList(args[k + 1]);
+                const items = try it.list(args[k + 1]);
                 const names = try a.alloc([]const u8, items.len);
                 for (items, names) |v, *n| n.* = try it.str(v);
                 mask = trace_mod.maskOf(names) orelse return it.fail("bad kind in \"{s}\": must be {s}, or all", .{ try it.str(args[k + 1]), trace_mod.kind_names });
@@ -809,7 +809,7 @@ pub fn parseFilter(it: *ztcl.Interp, args: []const Value) ztcl.Error!Filter {
         const opt = try it.str(args[k]);
         const v = args[k + 1];
         if (std.mem.eql(u8, opt, "-kind")) {
-            const items = try it.readList(v);
+            const items = try it.list(v);
             const names = try it.alloc().alloc([]const u8, items.len);
             for (items, names) |x, *n| n.* = try it.str(x);
             f.kinds = trace_mod.maskOf(names) orelse return it.fail("bad kind in \"{s}\": must be {s}, or all", .{ try it.str(v), trace_mod.kind_names });
