@@ -1,0 +1,12 @@
+--- !tapi-tbd
+# A text stub for the Zig linker, written for ztk: the install name and the
+# symbols that ztk uses, so that a macOS program links on any host.
+# SPDX-License-Identifier: BSD-2-Clause
+tbd-version:     4
+targets:         [ x86_64-macos, arm64-macos, arm64e-macos ]
+install-name:    '/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit'
+current-version: 1
+exports:
+  - targets:     [ x86_64-macos, arm64-macos, arm64e-macos ]
+    symbols:     [ _NSAppearanceNameAqua, _NSAppearanceNameDarkAqua, _NSModalPanelRunLoopMode, _NSPasteboardTypeString, _NSSystemColorsDidChangeNotification ]
+...

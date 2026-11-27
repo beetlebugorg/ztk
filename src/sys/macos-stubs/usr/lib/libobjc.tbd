@@ -1,0 +1,12 @@
+--- !tapi-tbd
+# A text stub for the Zig linker, written for ztk: the install name and the
+# symbols that ztk uses, so that a macOS program links on any host.
+# SPDX-License-Identifier: BSD-2-Clause
+tbd-version:     4
+targets:         [ x86_64-macos, arm64-macos, arm64e-macos ]
+install-name:    '/usr/lib/libobjc.A.dylib'
+current-version: 1
+exports:
+  - targets:     [ x86_64-macos, arm64-macos, arm64e-macos ]
+    symbols:     [ _class_addIvar, _class_addMethod, _class_addProtocol, _class_getInstanceVariable, _ivar_getOffset, _objc_allocateClassPair, _objc_autoreleasePoolPop, _objc_autoreleasePoolPush, _objc_disposeClassPair, _objc_getClass, _objc_getProtocol, _objc_msgSend, _objc_msgSend_stret, _objc_registerClassPair, _object_getClass, _sel_registerName ]
+...

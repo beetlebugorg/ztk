@@ -139,6 +139,53 @@ jobs:
           out=$(perl -e 'alarm 60; exec @ARGV' "$RUNNER_TEMP/Hello.app/Contents/MacOS/Hello" --allow exec)
           test "$out" = "args: --allow exec"
 
+  cross-macos-run:
+    # A macOS ztk from Linux, with the AppKit backend linked through the
+    # text stubs, opens a window on the macOS runner.
+    name: Cross-build for macOS
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+      - name: Build on Linux
+        run: zig build -Dtarget=aarch64-macos -Doptimize=ReleaseFast -Dbackends=appkit,headless -Dvulkan=false -Dstrip=true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ztk-aarch64-macos-cross
+          path: zig-out/bin/ztk
+
+  cross-macos-window:
+    name: Show a window of the cross build (macOS)
+    needs: cross-macos-run
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ztk-aarch64-macos-cross
+          path: cross
+      - name: Open a window and take a snapshot
+        run: |
+          chmod +x cross/ztk
+          mkdir -p shots
+          perl -e 'alarm 120; exec @ARGV' cross/ztk tests/window-shot.tcl shots/snapshot.png 8000 &
+          sleep 5
+          screencapture -x shots/screen.png || true
+          wait $!
+          test -s shots/snapshot.png
+      - name: Draw frames of the demo with Metal
+        # As in the native job: the run ends after 3 frames that AppKit and Metal presented.
+        run: perl -e 'alarm 120; exec @ARGV' cross/ztk --exit-after-frames 3 examples/demo.tcl
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: cross-macos-window
+          path: shots
+
   test-windows:
     # The core and the headless backend on Windows, as on macOS.
     name: Test (Windows)
@@ -192,8 +239,8 @@ jobs:
         include:
           - { target: x86_64-linux-musl, backends: "direct,headless" }
           - { target: aarch64-linux-musl, backends: "direct,headless" }
-          - { target: x86_64-macos, backends: headless }
-          - { target: aarch64-macos, backends: headless }
+          - { target: x86_64-macos, backends: "appkit,headless" }
+          - { target: aarch64-macos, backends: "appkit,headless" }
           - { target: x86_64-windows, backends: headless }
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -234,7 +281,7 @@ jobs:
   report:
     name: Report a failure of the full run
     if: failure() && github.event_name == 'schedule'
-    needs: [check, docs, test, test-macos, test-windows, cross, wasm]
+    needs: [check, docs, test, test-macos, cross-macos-window, test-windows, cross, wasm]
     runs-on: ubuntu-latest
     permissions:
       issues: write
