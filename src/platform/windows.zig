@@ -48,6 +48,7 @@ const wintray = @import("wintray.zig");
 const dwrite = @import("dwrite.zig");
 const windrop = @import("windrop.zig");
 const windialog = @import("windialog.zig");
+const winbox = @import("winbox.zig");
 const wintaskbar = @import("wintaskbar.zig");
 const winrecent = @import("winrecent.zig");
 const winhotkey = @import("winhotkey.zig");
@@ -213,6 +214,8 @@ pub const Win32 = struct {
         .textSystem = vTextSystem,
         .dropTypes = vDropTypes,
         .fileDialog = vFileDialog,
+        .colorDialog = vColorDialog,
+        .messageBox = vMessageBox,
         .taskbarSet = vTaskbarSet,
         .attention = vAttention,
         .recentAdd = vRecentAdd,
@@ -665,6 +668,18 @@ pub const Win32 = struct {
         var d = windialog.configure(gpa, opts) catch return null;
         defer d.deinit();
         return windialog.show(&d, gpa, owner);
+    }
+
+    fn vColorDialog(ptr: *anyopaque, gpa: std.mem.Allocator, opts: *const plat.ColorDialog) ?geom.Color {
+        const b = self(ptr);
+        const owner: ?w32.HWND = if (opts.parent) |p| (if (b.recOf(p)) |r| r.hwnd else null) else null;
+        return winbox.chooseColor(gpa, opts, owner);
+    }
+
+    fn vMessageBox(ptr: *anyopaque, opts: *const plat.MessageBox) ?plat.MessageBox.Button {
+        const b = self(ptr);
+        const owner: ?w32.HWND = if (opts.parent) |p| (if (b.recOf(p)) |r| r.hwnd else null) else null;
+        return winbox.messageBox(b.gpa, opts, owner);
     }
 
     // ---- Appearance ----

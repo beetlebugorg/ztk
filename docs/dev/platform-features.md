@@ -45,7 +45,7 @@ The features of ztk go through `Platform.VTable`, as the menus do: optional entr
 
 - `fileDialog(opts) ?[][]u8`: a modal dialog with a kind (`open`, `save`, `folder`), the parent window, the title, the first folder and the first file, the filters of `-filetypes`, the default extension, and multiple selection. It returns the paths in UTF-8, or null for Cancel. The core maps the options and the result of `tk_getOpenFile`, `tk_getSaveFile`, and `tk_chooseDirectory` onto it, as the manual pages give them.
   The call is synchronous on each platform. With a parent window, macOS begins a sheet and runs a modal loop until the completion handler of the sheet, so `tk_getOpenFile` keeps its result as in Tk.
-- `colorDialog(parent, title, initial) ?Color` for `tk_chooseColor`. A font dialog follows when ztk has a `tk fontchooser`.
+- `colorDialog(opts) ?Color` for `tk_chooseColor`: the parent window, the title, and the first color. Windows has it (`ChooseColorW`). A font dialog follows when ztk has a `tk fontchooser`.
 - A backend without the entry gets the dialogs that the core draws, from task 17 of the widget stage.
 
 **Bundles (ztk#56, ztk#59, ztk#60).** `ztk bundle` writes a program with the scripts and the style sheets inside it, from any host, as ztcl#40 asks for ztcl. On Windows the bundle is one `.exe` with its resources written by ztk in Zig: the icon, a manifest with the per-monitor DPI awareness and the common controls, and the version info. The build needs no resource compiler, so a build on Linux or macOS works.

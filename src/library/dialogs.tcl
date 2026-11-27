@@ -190,6 +190,9 @@ proc tk_chooseColor {args} {
         set rgb {}
         foreach v $c { lappend rgb [expr {$v / 257}] }
     }
+    if {[info commands ::ztk::priv::nativecolor] ne ""} {
+        return [::ztk::priv::nativecolor ${-title} {*}$rgb ${-parent}]
+    }
     set w [::ztk::dialog::ColorBox ${-parent} ${-title} $rgb]
     return [::ztk::dialog::Wait $w $w.bot.ok]
 }

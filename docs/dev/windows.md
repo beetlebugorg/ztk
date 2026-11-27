@@ -95,6 +95,15 @@ The backend fills the native menus of [menus.md](menus.md) with `src/platform/wi
 - `Show` with the window of `-parent` (or `.`) as the owner runs the dialog to its end. The paths of `SIGDN_FILESYSPATH` come back with `/` between the parts, as Tk gives them. A cancel gives an empty string.
 - The test of the backend configures each kind of dialog and reads its options back with no `Show`, so no dialog opens on the desktop.
 
+## The color dialog and the message box
+
+`tk_chooseColor` and `tk_messageBox` run the dialogs of Windows with `src/platform/winbox.zig`:
+
+- `ChooseColorW` of comdlg32, with `CC_RGBINIT` for `-initialcolor`, `CC_FULLOPEN`, and `CC_ANYCOLOR`. The structure has no title, so a hook sets the title of `-title` in `WM_INITDIALOG`. The 16 custom colors stay for the life of the process. A cancel gives an empty string.
+- `MessageBoxW` with the buttons of `-type`, the icon of `-icon`, and the default button of `-default` by its place in the type. The text is `-message`, then `-detail` after an empty line. A box with no owner window is modal to the thread (`MB_TASKMODAL`). Escape and the Close button give `cancel`, or `ok` for the type `ok`. The types `yesno` and `abortretryignore` have no Close button there, and Escape does no work, where the box that ztk draws gives `no` or `abort`.
+- `MessageBoxW` needs no manifest. `TaskDialogIndirect` gives the detail a line of its own, and needs version 6 of the common controls, which only a bundled app has (`src/peres.zig`).
+- The tests map the options onto the structures with no call, so no dialog opens on the desktop.
+
 ## CI
 
 A `test-windows` job on `windows-latest` runs `zig build`, `zig build test`, and the headless script of the Linux job. From PR 3 on, the Direct3D 12 tests run on the WARP adapter of the runner, or print `SKIP:` with the reason.

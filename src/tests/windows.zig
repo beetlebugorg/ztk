@@ -600,6 +600,41 @@ test "windows: a tray icon in the notification area, its actions, and its menu" 
     try t.expect(has(events.items, .tray).?.tray.action == .menu);
 }
 
+test "windows: the color dialog and the message box of Windows get their options" {
+    if (!enabled()) return;
+    const box = @import("../platform/winbox.zig");
+    const plat_ = @import("../platform/platform.zig");
+    const title = std.unicode.utf8ToUtf16LeStringLiteral("Pick");
+    const c = box.colorConfig(&.{ .title = "Pick", .initial = .{ .r = 0x10, .g = 0x20, .b = 0x30 } }, null, title);
+    try t.expectEqual(@as(u32, 72), c.lStructSize);
+    try t.expectEqual(@as(u32, 0x302010), c.rgbResult);
+    try t.expect(c.Flags & box.cc.rgb_init != 0 and c.Flags & box.cc.enable_hook != 0);
+    try t.expect(c.lpfnHook != null);
+    const back = box.colorOf(0x302010);
+    try t.expectEqual(@as(u8, 0x10), back.r);
+    try t.expectEqual(@as(u8, 0x30), back.b);
+
+    // yesnocancel with the default no: the second button, and modal to the
+    // thread with no owner.
+    const q: plat_.MessageBox = .{ .buttons = .yesnocancel, .icon = .question, .default = .no, .message = "Save?", .detail = "It changed." };
+    try t.expectEqual(box.mb.yesnocancel | box.mb.icon_question | box.mb.default_button2 | box.mb.task_modal | box.mb.set_foreground, box.boxFlags(&q, false));
+    // A default that is not a button of the type gives the first.
+    const e: plat_.MessageBox = .{ .buttons = .retrycancel, .icon = .@"error", .default = .yes };
+    try t.expectEqual(box.mb.retrycancel | box.mb.icon_error, box.boxFlags(&e, true));
+    try t.expectEqual(plat_.MessageBox.Button.no, box.buttonOf(7).?);
+    try t.expectEqual(plat_.MessageBox.Button.cancel, box.buttonOf(2).?);
+    try t.expect(box.buttonOf(0) == null);
+    const text = try box.boxText(t.allocator, &q);
+    defer t.allocator.free(text);
+    try t.expectEqualSlices(u16, std.unicode.utf8ToUtf16LeStringLiteral("Save?\n\nIt changed."), text);
+
+    var events: std.ArrayListUnmanaged(Event) = .empty;
+    defer events.deinit(t.allocator);
+    const o = try openHidden(&events);
+    defer o.b.deinit();
+    try t.expect(o.b.platform().hasColorDialog() and o.b.platform().hasMessageBox());
+}
+
 test "windows: the file dialogs of Windows get their options" {
     if (!enabled()) return;
     const dlg = @import("../platform/windialog.zig");

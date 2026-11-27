@@ -7,7 +7,9 @@
 //!
 //! A backend with `messageBox` gets `::ztk::priv::nativemessagebox`:
 //! `tk_messageBox` checks its options, then calls the command, which
-//! runs the native box and gives the name of the button.
+//! runs the native box and gives the name of the button. A backend with
+//! `colorDialog` gets `::ztk::priv::nativecolor` for `tk_chooseColor`
+//! in the same way.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -21,6 +23,7 @@ const script = @embedFile("library/dialogs.tcl");
 pub fn register(app: *App) !void {
     const it = app.it;
     if (app.platform.hasMessageBox()) try it.register("ztk::priv::nativemessagebox", cmdNative);
+    if (app.platform.hasColorDialog()) try it.register("ztk::priv::nativecolor", cmdColor);
     // The file dialogs of a backend stay: the script defines only the
     // commands that do not exist.
     var keep: [3]bool = undefined;
@@ -56,4 +59,18 @@ fn cmdNative(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.E
     if (opts.parent == null) opts.parent = app.window;
     const b = app.platform.messageBox(&opts) orelse return Value.empty;
     return .{ .str = @tagName(b) };
+}
+
+/// `::ztk::priv::nativecolor title r g b parent`: the chosen color as
+/// `#rrggbb`, or an empty string for a cancel.
+fn cmdColor(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
+    const app = App.of(it);
+    if (argv.len != 6) return it.wrongArgs("::ztk::priv::nativecolor title r g b parent");
+    var rgb: [3]u8 = undefined;
+    for (argv[2..5], &rgb) |v, *c| c.* = @intCast(std.math.clamp(try it.int(v), 0, 255));
+    var opts: plat.ColorDialog = .{ .title = try it.str(argv[1]), .initial = .{ .r = rgb[0], .g = rgb[1], .b = rgb[2] } };
+    if (app.find(try it.str(argv[5]))) |w| opts.parent = app.winOf(w.toplevel());
+    if (opts.parent == null) opts.parent = app.window;
+    const c = app.platform.colorDialog(app.gpa, &opts) orelse return Value.empty;
+    return .{ .str = try std.fmt.allocPrint(it.alloc(), "#{x:0>2}{x:0>2}{x:0>2}", .{ c.r, c.g, c.b }) };
 }
