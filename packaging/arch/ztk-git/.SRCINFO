@@ -9,8 +9,6 @@ pkgbase = ztk-git
 	makedepends = git
 	makedepends = zig>=0.17.0
 	makedepends = zig<0.18.0
-	depends = wayland
-	depends = libxkbcommon
 	optdepends = vulkan-icd-loader: render with Vulkan
 	provides = ztk
 	conflicts = ztk

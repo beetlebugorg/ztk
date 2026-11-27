@@ -25,7 +25,7 @@ options=$(zig build -h)
 # Prints the build flags for a target, if the build has the options.
 flags() {
     case "$1" in
-        *linux*) backends=direct,headless ;;
+        *linux*) backends=wayland,direct,headless ;;
         *macos*) backends=appkit,headless ;;
         *) backends=headless ;;
     esac

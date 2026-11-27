@@ -45,9 +45,9 @@ jobs:
           echo "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+(-alpha|-beta)?$'
       - name: Install the Linux build dependencies
         run: |
-          if grep -qE 'glslc|wayland' build.zig; then
+          if grep -qE 'glslc' build.zig; then
             sudo apt-get update
-            sudo apt-get install -y glslc libwayland-dev libxkbcommon-dev wayland-protocols
+            sudo apt-get install -y glslc
           fi
       - name: Test
         run: |

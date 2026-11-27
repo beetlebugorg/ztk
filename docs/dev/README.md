@@ -33,7 +33,7 @@ What does not work: the Vulkan swapchain on a window and on a display, a window 
 - [The review checklist](review.md) is what a reviewer checks for each task.
 - [The size of Tk](tk-size.md) has the measured size of the job.
 
-Run it: `zig build`, then `zig-out/bin/ztk --headless examples/demo.tcl`, or `zig-out/bin/ztk examples/demo.tcl` in a Wayland session. On Linux the default build needs `glslc`, the Wayland client library, `wayland-protocols`, and `libxkbcommon`. On macOS and Windows the default build has the headless backend only.
+Run it: `zig build`, then `zig-out/bin/ztk --headless examples/demo.tcl`, or `zig-out/bin/ztk examples/demo.tcl` in a Wayland session. On Linux the default build needs `glslc` for the shaders of the Vulkan renderer. The Wayland backend links no library. On macOS and Windows the default build has the headless backend only.
 
 ## The goal of the plan
 

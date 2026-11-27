@@ -22,32 +22,6 @@ const protocols = [_]Protocol{
     .{ .xml = "staging/cursor-shape/cursor-shape-v1.xml", .name = "cursor-shape-v1" },
 };
 
-/// Links the Wayland client library and `xkbcommon`, and compiles the C code that
-/// `wayland-scanner` makes from the protocol files of the system. The module
-/// `wayland_c` is the translation of `src/platform/wayland_c.h`.
-fn addWayland(b: *std.Build, m: *std.Build.Module, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) void {
-    m.link_libc = true;
-    m.linkSystemLibrary("wayland-client", .{});
-    m.linkSystemLibrary("xkbcommon", .{});
-    const tc = b.addTranslateC(.{ .root_source_file = b.path("src/platform/wayland_c.h"), .target = target, .optimize = optimize });
-    tc.linkSystemLibrary("wayland-client", .{});
-    tc.linkSystemLibrary("xkbcommon", .{});
-    var code: u8 = 0;
-    const dir_raw = b.runAllowFail(&.{ "pkg-config", "--variable=pkgdatadir", "wayland-protocols" }, &code, .ignore) catch "/usr/share/wayland-protocols";
-    const dir = std.mem.trim(u8, dir_raw, " \n");
-    for (protocols) |p| {
-        const xml = b.fmt("{s}/{s}", .{ dir, p.xml });
-        const hdr = b.addSystemCommand(&.{ "wayland-scanner", "client-header", xml });
-        const hdr_out = hdr.addOutputFileArg(b.fmt("{s}-client-protocol.h", .{p.name}));
-        m.addIncludePath(hdr_out.dirname());
-        tc.addIncludePath(hdr_out.dirname());
-        const src = b.addSystemCommand(&.{ "wayland-scanner", "private-code", xml });
-        const src_out = src.addOutputFileArg(b.fmt("{s}-protocol.c", .{p.name}));
-        m.addCSourceFile(.{ .file = src_out, .flags = &.{} });
-    }
-    m.addImport("wayland_c", tc.createModule());
-}
-
 /// The module `vulkan_c`: the translation of `src/render/vulkan_c.h` with the
 /// pinned Vulkan headers.
 fn vulkanC(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Module {
@@ -113,12 +87,11 @@ pub fn build(b: *std.Build) void {
     ztk.addAnonymousImport("inter_bold", .{ .root_source_file = b.path("assets/fonts/Inter-Bold.ttf") });
     ztk.addAnonymousImport("mono_regular", .{ .root_source_file = b.path("assets/fonts/JetBrainsMono-Regular.ttf") });
 
-    const libc_on = vulkan_on or wayland_on or appkit_on;
+    const libc_on = vulkan_on or appkit_on;
     // The self-hosted backend covers x86-64 Linux. Each other target uses LLVM.
     const use_llvm = libc_on or !is_linux or target.result.cpu.arch != .x86_64;
     // Zig links Mach-O files with its own linker.
     const use_lld = use_llvm and target.result.ofmt != .macho;
-    if (wayland_on) addWayland(b, ztk, target, optimize);
 
     const exe = b.addExecutable(.{ .name = "ztk", .use_llvm = use_llvm, .use_lld = use_lld, .root_module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
@@ -187,7 +160,6 @@ pub fn build(b: *std.Build) void {
         bench_ztk.addAnonymousImport("quad_vert_spv", .{ .root_source_file = shader(b, "vertex", "src/render/shaders/quad.vert", "quad.vert.spv") });
         bench_ztk.addAnonymousImport("quad_frag_spv", .{ .root_source_file = shader(b, "fragment", "src/render/shaders/quad.frag", "quad.frag.spv") });
     }
-    if (wayland_on) addWayland(b, bench_ztk, target, .fast);
     const bench = b.addExecutable(.{ .name = "ztk-bench", .use_llvm = use_llvm, .use_lld = use_lld, .root_module = b.createModule(.{
         .root_source_file = b.path("bench/bench.zig"),
         .target = target,

@@ -9,6 +9,7 @@ ztk credits each source of an idea, a table, a method, or a library here. Each p
 | [Rendering](rendering.md) | The methods of the renderers |
 | [Terminal](terminal.md) | The specifications that `ztk::terminal` follows |
 | [Dependencies](dependencies.md) | The libraries and tools, with their licenses |
+| [Wayland](wayland.md) | The protocol documents that the Wayland client follows, and the key symbol table |
 | [Printdeck](printdeck.md) | What ztk learned from the UI framework of Printdeck |
 | [Not used](not-used.md) | Sources that ztk does not use, and why |
 
