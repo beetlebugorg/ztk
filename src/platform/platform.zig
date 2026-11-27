@@ -113,6 +113,12 @@ pub const MenuHandler = struct {
     call: *const fn (ctx: ?*anyopaque, id: MenuId, entry: i32, action: event.MenuAction) void,
 };
 
+/// The function of `setLiveResize`: lays out and draws `w` at `size` now.
+pub const LiveResize = struct {
+    ctx: *anyopaque,
+    call: *const fn (ctx: *anyopaque, w: *Window, size: geom.Size) void,
+};
+
 /// The id of one tray icon. 0 is no tray.
 pub const TrayId = u32;
 
@@ -457,6 +463,13 @@ pub const Platform = struct {
         /// sheet of the modern theme (`windows`), or null for the default.
         nativeLook: ?*const fn (ptr: *anyopaque) ?[]const u8 = null,
 
+        /// Gives the backend the function that lays out and draws one
+        /// window at a new size at once. A system that runs a loop of its
+        /// own while the user drags the edge of a window (the live resize of
+        /// AppKit) calls it for each new size, so the content follows the
+        /// edge; the queued resize event comes after the drag as well.
+        setLiveResize: ?*const fn (ptr: *anyopaque, hook: LiveResize) void = null,
+
         /// The text engine of the system for the fonts of the app
         /// (`text/system.zig`), or null for the TrueType faces of ztk.
         textSystem: ?*const fn (ptr: *anyopaque) ?@import("../text/system.zig").System = null,
@@ -587,6 +600,10 @@ pub const Platform = struct {
     pub fn dropTypes(p: Platform, w: *Window, types: DropTypes) void {
         if (p.vtable.dropTypes) |f| f(p.ptr, w, types);
     }
+    pub fn setLiveResize(p: Platform, hook: LiveResize) void {
+        if (p.vtable.setLiveResize) |f| f(p.ptr, hook);
+    }
+
     pub fn nativeLook(p: Platform) ?[]const u8 {
         const f = p.vtable.nativeLook orelse return null;
         return f(p.ptr);
