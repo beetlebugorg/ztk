@@ -57,7 +57,9 @@ ztk [flags] script.tcl [arguments]
 | `--windowingsystem NAME` | Sets the result of `tk windowingsystem`: `x11`, `win32`, `aqua`, or `ztk` (the default). A Tk app that tests for `x11`, `win32`, or `aqua` can then choose its path. The look of ztk does not change. |
 | `--allow a,b` | Turns on more capabilities of ztcl, with the names of the `ztcl` runner: `package`, `interp`, `clock`, `event`, `socket`, `exec`, `random`, `env`, `sqlite`, and `thread`. `hotkey` lets `ztk::hotkey` add global shortcuts. |
 | `--root DIR` | Keeps the file commands in one folder, which a script sees as `/`. With no `--root`, they use the real paths of the host. |
-| `--cpu` | Uses the CPU renderer on Wayland. |
+| `--cpu` | Uses the CPU renderer on Wayland, as `ZTK_RENDERER=cpu` does. |
+
+On Wayland, ztk renders the main window with Vulkan into dma-bufs when the GPU and the compositor share them (`zwp_linux_dmabuf_v1` with linear XBGR8888), and else with the CPU renderer into shared memory. With the CPU renderer, ztk writes the cause to stderr once, for example `ztk: the CPU renderer: the compositor has no zwp_linux_dmabuf_v1 version 3`. `ZTK_RENDERER=cpu` selects the CPU renderer, and `ZTK_RENDERER=vulkan` makes ztk exit when it cannot use Vulkan. Menus and other popups use the CPU renderer.
 
 `ZTK_NO_ANIMATION=1` turns the animations off and shows each end state at once. The program gives a script the file commands and the file channels of ztcl (`file`, `open`, `read`, `puts` to a file) by default, with the real paths of the host, as in `wish`. A relative path counts from the current folder. `--root DIR` keeps the file commands in one folder, which a script sees as `/`. The other host access (`socket`, `exec`, and the others) needs `--allow`. `ztk::style load` reads style sheets from the folder of the script.
 

@@ -4,12 +4,20 @@
 //! turns the events of the compositor into `Event` values. The pointer,
 //! the keyboard (with the key map of the compositor, read by `wl/xkb.zig`),
 //! the close request, the fractional scale, the focus, the clipboard, and
-//! the text of an input method all become events. The CPU renderer draws
-//! into a `wl_shm` buffer. The buffer has the scene size in device
+//! the text of an input method all become events.
+//!
+//! The main window renders with Vulkan when the compositor lists linear
+//! XBGR8888 in `zwp_linux_dmabuf_v1` (version 3) and the device exports
+//! dma-bufs. The Vulkan renderer draws into a ring of 3 exported linear
+//! images, and each one is a `wl_buffer` from `create_immed`. A draw waits
+//! for the queue, so the buffer is complete at the commit. A scene with the
+//! hash of the last scene commits no buffer. Without the GPU path, or after
+//! a failed Vulkan draw, the CPU renderer draws into a `wl_shm` buffer, and
+//! stderr gets the cause once (`ztk: the CPU renderer: ...`). The CPU path
+//! reports only the rows that changed as damage, and a draw with no
+//! changed row commits no buffer. Each buffer has the scene size in device
 //! pixels, and the scale goes to the compositor through `wp_viewporter`
-//! (fractional scale) or `wl_surface.set_buffer_scale`. A draw reports
-//! only the rows that changed as damage, and a draw with no changed row
-//! commits no buffer. Key repeat runs inside the backend: `wait` and
+//! (fractional scale) or `wl_surface.set_buffer_scale`. Key repeat runs inside the backend: `wait` and
 //! `poll` use the time of the next repeat.
 //!
 //! The pointer has its own event queue and an input thread that reads
@@ -33,7 +41,7 @@
 //!
 //! The requests and events come from the protocol XML files: wayland.xml,
 //! xdg-shell, xdg-decoration, viewporter, fractional-scale, cursor-shape,
-//! and text-input-unstable-v3 (docs/references/wayland.md).
+//! text-input-unstable-v3, and linux-dmabuf-v1 (docs/references/wayland.md).
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -54,6 +62,9 @@ const Atlas = @import("../text/atlas.zig").Atlas;
 const cpu = @import("../render/cpu.zig");
 const Image = @import("../render/renderer.zig").Image;
 const renderer = @import("../render/renderer.zig");
+const Scene = @import("../scene.zig").Scene;
+const vk_on = @import("build_options").vulkan;
+const vulkan = if (vk_on) @import("../render/vulkan.zig") else @import("../render/vulkan_off.zig");
 
 /// The interface numbers of the objects, for the dispatch of their events.
 const I = struct {
@@ -87,6 +98,8 @@ const I = struct {
     const data_source: u16 = 28;
     const ti_mgr: u16 = 29;
     const text_input: u16 = 30;
+    const dmabuf: u16 = 31;
+    const dmabuf_params: u16 = 32;
 };
 
 const shm_argb8888: u32 = 0;
@@ -94,6 +107,15 @@ const shm_xrgb8888: u32 = 1;
 
 /// The MIME types of UTF-8 text on the clipboard, best first.
 const text_types = [_][]const u8{ "text/plain;charset=utf-8", "UTF8_STRING", "text/plain", "STRING", "TEXT" };
+
+/// A buffer of the GPU path: an exported Vulkan image and its `wl_buffer`.
+const GpuBuf = if (vk_on) struct {
+    target: *vulkan.Target,
+    buffer: u32,
+    width: u32,
+    height: u32,
+    busy: bool = false,
+} else void;
 
 const Buf = struct {
     buffer: u32 = 0,
@@ -132,7 +154,14 @@ pub const Options = struct {
     no_input_thread: bool = false,
     /// ZTK_WAYLAND_DEBUG=1: each event goes to stderr as its interface number, object, and opcode.
     debug: bool = false,
+    /// ZTK_RENDERER: cpu, vulkan, or auto.
+    renderer: Renderer = .auto,
 };
+
+/// The renderer of the main window. `auto` uses Vulkan when the device and
+/// the compositor share dma-bufs, and else the CPU renderer. `vulkan` makes
+/// `init` fail without the GPU path.
+pub const Renderer = enum { auto, cpu, vulkan };
 
 pub const Wayland = struct {
     gpa: std.mem.Allocator,
@@ -150,6 +179,14 @@ pub const Wayland = struct {
     cursor_mgr: u32 = 0,
     data_mgr: u32 = 0,
     ti_mgr: u32 = 0,
+    dmabuf: u32 = 0,
+    /// The compositor lists XBGR8888 with the linear modifier.
+    dmabuf_linear: bool = false,
+    /// The GPU path of the main window, with a ring of 3 buffers.
+    gpu: if (vk_on) ?*vulkan.Vulkan else void = if (vk_on) null else {},
+    gbufs: [3]?*GpuBuf = .{ null, null, null },
+    /// A hash of the last scene that the GPU path drew, to skip a frame with no change.
+    scene_hash: u64 = 0,
     pointer: u32 = 0,
     keyboard: u32 = 0,
     cursor_device: u32 = 0,
@@ -231,6 +268,7 @@ pub const Wayland = struct {
         try w.roundtrip();
         if (w.compositor == 0 or w.wm_base == 0 or w.shm == 0) return error.MissingGlobals;
         try w.roundtrip();
+        try w.startGpu();
         return w;
     }
 
@@ -245,6 +283,11 @@ pub const Wayland = struct {
             _ = linux.close(fd);
         };
         for (w.bufs) |b| if (b) |buf| freeBuf(w, buf);
+        if (vk_on) if (w.gpu) |v| {
+            for (w.gbufs) |b| if (b) |gb| w.freeGpuBuf(v, gb);
+            v.deinit();
+        };
+        if (w.dmabuf != 0) w.destroy(w.dmabuf, 0);
         w.atlas.deinit();
         if (w.prev) |p| w.gpa.free(p.pixels);
         if (w.last_image) |p| w.gpa.free(p.pixels);
@@ -536,6 +579,12 @@ pub const Wayland = struct {
             I.data_offer => if (e.op == 0) w.onOfferType(e.id, a.string() orelse return),
             I.data_source => w.onSource(e.id, e.op, &a),
             I.text_input => w.onTextInput(e.op, &a),
+            I.dmabuf => if (e.op == 1) {
+                const format = a.uint();
+                const hi = a.uint();
+                const lo = a.uint();
+                if (format == vulkan.drm_format_xbgr8888 and (@as(u64, hi) << 32 | lo) == vulkan.drm_mod_linear) w.dmabuf_linear = true;
+            },
             else => {},
         }
     }
@@ -570,6 +619,9 @@ pub const Wayland = struct {
         } else if (std.mem.eql(u8, i, "wl_data_device_manager")) {
             w.data_mgr = try w.bind(name, i, I.data_mgr, @min(version, 3), 0);
             w.makeDevices();
+        } else if (std.mem.eql(u8, i, "zwp_linux_dmabuf_v1") and version >= 3) {
+            // Version 3 sends the modifiers as events. Version 4 moves them to a feedback table.
+            w.dmabuf = try w.bind(name, i, I.dmabuf, 3, 0);
         } else if (std.mem.eql(u8, i, "zwp_text_input_manager_v3")) {
             w.ti_mgr = try w.bind(name, i, I.ti_mgr, 1, 0);
             w.makeDevices();
@@ -1173,6 +1225,10 @@ pub const Wayland = struct {
     // ---- Drawing with the CPU renderer into shared memory ----
 
     fn onRelease(w: *Wayland, id: u32) void {
+        if (vk_on) for (w.gbufs) |b| if (b) |gb| if (gb.buffer == id) {
+            @atomicStore(bool, &gb.busy, false, .release);
+            return;
+        };
         for (w.bufs) |b| if (b) |buf| if (buf.buffer == id) {
             @atomicStore(bool, &buf.busy, false, .release);
             return;
@@ -1258,6 +1314,9 @@ pub const Wayland = struct {
         const scene = &frame.scene;
         const surface = w.surface;
         if (surface == 0) return;
+        if (vk_on) if (w.gpu) |v| {
+            if (w.drawGpu(v, win, scene)) return else |e| w.stopGpu(e);
+        };
         const need = @as(usize, scene.width) * scene.height * 4;
         const img = try w.gpa.alloc(u8, need);
         errdefer w.gpa.free(img);
@@ -1286,22 +1345,148 @@ pub const Wayland = struct {
         if (w.prev) |p| w.gpa.free(p.pixels);
         w.prev = cur;
         w.last_image = null;
+        @atomicStore(bool, &buf.busy, true, .release);
+        w.commit(win, buf.buffer, cur.width, cur.height, damage);
+    }
+
+    /// Attaches a buffer to the main surface with its scale and damage, and
+    /// commits it. No damage range means the whole buffer.
+    fn commit(w: *Wayland, win: *Window, buffer: u32, width: u32, height: u32, damage: []const renderer.RowRange) void {
+        const surface = w.surface;
         // The scale: a viewport for the fractional scale, or the integer buffer scale.
         if (w.viewport != 0) {
             w.req(w.viewport, 2, .{ win.size.w, win.size.h });
         } else if (w.compositor_version >= 3) {
             w.req(surface, 8, .{@as(i32, @intCast(w.int_scale))});
         }
-        w.req(surface, 1, .{ buf.buffer, @as(i32, 0), @as(i32, 0) });
+        w.req(surface, 1, .{ buffer, @as(i32, 0), @as(i32, 0) });
         if (damage.len == 0) {
-            w.req(surface, 9, .{ @as(i32, 0), @as(i32, 0), @as(i32, @intCast(cur.width)), @as(i32, @intCast(cur.height)) });
+            w.req(surface, 9, .{ @as(i32, 0), @as(i32, 0), @as(i32, @intCast(width)), @as(i32, @intCast(height)) });
         } else for (damage) |d| {
-            w.req(surface, 9, .{ @as(i32, 0), @as(i32, @intCast(d.first)), @as(i32, @intCast(cur.width)), @as(i32, @intCast(d.last - d.first)) });
+            w.req(surface, 9, .{ @as(i32, 0), @as(i32, @intCast(d.first)), @as(i32, @intCast(width)), @as(i32, @intCast(d.last - d.first)) });
         }
-        @atomicStore(bool, &buf.busy, true, .release);
         w.req(surface, 6, .{});
         w.frames_committed += 1;
         w.flush();
+    }
+
+    // ---- Drawing with Vulkan into dma-bufs ----
+
+    /// Prints the cause of the CPU path once to stderr.
+    fn cpuNote(comptime fmt: []const u8, args: anytype) void {
+        std.debug.print("ztk: the CPU renderer: " ++ fmt ++ "\n", args);
+    }
+
+    /// Opens Vulkan for the main window when the compositor accepts linear
+    /// dma-bufs. Else the window uses the CPU renderer and stderr gets the cause.
+    fn startGpu(w: *Wayland) !void {
+        if (w.opts.renderer == .cpu) return;
+        if (!vk_on) {
+            cpuNote("{s}", .{vulkan.reason()});
+        } else if (w.dmabuf == 0) {
+            cpuNote("the compositor has no zwp_linux_dmabuf_v1 version 3", .{});
+        } else if (!w.dmabuf_linear) {
+            cpuNote("the compositor lists no linear XBGR8888 dma-buf", .{});
+        } else if (vulkan.Vulkan.init(w.gpa, .{})) |v| {
+            if (!v.canExport()) {
+                cpuNote("{s} has no dma-buf export", .{v.deviceName()});
+            } else if (v.createExported(16, 16)) |probe| {
+                // A device can list the extensions and still fail to allocate the memory.
+                v.destroyTarget(probe);
+                w.gpu = v;
+                return;
+            } else |e| {
+                if (e == error.NoExport) cpuNote("{s}", .{vulkan.reason()}) else cpuNote("Vulkan: {s}", .{@errorName(e)});
+            }
+            v.deinit();
+        } else |e| {
+            const r = vulkan.reason();
+            if (r.len > 0) cpuNote("Vulkan: {s}: {s}", .{ @errorName(e), r }) else cpuNote("Vulkan: {s}", .{@errorName(e)});
+        }
+        if (w.opts.renderer == .vulkan) return error.NoGpu;
+    }
+
+    /// Stops the GPU path after a failed draw. The next frames use the CPU renderer.
+    fn stopGpu(w: *Wayland, e: anyerror) void {
+        if (!vk_on) return;
+        const v = w.gpu orelse return;
+        cpuNote("a Vulkan draw failed: {s}", .{@errorName(e)});
+        for (&w.gbufs) |*b| if (b.*) |gb| {
+            w.freeGpuBuf(v, gb);
+            b.* = null;
+        };
+        v.deinit();
+        w.gpu = null;
+        // The CPU path draws the whole next frame.
+        if (w.prev) |p| w.gpa.free(p.pixels);
+        w.prev = null;
+    }
+
+    fn freeGpuBuf(w: *Wayland, v: *vulkan.Vulkan, b: *GpuBuf) void {
+        w.destroy(b.buffer, 0);
+        v.destroyTarget(b.target);
+        w.gpa.destroy(b);
+    }
+
+    /// An exported image and a `wl_buffer` of it from `zwp_linux_buffer_params_v1`.
+    fn makeGpuBuf(w: *Wayland, v: *vulkan.Vulkan, width: u32, height: u32) !*GpuBuf {
+        const t = try v.createExported(width, height);
+        errdefer v.destroyTarget(t);
+        const b = try w.gpa.create(GpuBuf);
+        errdefer w.gpa.destroy(b);
+        // The send closes its descriptor after the flush, and the target keeps its own.
+        const dup = linux.dup(t.fd);
+        if (@as(isize, @bitCast(dup)) < 0) return error.DupFailed;
+        const params = try w.new(I.dmabuf_params, .main, 0);
+        w.req(w.dmabuf, 1, .{params});
+        const mod = vulkan.drm_mod_linear;
+        w.req(params, 1, .{ wire.Fd{ .fd = @intCast(dup) }, @as(u32, 0), t.offset, t.stride, @as(u32, @truncate(mod >> 32)), @as(u32, @truncate(mod)) });
+        const buffer = try w.new(I.buffer, .main, 0);
+        w.req(params, 3, .{ buffer, @as(i32, @intCast(width)), @as(i32, @intCast(height)), vulkan.drm_format_xbgr8888, @as(u32, 0) });
+        w.destroy(params, 0);
+        b.* = .{ .target = t, .buffer = buffer, .width = width, .height = height };
+        return b;
+    }
+
+    /// A buffer of the ring that the compositor released, of the size of the frame.
+    fn gpuBufferFor(w: *Wayland, v: *vulkan.Vulkan, width: u32, height: u32) !*GpuBuf {
+        var spins: u32 = 0;
+        while (true) : (spins += 1) {
+            for (&w.gbufs) |*slot| if (slot.*) |b| {
+                if (@atomicLoad(bool, &b.busy, .acquire)) continue;
+                if (b.width == width and b.height == height) return b;
+                w.freeGpuBuf(v, b);
+                slot.* = null;
+            };
+            for (&w.gbufs) |*slot| if (slot.* == null) {
+                slot.* = try w.makeGpuBuf(v, width, height);
+                return slot.*.?;
+            };
+            // Each buffer is busy: wait for a release.
+            if (spins == 100) return error.NoFreeBuffer;
+            try w.roundtrip();
+        }
+    }
+
+    fn sceneHash(scene: *const Scene, atlas: *const Atlas) u64 {
+        var h = std.hash.Wyhash.init(0);
+        h.update(std.mem.sliceAsBytes(scene.quads.items));
+        h.update(std.mem.asBytes(&scene.clear));
+        h.update(std.mem.asBytes(&[4]u32{ scene.width, scene.height, atlas.generation, atlas.images.generation }));
+        return h.final();
+    }
+
+    /// Draws one frame with Vulkan into a dma-buf and commits it. A scene
+    /// that equals the last one commits no buffer.
+    fn drawGpu(w: *Wayland, v: *vulkan.Vulkan, win: *Window, scene: *const Scene) !void {
+        const h = sceneHash(scene, &w.atlas);
+        if (h == w.scene_hash) return;
+        const b = try w.gpuBufferFor(v, scene.width, scene.height);
+        v.setTarget(b.target);
+        try v.draw(scene, &w.atlas);
+        w.scene_hash = h;
+        @atomicStore(bool, &b.busy, true, .release);
+        w.commit(win, b.buffer, scene.width, scene.height, &.{});
     }
 
     // ---- Popups ----

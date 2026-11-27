@@ -39,6 +39,7 @@ systemd-run --user --scope -q -p MemoryMax=4G -p MemorySwapMax=0 -- <command>
 | `zig build test -Dtarget=x86_64-linux-musl -Dtest-filter=vulkan` | Runs the Vulkan tests in a static program, which opens the Vulkan loader and the driver with `src/sys/elf/loader.zig` (docs/dev/elf-loader.md). `-Dtest-filter=elf` runs the tests of the loader. |
 | `tests/static-vulkan.sh` | Runs the same tests with `VK_LOADER_DEBUG=error,warn`. After 600 seconds it prints the stack of each thread with gdb and stops the run. |
 | `tests/wayland-smoke.sh` | Runs `ztk` on a private headless compositor. |
+| `tests/wayland-gpu.sh [ztk] [render node]` | Runs `ztk` on a private headless sway with the GLES2 renderer, with `ZTK_RENDERER=vulkan` (dma-bufs) and `ZTK_RENDERER=cpu`, and compares a `grim` shot of each. It needs a render node such as `/dev/dri/renderD128`. |
 | `tests/wayland-input.sh [ztk]` | Sends keys, a resize, the scale 1.5, and the clipboard to `ztk` on a private headless sway, with `wtype` and `wl-copy`. |
 | `ZTK_WAYLAND_DEBUG=1 zig-out/bin/ztk script.tcl` | Prints each Wayland event to stderr: the interface number, the object, and the opcode. |
 | `python3 -I tools/gen-keysyms.py /usr/include/X11/keysymdef.h > src/platform/wl/keysyms.zig` | Makes the key symbol table of the Wayland backend again. |

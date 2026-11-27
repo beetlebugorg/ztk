@@ -240,3 +240,55 @@ test "vulkan: the demo scene equals the CPU renderer" {
     try compare(v, "demo-start", h.app.lastScene(), &h.app.atlas);
     try t.expectEqual(@as(u32, 0), v.validation_messages);
 }
+
+test "vulkan: an exported target maps as a linear dma-buf" {
+    const v = open() orelse return;
+    defer v.deinit();
+    if (!v.canExport()) {
+        std.debug.print("SKIP: the device has no dma-buf export\n", .{});
+        return;
+    }
+    var atlas = atlas_mod.Atlas.init(t.allocator);
+    defer atlas.deinit();
+    var s: Scene = .{};
+    defer s.deinit(t.allocator);
+    try scene_tests.build(t.allocator, &s, 0, 1);
+    var cpu_img = try newImage(s.width, s.height);
+    defer t.allocator.free(cpu_img.pixels);
+    cpu.render(&s, &atlas, &cpu_img);
+    const target = v.createExported(s.width, s.height) catch |e| {
+        if (e != error.NoExport) return e;
+        std.debug.print("SKIP: {s}\n", .{vk.reason()});
+        return;
+    };
+    defer v.destroyTarget(target);
+    try t.expect(target.fd >= 0);
+    try t.expect(target.stride >= s.width * 4);
+    v.setTarget(target);
+    try v.draw(&s, &atlas);
+    // The memory of the dma-buf, read through its descriptor.
+    const linux = std.os.linux;
+    const size: usize = target.offset + @as(usize, target.stride) * s.height;
+    const map = linux.mmap(null, size, .{ .READ = true }, .{ .TYPE = .SHARED }, target.fd, 0);
+    if (@as(isize, @bitCast(map)) < 0) {
+        std.debug.print("SKIP: the dma-buf does not map\n", .{});
+        return;
+    }
+    defer _ = linux.munmap(@ptrFromInt(map), size);
+    const mem: [*]const u8 = @ptrFromInt(map);
+    var count: usize = 0;
+    for (0..s.height) |y| for (0..s.width) |x| {
+        const a = cpu_img.pixels[(y * s.width + x) * 4 ..][0..3];
+        const b = mem[target.offset + y * target.stride + x * 4 ..][0..3];
+        for (0..3) |ch| {
+            const d = if (a[ch] > b[ch]) a[ch] - b[ch] else b[ch] - a[ch];
+            if (d > 2) {
+                count += 1;
+                break;
+            }
+        }
+    };
+    std.debug.print("vulkan dma-buf: {d} of {d} pixels differ by more than 2, stride {d}\n", .{ count, s.width * s.height, target.stride });
+    try t.expect(count * 1000 <= s.width * s.height);
+    try t.expectEqual(@as(u32, 0), v.validation_messages);
+}
