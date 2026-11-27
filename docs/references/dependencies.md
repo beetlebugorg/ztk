@@ -9,8 +9,6 @@ The rule of the plan: ztk needs only the interfaces of the platform, ztcl, and t
 | ztcl | The Tcl interpreter | BSD-2-Clause | 1 |
 | libghostty-vt 1.0.2, through ztcl | The terminal state of `ztk::terminal` (`ztcl.vt`). The build of ztcl compiles it from source with `-Dsimd=false`, so it has no C code and no libc. The user approved it on 2026-11-26. | MIT | 2 |
 | Zig standard library | All | MIT | 1 |
-| libwayland-client | The Wayland protocol, only in the Wayland backend | MIT | 1 |
-| libxkbcommon | Key maps, only in the Wayland and X11 backends | MIT | 1 |
 | libxcb | X11, only in the X11 backend | X11 license | 2 |
 | `user32`, `kernel32`, `gdi32`, `dwmapi`, `advapi32` | Windows, input, and the clipboard, only in the Windows backend | Parts of Windows | 3 |
 
@@ -42,7 +40,6 @@ The license of JetBrains Mono was read in `OFL.txt` of its release archive 2.304
 | Vulkan-Headers | The declarations of Vulkan | Apache-2.0 OR MIT |
 | Linux kernel headers (`linux/fb.h`, `linux/input.h`, `linux/kd.h`, `linux/vt.h`) | The numbers and the structures of the kernel interfaces of the direct backend. ztk writes its own declarations in Zig. | GPL-2.0 WITH Linux-syscall-note |
 | `glslc` (shaderc) | Compiles the shaders | Apache-2.0 |
-| `wayland-scanner`, `wayland-protocols` | Makes the protocol code | MIT |
 | Windows SDK 10.0.26100.0 headers (`winuser.h`, `d3d12.h`, `dxgi1_6.h`, `d3dcompiler.h`) | The numbers, the structures, and the method slots of the Win32 and Direct3D 12 declarations. ztk writes its own declarations in Zig. | The license of the Windows SDK. This page did not check its text. |
 
 The license of the Vulkan headers was read in `LICENSE.md` of https://github.com/KhronosGroup/Vulkan-Headers. The license of AccessKit was read in its README and its `Cargo.toml`. https://github.com/AccessKit/accesskit
@@ -61,6 +58,7 @@ The kernel interface headers have a note that permits a program to use the syste
 
 `build.zig` runs `glslc` (package `shaderc`) to compile the two shaders. The SPIR-V files are build outputs and are not in the repository. A machine with no `glslc` cannot build the Vulkan renderer. The option `-Dvulkan=false` leaves the renderer and the shaders out.
 
-## The Wayland backend (task 17)
+## The Wayland backend
 
-`libwayland-client` and `libxkbcommon` link into the program through `pkg-config`. `wayland-scanner` (build tool) makes the C code of the protocols `xdg-shell`, `xdg-decoration-unstable-v1`, `viewporter`, `fractional-scale-v1`, `tablet-v2` (needed by `cursor-shape-v1`), and `cursor-shape-v1` from the files in the folder of the package `wayland-protocols`. Both libraries have the MIT license, and the protocol files have the MIT license too. `src/platform/wayland.zig` is the only file that imports their headers. The build option `-Dbackends=direct,headless` leaves the backend out.
+The backend links no library. `src/platform/wl/wire.zig` is a client of the wire protocol on the Unix socket of the compositor, and `src/platform/wl/xkb.zig` reads the key map of the compositor. [Wayland](wayland.md) lists the protocol documents and the files of `wayland-protocols` that they follow. The build option `-Dbackends=direct,headless` leaves the backend out.
+

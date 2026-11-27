@@ -83,13 +83,13 @@ jobs:
         if: hashFiles('build.zig') != ''
         with:
           version: ${{ env.ZIG_VERSION }}
-      # Tasks 16 and 17 add these build tools and libraries on Linux.
+      # The Vulkan renderer needs glslc on Linux.
       - name: Install the Linux build dependencies
         if: hashFiles('build.zig') != '' && runner.os == 'Linux'
         run: |
-          if grep -qE 'glslc|wayland' build.zig; then
+          if grep -qE 'glslc' build.zig; then
             sudo apt-get update
-            sudo apt-get install -y glslc libwayland-dev libxkbcommon-dev wayland-protocols
+            sudo apt-get install -y glslc
           fi
       # ulimit -v is enforced on Linux only.
       - name: Build and test
@@ -237,8 +237,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { target: x86_64-linux-musl, backends: "direct,headless" }
-          - { target: aarch64-linux-musl, backends: "direct,headless" }
+          - { target: x86_64-linux-musl, backends: "wayland,direct,headless" }
+          - { target: aarch64-linux-musl, backends: "wayland,direct,headless" }
           - { target: x86_64-macos, backends: "appkit,headless" }
           - { target: aarch64-macos, backends: "appkit,headless" }
           - { target: x86_64-windows, backends: headless }

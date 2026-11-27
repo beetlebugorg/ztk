@@ -299,7 +299,12 @@ pub fn main(init: std.process.Init) !void {
         if (init.environ_map.get("WAYLAND_DISPLAY") == null) {
             fail(err, "ztk: no Wayland display. Use --headless, or run in a Wayland session.\n", .{});
         }
-        wl = ztk.wayland.Wayland.init(init.gpa) catch |e| fail(err, "ztk: cannot use the Wayland display: {s}\n", .{@errorName(e)});
+        wl = ztk.wayland.Wayland.init(init.gpa, .{
+            .runtime_dir = init.environ_map.get("XDG_RUNTIME_DIR"),
+            .display = init.environ_map.get("WAYLAND_DISPLAY"),
+            .no_input_thread = if (init.environ_map.get("ZTK_NO_INPUT_THREAD")) |v| std.mem.eql(u8, v, "1") else false,
+            .debug = if (init.environ_map.get("ZTK_WAYLAND_DEBUG")) |v| std.mem.eql(u8, v, "1") else false,
+        }) catch |e| fail(err, "ztk: cannot use the Wayland display: {s}\n", .{@errorName(e)});
         platform = wl.?.platform();
     } else if (ztk.windows_enabled) {
         // ZTK_RENDERER=cpu, d3d12, or warp picks the output. The default is Direct3D 12, and the CPU without a device.

@@ -1,15 +1,16 @@
 //! The Wayland backend. It connects to the compositor of WAYLAND_DISPLAY
-//! with the C client library, makes one xdg toplevel, and turns the
-//! events of the compositor into `Event` values. The pointer, the
-//! keyboard (with the key map of `xkbcommon`), the close request, the
-//! fractional scale, and the focus all become events. The CPU renderer
-//! draws into a `wl_shm` buffer. The buffer has the scene size in device
+//! with its own client of the wire protocol (`wl/wire.zig`), so it links
+//! no library and runs in a static program. It makes one xdg toplevel and
+//! turns the events of the compositor into `Event` values. The pointer,
+//! the keyboard (with the key map of the compositor, read by `wl/xkb.zig`),
+//! the close request, the fractional scale, the focus, the clipboard, and
+//! the text of an input method all become events. The CPU renderer draws
+//! into a `wl_shm` buffer. The buffer has the scene size in device
 //! pixels, and the scale goes to the compositor through `wp_viewporter`
 //! (fractional scale) or `wl_surface.set_buffer_scale`. A draw reports
 //! only the rows that changed as damage, and a draw with no changed row
 //! commits no buffer. Key repeat runs inside the backend: `wait` and
-//! `poll` use the time of the next repeat. The Vulkan swapchain is not
-//! part of this file (see docs/dev/tasks/BLOCKED.md).
+//! `poll` use the time of the next repeat.
 //!
 //! The pointer has its own event queue and an input thread that reads
 //! it, so the pointer positions reach the render thread while the UI
@@ -29,12 +30,20 @@
 //! The keys stay on the main window, and the core gives them to the
 //! posted menu. The surface of a popup has premultiplied alpha
 //! (ARGB8888) and its own copy of the atlas.
+//!
+//! The requests and events come from the protocol XML files: wayland.xml,
+//! xdg-shell, xdg-decoration, viewporter, fractional-scale, cursor-shape,
+//! and text-input-unstable-v3 (docs/references/wayland.md).
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
+const linux = std.os.linux;
 const geom = @import("../geom.zig");
 const event = @import("../event.zig");
 const plat = @import("platform.zig");
+const wire = @import("wl/wire.zig");
+const xkb = @import("wl/xkb.zig");
+const host = @import("../sys/host.zig");
 const Event = event.Event;
 const Mods = event.Mods;
 const Window = plat.Window;
@@ -46,10 +55,48 @@ const cpu = @import("../render/cpu.zig");
 const Image = @import("../render/renderer.zig").Image;
 const renderer = @import("../render/renderer.zig");
 
-const c = @import("wayland_c");
+/// The interface numbers of the objects, for the dispatch of their events.
+const I = struct {
+    const registry: u16 = 1;
+    const sync_cb: u16 = 2;
+    const compositor: u16 = 3;
+    const shm: u16 = 4;
+    const shm_pool: u16 = 5;
+    const buffer: u16 = 6;
+    const surface: u16 = 7;
+    const seat: u16 = 8;
+    const pointer: u16 = 9;
+    const keyboard: u16 = 10;
+    const wm_base: u16 = 11;
+    const positioner: u16 = 12;
+    const xdg_surface: u16 = 13;
+    const toplevel: u16 = 14;
+    const popup: u16 = 15;
+    const viewporter: u16 = 16;
+    const viewport: u16 = 17;
+    const frac_mgr: u16 = 18;
+    const frac: u16 = 19;
+    const deco_mgr: u16 = 20;
+    const deco: u16 = 21;
+    const cursor_mgr: u16 = 22;
+    const cursor_dev: u16 = 23;
+    const frame_cb: u16 = 24;
+    const data_mgr: u16 = 25;
+    const data_device: u16 = 26;
+    const data_offer: u16 = 27;
+    const data_source: u16 = 28;
+    const ti_mgr: u16 = 29;
+    const text_input: u16 = 30;
+};
+
+const shm_argb8888: u32 = 0;
+const shm_xrgb8888: u32 = 1;
+
+/// The MIME types of UTF-8 text on the clipboard, best first.
+const text_types = [_][]const u8{ "text/plain;charset=utf-8", "UTF8_STRING", "text/plain", "STRING", "TEXT" };
 
 const Buf = struct {
-    buffer: ?*c.wl_buffer = null,
+    buffer: u32 = 0,
     data: []align(4096) u8 = &.{},
     width: u32 = 0,
     height: u32 = 0,
@@ -61,44 +108,64 @@ const Buf = struct {
 const Pop = struct {
     owner: *Wayland,
     win: *Window,
-    surface: *c.wl_surface,
-    xdg_surface: *c.xdg_surface,
-    popup: *c.xdg_popup,
-    viewport: ?*c.wp_viewport = null,
+    surface: u32,
+    xdg_surface: u32,
+    popup: u32,
+    viewport: u32 = 0,
     /// The margin of the surface around the window geometry, and the margin of the parent.
     margin: geom.Insets,
     parent_margin: geom.Insets,
     configured: bool = false,
-    frame_cb: ?*c.wl_callback = null,
+    frame_cb: u32 = 0,
     bufs: [3]?*Buf = .{ null, null, null },
     atlas: Atlas,
 };
 
+/// An offer of data from another client: its MIME type of text, if any.
+const Offer = struct { id: u32, text_type: ?usize = null };
+
+pub const Options = struct {
+    /// XDG_RUNTIME_DIR and WAYLAND_DISPLAY.
+    runtime_dir: ?[]const u8 = null,
+    display: ?[]const u8 = null,
+    /// ZTK_NO_INPUT_THREAD=1: the pointer stays on the queue of the UI thread.
+    no_input_thread: bool = false,
+    /// ZTK_WAYLAND_DEBUG=1: each event goes to stderr as its interface number, object, and opcode.
+    debug: bool = false,
+};
+
 pub const Wayland = struct {
     gpa: std.mem.Allocator,
-    display: *c.wl_display,
-    registry: ?*c.wl_registry = null,
-    compositor: ?*c.wl_compositor = null,
+    conn: *wire.Conn,
+    opts: Options,
+    registry: u32 = 0,
+    compositor: u32 = 0,
     compositor_version: u32 = 0,
-    wm_base: ?*c.xdg_wm_base = null,
-    seat: ?*c.wl_seat = null,
-    shm: ?*c.wl_shm = null,
-    viewporter: ?*c.wp_viewporter = null,
-    fractional_mgr: ?*c.wp_fractional_scale_manager_v1 = null,
-    decoration_mgr: ?*c.zxdg_decoration_manager_v1 = null,
-    cursor_mgr: ?*c.wp_cursor_shape_manager_v1 = null,
-    pointer: ?*c.wl_pointer = null,
-    keyboard: ?*c.wl_keyboard = null,
-    cursor_device: ?*c.wp_cursor_shape_device_v1 = null,
-    surface: ?*c.wl_surface = null,
-    xdg_surface: ?*c.xdg_surface = null,
-    toplevel: ?*c.xdg_toplevel = null,
-    viewport: ?*c.wp_viewport = null,
-    fractional: ?*c.wp_fractional_scale_v1 = null,
+    wm_base: u32 = 0,
+    seat: u32 = 0,
+    shm: u32 = 0,
+    viewporter: u32 = 0,
+    fractional_mgr: u32 = 0,
+    decoration_mgr: u32 = 0,
+    cursor_mgr: u32 = 0,
+    data_mgr: u32 = 0,
+    ti_mgr: u32 = 0,
+    pointer: u32 = 0,
+    keyboard: u32 = 0,
+    cursor_device: u32 = 0,
+    data_device: u32 = 0,
+    text_input: u32 = 0,
+    surface: u32 = 0,
+    xdg_surface: u32 = 0,
+    toplevel: u32 = 0,
+    viewport: u32 = 0,
+    fractional: u32 = 0,
     window: ?*Window = null,
     configured: bool = false,
-    first_frame_sent: bool = false,
-    frame_cb: ?*c.wl_callback = null,
+    frame_cb: u32 = 0,
+    /// The callback of the last `wl_display.sync`, and true after its `done`.
+    sync_cb: u32 = 0,
+    sync_done: bool = false,
     scale120: u32 = 120,
     int_scale: u32 = 1,
     events: std.ArrayListUnmanaged(Event) = .empty,
@@ -108,15 +175,17 @@ pub const Wayland = struct {
     py: f32 = 0,
     buttons: u8 = 0,
     mods: Mods = .{},
-    xkb_ctx: ?*c.xkb_context = null,
-    xkb_keymap: ?*c.xkb_keymap = null,
-    xkb_state: ?*c.xkb_state = null,
+    keymap: ?xkb.Keymap = null,
+    mod_mask: u32 = 0,
+    group: u32 = 0,
     repeat_rate: i32 = 25,
     repeat_delay: i32 = 600,
     repeat_key: ?u32 = null,
     repeat_at_us: i64 = 0,
     last_serial: u32 = 0,
     pointer_serial: u32 = 0,
+    /// The shape of the pointer over the main window.
+    cursor: plat.Cursor = .default,
     /// The popup surfaces, under `lock`, because the input thread reads them.
     pops: std.ArrayListUnmanaged(*Pop) = .empty,
     /// The window of the surface under the pointer, under `lock`.
@@ -130,25 +199,38 @@ pub const Wayland = struct {
     atlas: Atlas,
     /// The lock of `events`, `mods`, and `buttons`, which the input thread also uses.
     lock: SpinLock = .{},
-    ptr_queue: ?*c.wl_event_queue = null,
     input_thread: ?std.Thread = null,
     input_quit: std.atomic.Value(bool) = .init(false),
     /// Pipes that wake the UI thread and the input thread: read end, write end.
     wake_ui: [2]i32 = .{ -1, -1 },
     wake_input: [2]i32 = .{ -1, -1 },
+    /// The offers of the data device, and the offer of the selection.
+    offers: std.ArrayListUnmanaged(Offer) = .empty,
+    selection: ?Offer = null,
+    /// The source of our selection and its text, while it is the selection.
+    source: u32 = 0,
+    source_text: []u8 = &.{},
+    /// The text of an input method, waiting for `done`, and the copies for the events.
+    ime_preedit: std.ArrayListUnmanaged(u8) = .empty,
+    ime_caret: u32 = 0,
+    ime_commit: std.ArrayListUnmanaged(u8) = .empty,
+    ime_has_preedit: bool = false,
+    ime_has_commit: bool = false,
+    ime_out: [2]std.ArrayListUnmanaged(u8) = .{ .empty, .empty },
 
-    pub fn init(gpa: std.mem.Allocator) !*Wayland {
-        const display = c.wl_display_connect(null) orelse return error.NoWaylandDisplay;
-        const w = try gpa.create(Wayland);
-        w.* = .{ .gpa = gpa, .display = display, .atlas = Atlas.init(gpa) };
+    pub fn init(gpa: std.mem.Allocator, opts: Options) !*Wayland {
+        const conn = wire.Conn.connect(gpa, opts.runtime_dir, opts.display) catch return error.NoWaylandDisplay;
+        const w = gpa.create(Wayland) catch |e| {
+            conn.deinit();
+            return e;
+        };
+        w.* = .{ .gpa = gpa, .conn = conn, .opts = opts, .atlas = Atlas.init(gpa) };
         errdefer w.deinit();
-        w.registry = c.wl_display_get_registry(display);
-        _ = c.wl_registry_add_listener(w.registry, &registry_listener, w);
-        if (c.wl_display_roundtrip(display) < 0) return error.WaylandFailed;
-        if (w.compositor == null or w.wm_base == null or w.shm == null) return error.MissingGlobals;
-        _ = c.xdg_wm_base_add_listener(w.wm_base, &wm_base_listener, w);
-        w.xkb_ctx = c.xkb_context_new(c.XKB_CONTEXT_NO_FLAGS);
-        if (c.wl_display_roundtrip(display) < 0) return error.WaylandFailed;
+        w.registry = try w.new(I.registry, .main, 0);
+        try w.conn.send(1, 1, .{w.registry});
+        try w.roundtrip();
+        if (w.compositor == 0 or w.wm_base == 0 or w.shm == 0) return error.MissingGlobals;
+        try w.roundtrip();
         return w;
     }
 
@@ -160,29 +242,32 @@ pub const Wayland = struct {
             w.input_thread = null;
         }
         for ([_]i32{ w.wake_ui[0], w.wake_ui[1], w.wake_input[0], w.wake_input[1] }) |fd| if (fd >= 0) {
-            _ = std.os.linux.close(fd);
+            _ = linux.close(fd);
         };
         for (w.bufs) |b| if (b) |buf| freeBuf(w, buf);
         w.atlas.deinit();
         if (w.prev) |p| w.gpa.free(p.pixels);
         if (w.last_image) |p| w.gpa.free(p.pixels);
-        if (w.xkb_state) |s| c.xkb_state_unref(s);
-        if (w.xkb_keymap) |k| c.xkb_keymap_unref(k);
-        if (w.xkb_ctx) |x| c.xkb_context_unref(x);
-        if (w.frame_cb) |cb| c.wl_callback_destroy(cb);
-        if (w.cursor_device) |d| c.wp_cursor_shape_device_v1_destroy(d);
-        if (w.keyboard) |k| c.wl_keyboard_release(k);
-        if (w.pointer) |p| c.wl_pointer_release(p);
-        w.pointer = null;
-        if (w.ptr_queue) |q| c.wl_event_queue_destroy(q);
-        if (w.fractional) |f| c.wp_fractional_scale_v1_destroy(f);
-        if (w.viewport) |v| c.wp_viewport_destroy(v);
-        if (w.toplevel) |t| c.xdg_toplevel_destroy(t);
-        if (w.xdg_surface) |s| c.xdg_surface_destroy(s);
-        if (w.surface) |s| c.wl_surface_destroy(s);
-        if (w.registry) |r| c.wl_registry_destroy(r);
-        _ = c.wl_display_flush(w.display);
-        c.wl_display_disconnect(w.display);
+        if (w.keymap) |*k| k.deinit();
+        if (w.text_input != 0) w.destroy(w.text_input, 0);
+        if (w.data_device != 0) w.destroy(w.data_device, 2);
+        if (w.source != 0) w.destroy(w.source, 1);
+        for (w.offers.items) |o| w.destroyOffer(o.id);
+        if (w.selection) |o| w.destroyOffer(o.id);
+        if (w.cursor_device != 0) w.destroy(w.cursor_device, 0);
+        if (w.keyboard != 0) w.destroy(w.keyboard, 0);
+        if (w.pointer != 0) w.destroy(w.pointer, 1);
+        if (w.fractional != 0) w.destroy(w.fractional, 0);
+        if (w.viewport != 0) w.destroy(w.viewport, 0);
+        if (w.toplevel != 0) w.destroy(w.toplevel, 0);
+        if (w.xdg_surface != 0) w.destroy(w.xdg_surface, 0);
+        if (w.surface != 0) w.destroy(w.surface, 0);
+        w.conn.deinit();
+        w.gpa.free(w.source_text);
+        w.offers.deinit(w.gpa);
+        w.ime_preedit.deinit(w.gpa);
+        w.ime_commit.deinit(w.gpa);
+        for (&w.ime_out) |*o| o.deinit(w.gpa);
         w.events.deinit(w.gpa);
         w.pops.deinit(w.gpa);
         w.gpa.destroy(w);
@@ -204,6 +289,10 @@ pub const Wayland = struct {
         .poll = vPoll,
         .nowUs = vNowUs,
         .target = vTarget,
+        .setCursor = vSetCursor,
+        .clipboardSet = vClipboardSet,
+        .clipboardGet = vClipboardGet,
+        .textInput = vTextInput,
     };
 
     fn self(ptr: *anyopaque) *Wayland {
@@ -215,6 +304,69 @@ pub const Wayland = struct {
         w.events.append(w.gpa, e) catch {};
         w.lock.unlock();
         if (on_input_thread) wakeFd(w.wake_ui[1]);
+    }
+
+    // ---- Requests ----
+
+    fn new(w: *Wayland, iface: u16, queue: wire.Queue, fd_events: u32) !u32 {
+        return w.conn.newObject(iface, queue, fd_events);
+    }
+
+    /// Sends a request. A failed send marks the connection as lost, and the next read reports it.
+    fn req(w: *Wayland, id: u32, op: u16, args: anytype) void {
+        if (id == 0) return;
+        w.conn.send(id, op, args) catch {};
+    }
+
+    /// Sends the destructor request of an object and forgets its id.
+    fn destroy(w: *Wayland, id: u32, op: u16) void {
+        if (id == 0) return;
+        w.req(id, op, .{});
+        w.conn.destroyed(id);
+    }
+
+    fn flush(w: *Wayland) void {
+        w.conn.flush() catch {};
+    }
+
+    /// Sends `wl_display.sync` and reads events until its callback is done.
+    fn roundtrip(w: *Wayland) !void {
+        const cb = try w.new(I.sync_cb, .main, 0);
+        w.sync_cb = cb;
+        w.sync_done = false;
+        try w.conn.send(1, 0, .{cb});
+        try w.conn.flush();
+        var waits: u32 = 0;
+        while (true) {
+            w.dispatchMain();
+            if (w.sync_done) return;
+            if (waits >= 50) return error.WaylandTimeout;
+            if (!try w.readWait(100)) waits += 1;
+        }
+    }
+
+    /// Waits up to `ms` (-1: no limit) for the socket or the wake pipe, and
+    /// reads the socket. It returns true when the socket was readable.
+    fn readWait(w: *Wayland, ms: i32) !bool {
+        var pfd = [_]linux.pollfd{
+            .{ .fd = w.conn.fd, .events = linux.POLL.IN, .revents = 0 },
+            .{ .fd = w.wake_ui[0], .events = linux.POLL.IN, .revents = 0 },
+        };
+        const n: usize = if (w.wake_ui[0] >= 0) 2 else 1;
+        const r = linux.poll(&pfd, n, ms);
+        if (@as(isize, @bitCast(r)) <= 0) return false;
+        drainFd(w.wake_ui[0]);
+        if (pfd[0].revents & (linux.POLL.IN | linux.POLL.HUP | linux.POLL.ERR) == 0) return false;
+        const got = try w.conn.read();
+        if (got & 2 != 0) w.wakeInput();
+        return true;
+    }
+
+    fn dispatchMain(w: *Wayland) void {
+        while (w.conn.next(.main)) |e| {
+            w.handle(e);
+            w.conn.release(e);
+        }
     }
 
     // ---- The input thread ----
@@ -234,66 +386,63 @@ pub const Wayland = struct {
     fn wakeFd(fd: i32) void {
         if (fd < 0) return;
         const one = [1]u8{1};
-        _ = std.os.linux.write(fd, &one, 1);
+        _ = linux.write(fd, &one, 1);
     }
 
     fn drainFd(fd: i32) void {
         if (fd < 0) return;
         var buf: [64]u8 = undefined;
         while (true) {
-            const rc = std.os.linux.read(fd, &buf, buf.len);
+            const rc = linux.read(fd, &buf, buf.len);
             if (@as(isize, @bitCast(rc)) <= 0) return;
         }
     }
 
     fn makePipe() [2]i32 {
         var fds: [2]i32 = .{ -1, -1 };
-        const rc = std.os.linux.pipe2(&fds, .{ .NONBLOCK = true, .CLOEXEC = true });
+        const rc = linux.pipe2(&fds, .{ .NONBLOCK = true, .CLOEXEC = true });
         if (@as(isize, @bitCast(rc)) < 0) return .{ -1, -1 };
         return fds;
     }
 
     /// Moves the pointer to its own queue and starts the input thread. With
-    /// no pipe, no thread, or ZTK_NO_INPUT_THREAD=1, the pointer stays on the queue of the UI thread.
+    /// no pipe, no thread, or `no_input_thread`, the pointer stays on the queue of the UI thread.
     fn startInput(w: *Wayland) void {
-        // ZTK_NO_INPUT_THREAD=1 keeps the pointer on the queue of the UI thread.
-        if (std.c.getenv("ZTK_NO_INPUT_THREAD")) |v| if (v[0] == '1') return;
-        const q = c.wl_display_create_queue(w.display) orelse return;
+        if (w.opts.no_input_thread) return;
         w.wake_ui = makePipe();
         w.wake_input = makePipe();
-        if (w.wake_ui[0] < 0 or w.wake_input[0] < 0) {
-            c.wl_event_queue_destroy(q);
-            return;
-        }
-        c.wl_proxy_set_queue(@ptrCast(w.pointer), q);
-        w.ptr_queue = q;
+        if (w.wake_ui[0] < 0 or w.wake_input[0] < 0) return;
+        w.conn.setQueue(w.pointer, .input);
         w.input_thread = std.Thread.spawn(.{}, inputLoop, .{w}) catch blk: {
-            c.wl_proxy_set_queue(@ptrCast(w.pointer), null);
-            c.wl_event_queue_destroy(q);
-            w.ptr_queue = null;
+            w.conn.setQueue(w.pointer, .main);
             break :blk null;
         };
     }
 
     fn inputLoop(w: *Wayland) void {
         on_input_thread = true;
-        const q = w.ptr_queue.?;
-        const fd = c.wl_display_get_fd(w.display);
         while (!w.input_quit.load(.acquire)) {
-            while (c.wl_display_prepare_read_queue(w.display, q) != 0) _ = c.wl_display_dispatch_queue_pending(w.display, q);
-            _ = c.wl_display_flush(w.display);
-            var pfd = [_]std.posix.pollfd{
-                .{ .fd = fd, .events = std.posix.POLL.IN, .revents = 0 },
-                .{ .fd = w.wake_input[0], .events = std.posix.POLL.IN, .revents = 0 },
+            w.dispatchInput();
+            w.flush();
+            var pfd = [_]linux.pollfd{
+                .{ .fd = w.conn.fd, .events = linux.POLL.IN, .revents = 0 },
+                .{ .fd = w.wake_input[0], .events = linux.POLL.IN, .revents = 0 },
             };
-            const r = std.posix.poll(&pfd, -1) catch 0;
-            if (r > 0 and pfd[0].revents & std.posix.POLL.IN != 0) {
-                _ = c.wl_display_read_events(w.display);
+            const r = linux.poll(&pfd, 2, -1);
+            if (@as(isize, @bitCast(r)) > 0 and pfd[0].revents & (linux.POLL.HUP | linux.POLL.ERR) != 0) return;
+            if (@as(isize, @bitCast(r)) > 0 and pfd[0].revents & linux.POLL.IN != 0) {
+                const got = w.conn.read() catch return;
                 // The events of the UI queue that this thread read.
-                wakeFd(w.wake_ui[1]);
-            } else c.wl_display_cancel_read(w.display);
+                if (got & 1 != 0) wakeFd(w.wake_ui[1]);
+            }
             drainFd(w.wake_input[0]);
-            _ = c.wl_display_dispatch_queue_pending(w.display, q);
+        }
+    }
+
+    fn dispatchInput(w: *Wayland) void {
+        while (w.conn.next(.input)) |e| {
+            w.handle(e);
+            w.conn.release(e);
         }
     }
 
@@ -302,103 +451,155 @@ pub const Wayland = struct {
         if (w.input_thread != null) wakeFd(w.wake_input[1]);
     }
 
-    // ---- The registry ----
+    // ---- The dispatch of events ----
 
-    const registry_listener: c.struct_wl_registry_listener = .{ .global = onGlobal, .global_remove = onGlobalRemove };
-
-    fn onGlobal(data: ?*anyopaque, reg: ?*c.wl_registry, name: u32, iface: [*c]const u8, version: u32) callconv(.c) void {
-        const w: *Wayland = @ptrCast(@alignCast(data.?));
-        const i = std.mem.span(iface);
-        if (std.mem.eql(u8, i, "wl_compositor")) {
-            w.compositor_version = @min(version, 6);
-            w.compositor = @ptrCast(c.wl_registry_bind(reg, name, &c.wl_compositor_interface, w.compositor_version));
-        } else if (std.mem.eql(u8, i, "xdg_wm_base")) {
-            w.wm_base = @ptrCast(c.wl_registry_bind(reg, name, &c.xdg_wm_base_interface, @min(version, 2)));
-        } else if (std.mem.eql(u8, i, "wl_seat")) {
-            w.seat = @ptrCast(c.wl_registry_bind(reg, name, &c.wl_seat_interface, @min(version, 5)));
-            _ = c.wl_seat_add_listener(w.seat, &seat_listener, w);
-        } else if (std.mem.eql(u8, i, "wl_shm")) {
-            w.shm = @ptrCast(c.wl_registry_bind(reg, name, &c.wl_shm_interface, 1));
-        } else if (std.mem.eql(u8, i, "wp_viewporter")) {
-            w.viewporter = @ptrCast(c.wl_registry_bind(reg, name, &c.wp_viewporter_interface, 1));
-        } else if (std.mem.eql(u8, i, "wp_fractional_scale_manager_v1")) {
-            w.fractional_mgr = @ptrCast(c.wl_registry_bind(reg, name, &c.wp_fractional_scale_manager_v1_interface, 1));
-        } else if (std.mem.eql(u8, i, "zxdg_decoration_manager_v1")) {
-            w.decoration_mgr = @ptrCast(c.wl_registry_bind(reg, name, &c.zxdg_decoration_manager_v1_interface, 1));
-        } else if (std.mem.eql(u8, i, "wp_cursor_shape_manager_v1")) {
-            w.cursor_mgr = @ptrCast(c.wl_registry_bind(reg, name, &c.wp_cursor_shape_manager_v1_interface, 1));
+    fn handle(w: *Wayland, e: wire.Event) void {
+        if (w.opts.debug) std.debug.print("wayland: event iface {d} object {d} op {d} ({d} bytes, {d} fds)\n", .{ e.iface, e.id, e.op, e.data.len, e.nfds });
+        var a = e.args();
+        switch (e.iface) {
+            I.registry => if (e.op == 0) {
+                const name = a.uint();
+                const iface = a.string() orelse return;
+                const version = a.uint();
+                w.onGlobal(name, iface, version) catch {};
+            },
+            I.sync_cb => if (e.id == w.sync_cb) {
+                w.sync_done = true;
+                w.conn.destroyed(e.id);
+            },
+            I.wm_base => if (e.op == 0) {
+                w.req(w.wm_base, 3, .{a.uint()});
+                w.flush();
+            },
+            I.xdg_surface => {
+                const serial = a.uint();
+                w.req(e.id, 4, .{serial});
+                if (w.popById(e.id, .xdg_surface)) |p| {
+                    if (p.configured) return;
+                    p.configured = true;
+                    w.push(.{ .frame = .{ .window = p.win, .time_us = nowUs() } });
+                } else if (!w.configured) {
+                    w.configured = true;
+                    // The first frame needs no callback.
+                    if (w.window) |win| w.push(.{ .frame = .{ .window = win, .time_us = nowUs() } });
+                }
+            },
+            I.toplevel => switch (e.op) {
+                0 => {
+                    const width = a.int();
+                    const height = a.int();
+                    const win = w.window orelse return;
+                    if (width > 0 and height > 0 and (win.size.w != width or win.size.h != height)) {
+                        win.size = .{ .w = width, .h = height };
+                        w.push(.{ .resize = .{ .window = win, .size = win.size } });
+                    }
+                },
+                1 => if (w.window) |win| w.push(.{ .close = .{ .window = win } }),
+                else => {},
+            },
+            I.popup => if (w.popById(e.id, .popup)) |p| switch (e.op) {
+                0 => {
+                    const x = a.int();
+                    const y = a.int();
+                    // The place of the window geometry in the window geometry of the parent.
+                    const pos: geom.Point = .{ .x = x - p.margin.left + p.parent_margin.left, .y = y - p.margin.top + p.parent_margin.top };
+                    if (pos.x == p.win.pos.x and pos.y == p.win.pos.y) return;
+                    p.win.pos = pos;
+                    if (p.configured) w.push(.{ .resize = .{ .window = p.win, .size = p.win.size } });
+                },
+                1 => w.push(.{ .close = .{ .window = p.win } }),
+                else => {},
+            },
+            I.frac => if (e.op == 0) w.setScale(a.uint()),
+            I.surface => if (e.op == 2 and e.id == w.surface) {
+                // The integer scale counts only without the fractional scale.
+                if (w.fractional != 0) return;
+                w.int_scale = @intCast(std.math.clamp(a.int(), 1, 16));
+                w.setScale(w.int_scale * 120);
+            },
+            I.frame_cb => {
+                const time_ms = a.uint();
+                w.conn.destroyed(e.id);
+                if (e.id == w.frame_cb) {
+                    w.frame_cb = 0;
+                    if (w.window) |win| w.push(.{ .frame = .{ .window = win, .time_us = @as(i64, time_ms) * 1000 } });
+                } else if (w.popById(e.id, .frame_cb)) |p| {
+                    p.frame_cb = 0;
+                    w.push(.{ .frame = .{ .window = p.win, .time_us = @as(i64, time_ms) * 1000 } });
+                }
+            },
+            I.buffer => if (e.op == 0) w.onRelease(e.id),
+            I.seat => if (e.op == 0) w.onCapabilities(a.uint()),
+            I.pointer => w.onPointer(e.op, &a),
+            I.keyboard => w.onKeyboard(e.op, &a),
+            I.data_device => w.onDataDevice(e.op, &a),
+            I.data_offer => if (e.op == 0) w.onOfferType(e.id, a.string() orelse return),
+            I.data_source => w.onSource(e.id, e.op, &a),
+            I.text_input => w.onTextInput(e.op, &a),
+            else => {},
         }
     }
 
-    fn onGlobalRemove(_: ?*anyopaque, _: ?*c.wl_registry, _: u32) callconv(.c) void {}
+    // ---- The registry ----
 
-    const wm_base_listener: c.struct_xdg_wm_base_listener = .{ .ping = onPing };
+    fn bind(w: *Wayland, name: u32, iface_name: []const u8, iface: u16, version: u32, fd_events: u32) !u32 {
+        const id = try w.new(iface, .main, fd_events);
+        try w.conn.send(w.registry, 0, .{ name, wire.Str{ .s = iface_name }, version, id });
+        return id;
+    }
 
-    fn onPing(_: ?*anyopaque, base: ?*c.xdg_wm_base, serial: u32) callconv(.c) void {
-        c.xdg_wm_base_pong(base, serial);
+    fn onGlobal(w: *Wayland, name: u32, i: []const u8, version: u32) !void {
+        if (std.mem.eql(u8, i, "wl_compositor")) {
+            w.compositor_version = @min(version, 6);
+            w.compositor = try w.bind(name, i, I.compositor, w.compositor_version, 0);
+        } else if (std.mem.eql(u8, i, "xdg_wm_base")) {
+            w.wm_base = try w.bind(name, i, I.wm_base, @min(version, 2), 0);
+        } else if (std.mem.eql(u8, i, "wl_seat") and w.seat == 0) {
+            w.seat = try w.bind(name, i, I.seat, @min(version, 5), 0);
+            w.makeDevices();
+        } else if (std.mem.eql(u8, i, "wl_shm")) {
+            w.shm = try w.bind(name, i, I.shm, 1, 0);
+        } else if (std.mem.eql(u8, i, "wp_viewporter")) {
+            w.viewporter = try w.bind(name, i, I.viewporter, 1, 0);
+        } else if (std.mem.eql(u8, i, "wp_fractional_scale_manager_v1")) {
+            w.fractional_mgr = try w.bind(name, i, I.frac_mgr, 1, 0);
+        } else if (std.mem.eql(u8, i, "zxdg_decoration_manager_v1")) {
+            w.decoration_mgr = try w.bind(name, i, I.deco_mgr, 1, 0);
+        } else if (std.mem.eql(u8, i, "wp_cursor_shape_manager_v1")) {
+            w.cursor_mgr = try w.bind(name, i, I.cursor_mgr, 1, 0);
+        } else if (std.mem.eql(u8, i, "wl_data_device_manager")) {
+            w.data_mgr = try w.bind(name, i, I.data_mgr, @min(version, 3), 0);
+            w.makeDevices();
+        } else if (std.mem.eql(u8, i, "zwp_text_input_manager_v3")) {
+            w.ti_mgr = try w.bind(name, i, I.ti_mgr, 1, 0);
+            w.makeDevices();
+        }
+    }
+
+    /// The objects of the seat that need a second global: the data device and the text input.
+    fn makeDevices(w: *Wayland) void {
+        if (w.seat == 0) return;
+        if (w.data_mgr != 0 and w.data_device == 0) {
+            w.data_device = w.new(I.data_device, .main, 0) catch 0;
+            // Event 0 (data_offer) makes a wl_data_offer.
+            w.conn.setCreates(w.data_device, 0, I.data_offer);
+            w.req(w.data_mgr, 1, .{ w.data_device, w.seat });
+        }
+        if (w.ti_mgr != 0 and w.text_input == 0) {
+            w.text_input = w.new(I.text_input, .main, 0) catch 0;
+            w.req(w.ti_mgr, 1, .{ w.text_input, w.seat });
+        }
     }
 
     // ---- The window ----
 
-    const xdg_surface_listener: c.struct_xdg_surface_listener = .{ .configure = onSurfaceConfigure };
-    const toplevel_listener: c.struct_xdg_toplevel_listener = .{ .configure = onToplevelConfigure, .close = onClose, .configure_bounds = onBounds, .wm_capabilities = onCaps };
-    const decoration_listener: c.struct_zxdg_toplevel_decoration_v1_listener = .{ .configure = onDecoration };
-    const fractional_listener: c.struct_wp_fractional_scale_v1_listener = .{ .preferred_scale = onPreferredScale };
-    const surface_listener: c.struct_wl_surface_listener = .{ .enter = onSurfEnter, .leave = onSurfLeave, .preferred_buffer_scale = onBufferScale, .preferred_buffer_transform = onBufferTransform };
-
-    fn onSurfaceConfigure(data: ?*anyopaque, surf: ?*c.xdg_surface, serial: u32) callconv(.c) void {
-        const w: *Wayland = @ptrCast(@alignCast(data.?));
-        c.xdg_surface_ack_configure(surf, serial);
-        if (!w.configured) {
-            w.configured = true;
-            // The first frame needs no callback.
-            if (w.window) |win| w.push(.{ .frame = .{ .window = win, .time_us = nowUs() } });
-        }
-    }
-
-    fn onToplevelConfigure(data: ?*anyopaque, _: ?*c.xdg_toplevel, width: i32, height: i32, _: [*c]c.wl_array) callconv(.c) void {
-        const w: *Wayland = @ptrCast(@alignCast(data.?));
-        const win = w.window orelse return;
-        if (width > 0 and height > 0 and (win.size.w != width or win.size.h != height)) {
-            win.size = .{ .w = width, .h = height };
-            w.push(.{ .resize = .{ .window = win, .size = win.size } });
-        }
-    }
-
-    fn onBounds(_: ?*anyopaque, _: ?*c.xdg_toplevel, _: i32, _: i32) callconv(.c) void {}
-    fn onCaps(_: ?*anyopaque, _: ?*c.xdg_toplevel, _: [*c]c.wl_array) callconv(.c) void {}
-
-    fn onClose(data: ?*anyopaque, _: ?*c.xdg_toplevel) callconv(.c) void {
-        const w: *Wayland = @ptrCast(@alignCast(data.?));
-        if (w.window) |win| w.push(.{ .close = .{ .window = win } });
-    }
-
-    fn onDecoration(_: ?*anyopaque, _: ?*c.zxdg_toplevel_decoration_v1, _: u32) callconv(.c) void {}
-
     fn setScale(w: *Wayland, s120: u32) void {
-        if (w.scale120 == s120) return;
+        if (w.scale120 == s120 or s120 == 0) return;
         w.scale120 = s120;
         if (w.window) |win| {
             win.scale = @as(f32, @floatFromInt(s120)) / 120.0;
             w.push(.{ .scale = .{ .window = win, .scale = win.scale } });
         }
-    }
-
-    fn onPreferredScale(data: ?*anyopaque, _: ?*c.wp_fractional_scale_v1, scale: u32) callconv(.c) void {
-        const w: *Wayland = @ptrCast(@alignCast(data.?));
-        w.setScale(scale);
-    }
-
-    fn onSurfEnter(_: ?*anyopaque, _: ?*c.wl_surface, _: ?*c.wl_output) callconv(.c) void {}
-    fn onSurfLeave(_: ?*anyopaque, _: ?*c.wl_surface, _: ?*c.wl_output) callconv(.c) void {}
-    fn onBufferTransform(_: ?*anyopaque, _: ?*c.wl_surface, _: u32) callconv(.c) void {}
-
-    fn onBufferScale(data: ?*anyopaque, _: ?*c.wl_surface, factor: i32) callconv(.c) void {
-        const w: *Wayland = @ptrCast(@alignCast(data.?));
-        // The integer scale counts only without the fractional scale.
-        if (w.fractional != null) return;
-        w.int_scale = @intCast(std.math.clamp(factor, 1, 16));
-        w.setScale(w.int_scale * 120);
     }
 
     fn vCreateWindow(ptr: *anyopaque, opts: plat.WindowOptions) anyerror!*Window {
@@ -408,29 +609,31 @@ pub const Wayland = struct {
         const win = try w.gpa.create(Window);
         win.* = .{ .size = opts.size };
         w.window = win;
-        w.surface = c.wl_compositor_create_surface(w.compositor);
-        if (w.compositor_version >= 6) _ = c.wl_surface_add_listener(w.surface, &surface_listener, w);
-        w.xdg_surface = c.xdg_wm_base_get_xdg_surface(w.wm_base, w.surface);
-        _ = c.xdg_surface_add_listener(w.xdg_surface, &xdg_surface_listener, w);
-        w.toplevel = c.xdg_surface_get_toplevel(w.xdg_surface);
-        _ = c.xdg_toplevel_add_listener(w.toplevel, &toplevel_listener, w);
-        c.xdg_toplevel_set_app_id(w.toplevel, "ztk");
-        if (opts.title.len > 0) vSetTitle(ptr, win, opts.title) else c.xdg_toplevel_set_title(w.toplevel, "ztk");
-        if (w.decoration_mgr) |dm| {
-            const dec = c.zxdg_decoration_manager_v1_get_toplevel_decoration(dm, w.toplevel);
-            _ = c.zxdg_toplevel_decoration_v1_add_listener(dec, &decoration_listener, w);
-            c.zxdg_toplevel_decoration_v1_set_mode(dec, c.ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+        w.surface = try w.new(I.surface, .main, 0);
+        w.req(w.compositor, 0, .{w.surface});
+        w.xdg_surface = try w.new(I.xdg_surface, .main, 0);
+        w.req(w.wm_base, 2, .{ w.xdg_surface, w.surface });
+        w.toplevel = try w.new(I.toplevel, .main, 0);
+        w.req(w.xdg_surface, 1, .{w.toplevel});
+        w.req(w.toplevel, 3, .{wire.Str{ .s = "ztk" }});
+        if (opts.title.len > 0) vSetTitle(ptr, win, opts.title) else w.req(w.toplevel, 2, .{wire.Str{ .s = "ztk" }});
+        if (w.decoration_mgr != 0) {
+            const dec = try w.new(I.deco, .main, 0);
+            w.req(w.decoration_mgr, 1, .{ dec, w.toplevel });
+            // Mode 2 is server_side.
+            w.req(dec, 1, .{@as(u32, 2)});
         }
-        if (w.fractional_mgr != null and w.viewporter != null) {
-            w.fractional = c.wp_fractional_scale_manager_v1_get_fractional_scale(w.fractional_mgr, w.surface);
-            _ = c.wp_fractional_scale_v1_add_listener(w.fractional, &fractional_listener, w);
-            w.viewport = c.wp_viewporter_get_viewport(w.viewporter, w.surface);
+        if (w.fractional_mgr != 0 and w.viewporter != 0) {
+            w.fractional = try w.new(I.frac, .main, 0);
+            w.req(w.fractional_mgr, 1, .{ w.fractional, w.surface });
+            w.viewport = try w.new(I.viewport, .main, 0);
+            w.req(w.viewporter, 1, .{ w.viewport, w.surface });
         }
-        c.wl_surface_commit(w.surface);
+        w.req(w.surface, 6, .{});
         // Wait for the first configure.
-        _ = c.wl_display_roundtrip(w.display);
+        try w.roundtrip();
         var spins: u32 = 0;
-        while (!w.configured and spins < 50) : (spins += 1) _ = c.wl_display_roundtrip(w.display);
+        while (!w.configured and spins < 50) : (spins += 1) try w.roundtrip();
         win.scale = @as(f32, @floatFromInt(w.scale120)) / 120.0;
         return win;
     }
@@ -450,11 +653,12 @@ pub const Wayland = struct {
 
     fn vSetTitle(ptr: *anyopaque, _: *Window, title: []const u8) void {
         const w = self(ptr);
-        var buf: [256]u8 = undefined;
-        const n = @min(title.len, buf.len - 1);
-        @memcpy(buf[0..n], title[0..n]);
-        buf[n] = 0;
-        if (w.toplevel) |t| c.xdg_toplevel_set_title(t, &buf);
+        // A string of the protocol has no zero byte, and the title has a limit of 255 bytes.
+        var end: usize = @min(title.len, 255);
+        if (std.mem.indexOfScalar(u8, title[0..end], 0)) |z| end = z;
+        while (end > 0 and end < title.len and title[end] & 0xc0 == 0x80) end -= 1;
+        w.req(w.toplevel, 2, .{wire.Str{ .s = title[0..end] }});
+        w.flush();
     }
 
     fn vRequestSize(ptr: *anyopaque, win: *Window, size: geom.Size) void {
@@ -463,14 +667,14 @@ pub const Wayland = struct {
         win.size = size;
         if (popOf(win)) |p| {
             const m = p.margin;
-            c.xdg_surface_set_window_geometry(p.xdg_surface, m.left, m.top, @max(size.w - m.left - m.right, 1), @max(size.h - m.top - m.bottom, 1));
+            w.req(p.xdg_surface, 3, .{ m.left, m.top, @max(size.w - m.left - m.right, 1), @max(size.h - m.top - m.bottom, 1) });
         }
         w.push(.{ .resize = .{ .window = win, .size = size } });
     }
 
     fn vSetMinSize(ptr: *anyopaque, _: *Window, size: geom.Size) void {
         const w = self(ptr);
-        if (w.toplevel) |t| c.xdg_toplevel_set_min_size(t, size.w, size.h);
+        w.req(w.toplevel, 8, .{ size.w, size.h });
     }
 
     fn vNowUs(_: *anyopaque) i64 {
@@ -478,43 +682,35 @@ pub const Wayland = struct {
     }
 
     fn nowUs() i64 {
-        var ts: std.os.linux.timespec = undefined;
-        _ = std.os.linux.clock_gettime(.MONOTONIC, &ts);
+        var ts: linux.timespec = undefined;
+        _ = linux.clock_gettime(.MONOTONIC, &ts);
         return @as(i64, ts.sec) * 1_000_000 + @divFloor(@as(i64, ts.nsec), 1000);
     }
 
     // ---- Frames ----
 
-    const frame_listener: c.struct_wl_callback_listener = .{ .done = onFrameDone };
-
-    fn onFrameDone(data: ?*anyopaque, cb: ?*c.wl_callback, time_ms: u32) callconv(.c) void {
-        const w: *Wayland = @ptrCast(@alignCast(data.?));
-        c.wl_callback_destroy(cb);
-        w.frame_cb = null;
-        if (w.window) |win| w.push(.{ .frame = .{ .window = win, .time_us = @as(i64, time_ms) * 1000 } });
-    }
-
     fn vRequestFrame(ptr: *anyopaque, win: *Window) void {
         const w = self(ptr);
         if (popOf(win)) |p| {
-            if (p.frame_cb != null or !p.configured) return;
-            p.frame_cb = c.wl_surface_frame(p.surface);
-            _ = c.wl_callback_add_listener(p.frame_cb, &pop_frame_listener, p);
-            c.wl_surface_commit(p.surface);
+            if (p.frame_cb != 0 or !p.configured) return;
+            p.frame_cb = w.new(I.frame_cb, .main, 0) catch return;
+            w.req(p.surface, 3, .{p.frame_cb});
+            w.req(p.surface, 6, .{});
+            w.flush();
             return;
         }
-        if (w.frame_cb != null or !w.configured) return;
-        if (w.surface) |s| {
-            w.frame_cb = c.wl_surface_frame(s);
-            _ = c.wl_callback_add_listener(w.frame_cb, &frame_listener, w);
-            c.wl_surface_commit(s);
-        }
+        if (w.frame_cb != 0 or !w.configured or w.surface == 0) return;
+        w.frame_cb = w.new(I.frame_cb, .main, 0) catch return;
+        w.req(w.surface, 3, .{w.frame_cb});
+        w.req(w.surface, 6, .{});
+        w.flush();
     }
 
     // ---- The wait and the poll ----
 
     fn vWait(ptr: *anyopaque, timeout_us: ?i64) void {
         const w = self(ptr);
+        w.dispatchMain();
         w.lock.lock();
         const pending = w.events.items.len > 0;
         w.lock.unlock();
@@ -524,38 +720,26 @@ pub const Wayland = struct {
             const left = @max(w.repeat_at_us - nowUs(), 0);
             limit = if (limit) |l| @min(l, left) else left;
         }
-        // The prepare_read protocol: dispatch what is queued, flush, poll, read.
-        while (c.wl_display_prepare_read(w.display) != 0) _ = c.wl_display_dispatch_pending(w.display);
-        _ = c.wl_display_flush(w.display);
-        var pfd = [_]std.posix.pollfd{
-            .{ .fd = c.wl_display_get_fd(w.display), .events = std.posix.POLL.IN, .revents = 0 },
-            .{ .fd = w.wake_ui[0], .events = std.posix.POLL.IN, .revents = 0 },
-        };
+        w.flush();
         const ms: i32 = if (limit) |l| @intCast(@min(@divFloor(l +| 999, 1000), std.math.maxInt(i32))) else -1;
-        // A pipe of -1 is left out of the poll.
-        const n: usize = if (w.wake_ui[0] >= 0) 2 else 1;
-        const r = std.posix.poll(pfd[0..n], ms) catch 0;
-        if (r > 0 and pfd[0].revents & std.posix.POLL.IN != 0) {
-            _ = c.wl_display_read_events(w.display);
-            w.wakeInput();
-        } else c.wl_display_cancel_read(w.display);
-        drainFd(w.wake_ui[0]);
-        _ = c.wl_display_dispatch_pending(w.display);
+        _ = w.readWait(ms) catch w.lost();
+        w.dispatchMain();
+    }
+
+    /// The connection is gone: the window gets a close event, once.
+    fn lost(w: *Wayland) void {
+        if (w.window) |win| w.push(.{ .close = .{ .window = win } });
+        w.lock.lock();
+        w.window = null;
+        w.lock.unlock();
     }
 
     fn vPoll(ptr: *anyopaque, gpa: std.mem.Allocator, out: *std.ArrayListUnmanaged(Event)) anyerror!void {
         const w = self(ptr);
-        _ = c.wl_display_dispatch_pending(w.display);
-        _ = c.wl_display_flush(w.display);
+        w.flush();
         // A read that does not block gets events that wait on the socket.
-        if (c.wl_display_prepare_read(w.display) == 0) {
-            var pfd = [_]std.posix.pollfd{.{ .fd = c.wl_display_get_fd(w.display), .events = std.posix.POLL.IN, .revents = 0 }};
-            if ((std.posix.poll(&pfd, 0) catch 0) > 0) {
-                _ = c.wl_display_read_events(w.display);
-                w.wakeInput();
-                _ = c.wl_display_dispatch_pending(w.display);
-            } else c.wl_display_cancel_read(w.display);
-        }
+        _ = w.readWait(0) catch w.lost();
+        w.dispatchMain();
         w.runRepeat();
         w.lock.lock();
         defer w.lock.unlock();
@@ -574,51 +758,25 @@ pub const Wayland = struct {
 
     // ---- The seat ----
 
-    const seat_listener: c.struct_wl_seat_listener = .{ .capabilities = onCapabilities, .name = onSeatName };
-    const pointer_listener: c.struct_wl_pointer_listener = .{
-        .enter = onPointerEnter,
-        .leave = onPointerLeave,
-        .motion = onPointerMotion,
-        .button = onPointerButton,
-        .axis = onPointerAxis,
-        .frame = onPointerFrame,
-        .axis_source = onAxisSource,
-        .axis_stop = onAxisStop,
-        .axis_discrete = onAxisDiscrete,
-        .axis_value120 = onAxisValue120,
-        .axis_relative_direction = onAxisRelative,
-    };
-    const keyboard_listener: c.struct_wl_keyboard_listener = .{
-        .keymap = onKeymap,
-        .enter = onKeyEnter,
-        .leave = onKeyLeave,
-        .key = onKey,
-        .modifiers = onModifiers,
-        .repeat_info = onRepeatInfo,
-    };
-
-    fn onSeatName(_: ?*anyopaque, _: ?*c.wl_seat, _: [*c]const u8) callconv(.c) void {}
-
-    fn onCapabilities(data: ?*anyopaque, seat: ?*c.wl_seat, caps: u32) callconv(.c) void {
-        const w: *Wayland = @ptrCast(@alignCast(data.?));
-        if (caps & c.WL_SEAT_CAPABILITY_POINTER != 0 and w.pointer == null) {
-            w.pointer = c.wl_seat_get_pointer(seat);
-            _ = c.wl_pointer_add_listener(w.pointer, &pointer_listener, w);
-            if (w.cursor_mgr) |cm| w.cursor_device = c.wp_cursor_shape_manager_v1_get_pointer(cm, w.pointer);
+    fn onCapabilities(w: *Wayland, caps: u32) void {
+        if (caps & 1 != 0 and w.pointer == 0) {
+            w.pointer = w.new(I.pointer, .main, 0) catch return;
+            w.req(w.seat, 0, .{w.pointer});
+            if (w.cursor_mgr != 0) {
+                w.cursor_device = w.new(I.cursor_dev, .main, 0) catch 0;
+                w.req(w.cursor_mgr, 1, .{ w.cursor_device, w.pointer });
+            }
             w.startInput();
         }
-        if (caps & c.WL_SEAT_CAPABILITY_KEYBOARD != 0 and w.keyboard == null) {
-            w.keyboard = c.wl_seat_get_keyboard(seat);
-            _ = c.wl_keyboard_add_listener(w.keyboard, &keyboard_listener, w);
+        if (caps & 2 != 0 and w.keyboard == 0) {
+            // Event 0 (keymap) has a file descriptor.
+            w.keyboard = w.new(I.keyboard, .main, 1) catch return;
+            w.req(w.seat, 1, .{w.keyboard});
         }
     }
 
     fn timeMs() u32 {
         return @truncate(@as(u64, @intCast(@divFloor(nowUs(), 1000))));
-    }
-
-    fn fixed(v: c.wl_fixed_t) f32 {
-        return @floatCast(c.wl_fixed_to_double(v));
     }
 
     fn currentMods(w: *Wayland) Mods {
@@ -631,20 +789,73 @@ pub const Wayland = struct {
         return m;
     }
 
-    fn onPointerEnter(data: ?*anyopaque, ptr: ?*c.wl_pointer, serial: u32, surf: ?*c.wl_surface, sx: c.wl_fixed_t, sy: c.wl_fixed_t) callconv(.c) void {
-        const w: *Wayland = @ptrCast(@alignCast(data.?));
-        w.lock.lock();
-        w.ptr_win = w.window;
-        for (w.pops.items) |p| if (p.surface == surf) {
-            w.ptr_win = p.win;
-        };
-        w.lock.unlock();
-        w.px = fixed(sx);
-        w.py = fixed(sy);
-        w.pointer_serial = serial;
-        _ = ptr;
-        if (w.cursor_device) |d| c.wp_cursor_shape_device_v1_set_shape(d, serial, c.WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT);
-        w.motion();
+    fn onPointer(w: *Wayland, op: u16, a: *wire.Args) void {
+        switch (op) {
+            0 => {
+                const serial = a.uint();
+                const surf = a.uint();
+                w.lock.lock();
+                w.ptr_win = w.window;
+                for (w.pops.items) |p| if (p.surface == surf) {
+                    w.ptr_win = p.win;
+                };
+                w.lock.unlock();
+                w.px = a.fixed();
+                w.py = a.fixed();
+                w.pointer_serial = serial;
+                w.applyCursor(if (surf == w.surface) w.cursor else .default);
+                w.motion();
+            },
+            1 => {
+                w.lock.lock();
+                const win = w.ptr_win orelse w.window;
+                w.ptr_win = null;
+                w.lock.unlock();
+                if (win) |x| w.push(.{ .leave = .{ .window = x } });
+            },
+            2 => {
+                _ = a.uint();
+                w.px = a.fixed();
+                w.py = a.fixed();
+                w.motion();
+            },
+            3 => {
+                const serial = a.uint();
+                _ = a.uint();
+                const code = a.uint();
+                const state = a.uint();
+                const button: u8 = switch (code) {
+                    0x110 => 1,
+                    0x112 => 2,
+                    0x111 => 3,
+                    else => return,
+                };
+                const pressed = state == 1;
+                if (pressed) @atomicStore(u32, &w.press_serial, serial, .release);
+                const before = w.currentMods();
+                if (w.pointerWindow()) |win| w.push(.{ .button = .{ .window = win, .button = button, .pressed = pressed, .x = w.px, .y = w.py, .mods = before, .time_ms = timeMs() } });
+                const bit: u8 = @as(u8, 1) << @intCast(button - 1);
+                w.lock.lock();
+                if (pressed) w.buttons |= bit else w.buttons &= ~bit;
+                w.lock.unlock();
+            },
+            4 => {
+                _ = a.uint();
+                const axis = a.uint();
+                // A wheel step is 10 pixels on the axis. The event counts steps.
+                const v = a.fixed() / 10;
+                if (w.pointerWindow()) |win| w.push(.{ .scroll = .{
+                    .window = win,
+                    .dx = if (axis == 1) v else 0,
+                    .dy = if (axis == 0) v else 0,
+                    .x = w.px,
+                    .y = w.py,
+                    .mods = w.currentMods(),
+                    .time_ms = timeMs(),
+                } });
+            },
+            else => {},
+        }
     }
 
     /// A motion event, and the position for the render thread. The lock keeps
@@ -658,206 +869,357 @@ pub const Wayland = struct {
         if (win) |x| w.push(.{ .motion = .{ .window = x, .x = w.px, .y = w.py, .mods = m, .time_ms = timeMs() } });
     }
 
-    fn onPointerLeave(data: ?*anyopaque, _: ?*c.wl_pointer, _: u32, _: ?*c.wl_surface) callconv(.c) void {
-        const w: *Wayland = @ptrCast(@alignCast(data.?));
-        w.lock.lock();
-        const win = w.ptr_win orelse w.window;
-        w.ptr_win = null;
-        w.lock.unlock();
-        if (win) |x| w.push(.{ .leave = .{ .window = x } });
-    }
-
-    fn onPointerMotion(data: ?*anyopaque, _: ?*c.wl_pointer, _: u32, sx: c.wl_fixed_t, sy: c.wl_fixed_t) callconv(.c) void {
-        const w: *Wayland = @ptrCast(@alignCast(data.?));
-        w.px = fixed(sx);
-        w.py = fixed(sy);
-        w.motion();
-    }
-
-    fn onPointerButton(data: ?*anyopaque, _: ?*c.wl_pointer, serial: u32, _: u32, code: u32, state: u32) callconv(.c) void {
-        const w: *Wayland = @ptrCast(@alignCast(data.?));
-        const button: u8 = switch (code) {
-            0x110 => 1,
-            0x112 => 2,
-            0x111 => 3,
-            else => return,
-        };
-        const pressed = state == c.WL_POINTER_BUTTON_STATE_PRESSED;
-        if (pressed) @atomicStore(u32, &w.press_serial, serial, .release);
-        const before = w.currentMods();
-        if (w.pointerWindow()) |win| w.push(.{ .button = .{ .window = win, .button = button, .pressed = pressed, .x = w.px, .y = w.py, .mods = before, .time_ms = timeMs() } });
-        const bit: u8 = @as(u8, 1) << @intCast(button - 1);
-        w.lock.lock();
-        if (pressed) w.buttons |= bit else w.buttons &= ~bit;
-        w.lock.unlock();
-    }
-
-    fn onPointerAxis(data: ?*anyopaque, _: ?*c.wl_pointer, _: u32, axis: u32, value: c.wl_fixed_t) callconv(.c) void {
-        const w: *Wayland = @ptrCast(@alignCast(data.?));
-        // A wheel step is 10 pixels on the axis. The event counts steps.
-        const v = fixed(value) / 10;
-        if (w.pointerWindow()) |win| w.push(.{ .scroll = .{
-            .window = win,
-            .dx = if (axis == c.WL_POINTER_AXIS_HORIZONTAL_SCROLL) v else 0,
-            .dy = if (axis == c.WL_POINTER_AXIS_VERTICAL_SCROLL) v else 0,
-            .x = w.px,
-            .y = w.py,
-            .mods = w.currentMods(),
-            .time_ms = timeMs(),
-        } });
-    }
-
     fn pointerWindow(w: *Wayland) ?*Window {
         w.lock.lock();
         defer w.lock.unlock();
         return w.ptr_win orelse w.window;
     }
 
-    fn onPointerFrame(_: ?*anyopaque, _: ?*c.wl_pointer) callconv(.c) void {}
-    fn onAxisSource(_: ?*anyopaque, _: ?*c.wl_pointer, _: u32) callconv(.c) void {}
-    fn onAxisStop(_: ?*anyopaque, _: ?*c.wl_pointer, _: u32, _: u32) callconv(.c) void {}
-    fn onAxisDiscrete(_: ?*anyopaque, _: ?*c.wl_pointer, _: u32, _: i32) callconv(.c) void {}
-    fn onAxisValue120(_: ?*anyopaque, _: ?*c.wl_pointer, _: u32, _: i32) callconv(.c) void {}
-    fn onAxisRelative(_: ?*anyopaque, _: ?*c.wl_pointer, _: u32, _: u32) callconv(.c) void {}
+    // ---- The pointer shape ----
 
-    fn onKeymap(data: ?*anyopaque, _: ?*c.wl_keyboard, format: u32, fd: i32, size: u32) callconv(.c) void {
-        const w: *Wayland = @ptrCast(@alignCast(data.?));
-        defer _ = c.close(fd);
-        if (format != c.WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1) return;
-        const map = c.mmap(null, size, c.PROT_READ, c.MAP_PRIVATE, fd, 0);
-        if (map == c.MAP_FAILED) return;
-        defer _ = c.munmap(map, size);
-        const km = c.xkb_keymap_new_from_string(w.xkb_ctx, @ptrCast(map), c.XKB_KEYMAP_FORMAT_TEXT_V1, c.XKB_KEYMAP_COMPILE_NO_FLAGS) orelse return;
-        const st = c.xkb_state_new(km) orelse {
-            c.xkb_keymap_unref(km);
-            return;
+    fn shapeNumber(c: plat.Cursor) u32 {
+        return switch (c) {
+            .default => 1,
+            .help => 3,
+            .pointer => 4,
+            .progress => 5,
+            .wait => 6,
+            .crosshair => 8,
+            .text => 9,
+            .move => 13,
+            .not_allowed => 15,
+            .grab => 16,
+            .grabbing => 17,
+            .ew_resize => 26,
+            .ns_resize => 27,
+            .nesw_resize => 28,
+            .nwse_resize => 29,
         };
-        if (w.xkb_state) |s| c.xkb_state_unref(s);
-        if (w.xkb_keymap) |k| c.xkb_keymap_unref(k);
-        w.xkb_keymap = km;
-        w.xkb_state = st;
     }
 
-    fn onKeyEnter(data: ?*anyopaque, _: ?*c.wl_keyboard, _: u32, _: ?*c.wl_surface, _: [*c]c.wl_array) callconv(.c) void {
-        const w: *Wayland = @ptrCast(@alignCast(data.?));
-        // The grab of a popup moves the keyboard to the popup, and the keys stay on the main window.
-        if (w.pops.items.len > 0) return;
-        if (w.window) |win| w.push(.{ .focus = .{ .window = win, .focused = true } });
+    fn applyCursor(w: *Wayland, c: plat.Cursor) void {
+        if (w.cursor_device == 0 or w.pointer_serial == 0) return;
+        w.req(w.cursor_device, 1, .{ w.pointer_serial, shapeNumber(c) });
+        w.flush();
     }
 
-    fn onKeyLeave(data: ?*anyopaque, _: ?*c.wl_keyboard, _: u32, _: ?*c.wl_surface) callconv(.c) void {
-        const w: *Wayland = @ptrCast(@alignCast(data.?));
-        w.repeat_key = null;
-        if (w.pops.items.len > 0) return;
-        if (w.window) |win| w.push(.{ .focus = .{ .window = win, .focused = false } });
+    fn vSetCursor(ptr: *anyopaque, win: *Window, shape: plat.Cursor) void {
+        const w = self(ptr);
+        if (win != w.window or w.cursor == shape) return;
+        w.cursor = shape;
+        if (w.pointerWindow() == win) w.applyCursor(shape);
+    }
+
+    // ---- The keyboard ----
+
+    fn onKeyboard(w: *Wayland, op: u16, a: *wire.Args) void {
+        switch (op) {
+            0 => {
+                const format = a.uint();
+                const fd = a.fd();
+                const size = a.uint();
+                defer if (fd >= 0) {
+                    _ = linux.close(fd);
+                };
+                // Format 1 is xkb_v1.
+                if (format != 1 or fd < 0 or size == 0) return;
+                const rc = linux.mmap(null, size, .{ .READ = true }, .{ .TYPE = .PRIVATE }, fd, 0);
+                if (@as(isize, @bitCast(rc)) < 0) return;
+                const map: [*]const u8 = @ptrFromInt(rc);
+                defer _ = linux.munmap(map, size);
+                const src = std.mem.sliceTo(map[0..size], 0);
+                const km = xkb.Keymap.parse(w.gpa, src) catch |err| {
+                    if (w.opts.debug) std.debug.print("wayland: the key map: {s}\n", .{@errorName(err)});
+                    return;
+                };
+                if (w.keymap) |*k| k.deinit();
+                w.keymap = km;
+            },
+            1 => {
+                // The grab of a popup moves the keyboard to the popup, and the keys stay on the main window.
+                if (w.pops.items.len > 0) return;
+                if (w.window) |win| w.push(.{ .focus = .{ .window = win, .focused = true } });
+            },
+            2 => {
+                w.repeat_key = null;
+                if (w.pops.items.len > 0) return;
+                if (w.window) |win| w.push(.{ .focus = .{ .window = win, .focused = false } });
+            },
+            3 => {
+                const serial = a.uint();
+                _ = a.uint();
+                const key = a.uint();
+                const pressed = a.uint() == 1;
+                w.last_serial = serial;
+                if (pressed) @atomicStore(u32, &w.press_serial, serial, .release);
+                w.pushKey(key, pressed, false);
+                if (pressed) {
+                    // A key that has repeat starts the repeat. A modifier key has none.
+                    const has_repeat = if (w.keymap) |*km| km.repeats(key + 8) else false;
+                    if (has_repeat) {
+                        w.repeat_key = key;
+                        w.repeat_at_us = nowUs() + @as(i64, w.repeat_delay) * 1000;
+                    }
+                } else if (w.repeat_key == key) w.repeat_key = null;
+            },
+            4 => {
+                _ = a.uint();
+                const depressed = a.uint();
+                const latched = a.uint();
+                const locked = a.uint();
+                w.group = a.uint();
+                w.mod_mask = depressed | latched | locked;
+                const km = if (w.keymap) |*k| k else return;
+                const eff = km.effective(w.mod_mask);
+                w.lock.lock();
+                defer w.lock.unlock();
+                w.mods = .{
+                    .shift = eff & 1 != 0,
+                    .lock = eff & 2 != 0,
+                    .control = eff & 4 != 0,
+                    .mod1 = eff & 8 != 0,
+                    .mod4 = eff & 64 != 0,
+                };
+            },
+            5 => {
+                w.repeat_rate = a.int();
+                w.repeat_delay = a.int();
+            },
+            else => {},
+        }
     }
 
     fn pushKey(w: *Wayland, key: u32, pressed: bool, repeat: bool) void {
-        const st = w.xkb_state orelse return;
+        const km = if (w.keymap) |*k| k else return;
         const win = w.window orelse return;
         const code = key + 8;
-        const sym = c.xkb_state_key_get_one_sym(st, code);
+        const sym = km.symbol(code, w.mod_mask, w.group);
+        const mods = w.currentMods();
         var e: Event = .{ .key = .{
             .window = win,
             .keysym = sym,
             .keycode = code,
             .pressed = pressed,
             .repeat = repeat,
-            .mods = w.currentMods(),
+            .mods = mods,
             .time_ms = timeMs(),
         } };
         if (pressed) {
             var buf: [8]u8 = undefined;
-            const n = c.xkb_state_key_get_utf8(st, code, &buf, buf.len);
-            if (n > 0 and n < buf.len) {
-                const len: usize = @intCast(n);
-                @memcpy(e.key.text[0..len], buf[0..len]);
-                e.key.text_len = @intCast(len);
-            }
+            const t = xkb.text(sym, mods.control, mods.mod1, &buf);
+            @memcpy(e.key.text[0..t.len], t);
+            e.key.text_len = @intCast(t.len);
         }
         w.push(e);
     }
 
-    fn onKey(data: ?*anyopaque, _: ?*c.wl_keyboard, serial: u32, _: u32, key: u32, state: u32) callconv(.c) void {
-        const w: *Wayland = @ptrCast(@alignCast(data.?));
-        w.last_serial = serial;
-        const pressed = state == c.WL_KEYBOARD_KEY_STATE_PRESSED;
-        if (pressed) @atomicStore(u32, &w.press_serial, serial, .release);
-        w.pushKey(key, pressed, false);
-        const st = w.xkb_state orelse return;
-        if (pressed) {
-            // A key that has repeat starts the repeat. A modifier key has none.
-            const has_repeat = if (w.xkb_keymap) |km| c.xkb_keymap_key_repeats(km, key + 8) != 0 else false;
-            if (has_repeat) {
-                w.repeat_key = key;
-                w.repeat_at_us = nowUs() + @as(i64, w.repeat_delay) * 1000;
-            }
-        } else if (w.repeat_key == key) w.repeat_key = null;
-        _ = st;
+    // ---- The clipboard ----
+
+    fn destroyOffer(w: *Wayland, id: u32) void {
+        // Request 2 of wl_data_offer is destroy.
+        w.req(id, 2, .{});
+        w.conn.forget(id);
     }
 
-    fn modActive(st: *c.xkb_state, name: [*:0]const u8) bool {
-        return c.xkb_state_mod_name_is_active(st, name, c.XKB_STATE_MODS_EFFECTIVE) > 0;
+    fn onDataDevice(w: *Wayland, op: u16, a: *wire.Args) void {
+        switch (op) {
+            0 => {
+                const id = a.uint();
+                w.offers.append(w.gpa, .{ .id = id }) catch w.destroyOffer(id);
+            },
+            // The offer of a drag ends with leave or drop: the drop of files is not part of this backend.
+            2, 4 => w.dropOffers(null),
+            5 => {
+                const id = a.uint();
+                if (w.selection) |s| if (s.id != id) w.destroyOffer(s.id);
+                w.selection = null;
+                for (w.offers.items) |o| if (o.id == id) {
+                    w.selection = o;
+                };
+                w.dropOffers(id);
+            },
+            else => {},
+        }
     }
 
-    fn onModifiers(data: ?*anyopaque, _: ?*c.wl_keyboard, _: u32, depressed: u32, latched: u32, locked: u32, group: u32) callconv(.c) void {
-        const w: *Wayland = @ptrCast(@alignCast(data.?));
-        const st = w.xkb_state orelse return;
-        _ = c.xkb_state_update_mask(st, depressed, latched, locked, 0, 0, group);
-        w.lock.lock();
-        defer w.lock.unlock();
-        w.mods = .{
-            .shift = modActive(st, "Shift"),
-            .lock = modActive(st, "Lock"),
-            .control = modActive(st, "Control"),
-            .mod1 = modActive(st, "Mod1"),
-            .mod4 = modActive(st, "Mod4"),
+    /// Destroys the offers that wait, except one.
+    fn dropOffers(w: *Wayland, keep: ?u32) void {
+        for (w.offers.items) |o| if (keep == null or o.id != keep.?) w.destroyOffer(o.id);
+        w.offers.clearRetainingCapacity();
+    }
+
+    fn onOfferType(w: *Wayland, id: u32, mime: []const u8) void {
+        const rank = for (text_types, 0..) |t, i| {
+            if (std.mem.eql(u8, t, mime)) break i;
+        } else return;
+        for (w.offers.items) |*o| if (o.id == id) {
+            if (o.text_type == null or rank < o.text_type.?) o.text_type = rank;
         };
     }
 
-    fn onRepeatInfo(data: ?*anyopaque, _: ?*c.wl_keyboard, rate: i32, delay: i32) callconv(.c) void {
-        const w: *Wayland = @ptrCast(@alignCast(data.?));
-        w.repeat_rate = rate;
-        w.repeat_delay = delay;
+    fn onSource(w: *Wayland, id: u32, op: u16, a: *wire.Args) void {
+        switch (op) {
+            1 => {
+                _ = a.string();
+                const fd = a.fd();
+                if (fd < 0) return;
+                defer _ = linux.close(fd);
+                var off: usize = 0;
+                while (off < w.source_text.len) {
+                    const rc = linux.write(fd, w.source_text[off..].ptr, w.source_text.len - off);
+                    if (@as(isize, @bitCast(rc)) <= 0) break;
+                    off += rc;
+                }
+            },
+            2 => {
+                w.destroy(id, 1);
+                if (w.source == id) w.source = 0;
+            },
+            else => {},
+        }
+    }
+
+    fn vClipboardSet(ptr: *anyopaque, typ: []const u8, data: []const u8) void {
+        const w = self(ptr);
+        if (!std.mem.eql(u8, typ, "STRING") or w.data_device == 0) return;
+        const copy = w.gpa.dupe(u8, data) catch return;
+        w.gpa.free(w.source_text);
+        w.source_text = copy;
+        if (w.source != 0) w.destroy(w.source, 1);
+        // Event 1 (send) has a file descriptor.
+        w.source = w.new(I.data_source, .main, 2) catch return;
+        w.req(w.data_mgr, 0, .{w.source});
+        for (text_types) |t| w.req(w.source, 0, .{wire.Str{ .s = t }});
+        const serial = @max(w.last_serial, @atomicLoad(u32, &w.press_serial, .acquire));
+        w.req(w.data_device, 1, .{ w.source, serial });
+        w.flush();
+    }
+
+    fn vClipboardGet(ptr: *anyopaque, gpa: std.mem.Allocator, typ: []const u8) ?[]u8 {
+        const w = self(ptr);
+        if (!std.mem.eql(u8, typ, "STRING")) return null;
+        w.dispatchMain();
+        // The selection of this client: the core has the data.
+        if (w.source != 0) return null;
+        const offer = w.selection orelse return null;
+        const rank = offer.text_type orelse return null;
+        var fds: [2]i32 = .{ -1, -1 };
+        if (@as(isize, @bitCast(linux.pipe2(&fds, .{ .CLOEXEC = true }))) < 0) return null;
+        defer _ = linux.close(fds[0]);
+        // The send closes the write end after the flush.
+        w.req(offer.id, 1, .{ wire.Str{ .s = text_types[rank] }, wire.Fd{ .fd = fds[1] } });
+        w.flush();
+        var out: std.ArrayListUnmanaged(u8) = .empty;
+        var buf: [4096]u8 = undefined;
+        while (out.items.len < 64 << 20) {
+            var pfd = [1]linux.pollfd{.{ .fd = fds[0], .events = linux.POLL.IN, .revents = 0 }};
+            if (@as(isize, @bitCast(linux.poll(&pfd, 1, 1000))) <= 0) break;
+            const rc = linux.read(fds[0], &buf, buf.len);
+            if (@as(isize, @bitCast(rc)) <= 0) break;
+            out.appendSlice(gpa, buf[0..rc]) catch break;
+        }
+        return out.toOwnedSlice(gpa) catch null;
+    }
+
+    // ---- The text of an input method ----
+
+    fn vTextInput(ptr: *anyopaque, win: *Window, on: bool, rect: geom.Rect) void {
+        const w = self(ptr);
+        if (w.text_input == 0 or win != w.window) return;
+        if (on) {
+            w.req(w.text_input, 1, .{});
+            w.req(w.text_input, 6, .{ rect.x, rect.y, @max(rect.w, 1), @max(rect.h, 1) });
+        } else w.req(w.text_input, 2, .{});
+        w.req(w.text_input, 7, .{});
+        w.flush();
+    }
+
+    fn onTextInput(w: *Wayland, op: u16, a: *wire.Args) void {
+        switch (op) {
+            2 => {
+                const t = a.string() orelse "";
+                const begin = a.int();
+                w.ime_preedit.clearRetainingCapacity();
+                w.ime_preedit.appendSlice(w.gpa, t) catch {};
+                w.ime_caret = if (begin >= 0) @intCast(@min(begin, @as(i32, @intCast(t.len)))) else @intCast(t.len);
+                w.ime_has_preedit = true;
+            },
+            3 => {
+                const t = a.string() orelse "";
+                w.ime_commit.appendSlice(w.gpa, t) catch {};
+                w.ime_has_commit = true;
+            },
+            5 => {
+                const win = w.window orelse return;
+                // The texts of the events stay in `ime_out` until the next `done`.
+                if (w.ime_has_commit) {
+                    w.ime_out[1].clearRetainingCapacity();
+                    w.ime_out[1].appendSlice(w.gpa, w.ime_commit.items) catch {};
+                    w.push(.{ .commit = .{ .window = win, .text = w.ime_out[1].items } });
+                }
+                // A done with no preedit string ends the composition.
+                w.ime_out[0].clearRetainingCapacity();
+                if (w.ime_has_preedit) w.ime_out[0].appendSlice(w.gpa, w.ime_preedit.items) catch {};
+                w.push(.{ .preedit = .{ .window = win, .text = w.ime_out[0].items, .caret = if (w.ime_has_preedit) w.ime_caret else 0 } });
+                w.ime_commit.clearRetainingCapacity();
+                w.ime_preedit.clearRetainingCapacity();
+                w.ime_has_commit = false;
+                w.ime_has_preedit = false;
+            },
+            else => {},
+        }
     }
 
     // ---- Drawing with the CPU renderer into shared memory ----
 
-    const buffer_listener: c.struct_wl_buffer_listener = .{ .release = onRelease };
-
-    fn onRelease(data: ?*anyopaque, _: ?*c.wl_buffer) callconv(.c) void {
-        const b: *Buf = @ptrCast(@alignCast(data.?));
-        @atomicStore(bool, &b.busy, false, .release);
+    fn onRelease(w: *Wayland, id: u32) void {
+        for (w.bufs) |b| if (b) |buf| if (buf.buffer == id) {
+            @atomicStore(bool, &buf.busy, false, .release);
+            return;
+        };
+        w.lock.lock();
+        defer w.lock.unlock();
+        for (w.pops.items) |p| for (p.bufs) |b| if (b) |buf| if (buf.buffer == id) {
+            @atomicStore(bool, &buf.busy, false, .release);
+            return;
+        };
     }
 
     fn freeBuf(w: *Wayland, b: *Buf) void {
-        if (b.buffer) |bf| c.wl_buffer_destroy(bf);
-        if (b.data.len > 0) _ = c.munmap(b.data.ptr, b.data.len);
+        w.destroy(b.buffer, 0);
+        if (b.data.len > 0) _ = linux.munmap(b.data.ptr, b.data.len);
         w.gpa.destroy(b);
     }
 
     fn makeBuf(w: *Wayland, width: u32, height: u32, format: u32) !*Buf {
         const size: usize = @as(usize, width) * height * 4;
-        const fd = std.os.linux.memfd_create("ztk-shm", 0);
-        if (@as(isize, @bitCast(fd)) < 0) return error.ShmFailed;
-        const ifd: i32 = @intCast(fd);
-        defer _ = c.close(ifd);
-        if (c.ftruncate(ifd, @intCast(size)) != 0) return error.ShmFailed;
-        const map = c.mmap(null, size, c.PROT_READ | c.PROT_WRITE, c.MAP_SHARED, ifd, 0);
-        if (map == c.MAP_FAILED) return error.ShmFailed;
+        const rc = linux.memfd_create("ztk-shm", linux.MFD.CLOEXEC);
+        if (@as(isize, @bitCast(rc)) < 0) return error.ShmFailed;
+        const fd: i32 = @intCast(rc);
+        if (@as(isize, @bitCast(linux.ftruncate(fd, @intCast(size)))) < 0) {
+            _ = linux.close(fd);
+            return error.ShmFailed;
+        }
+        const map = linux.mmap(null, size, .{ .READ = true, .WRITE = true }, .{ .TYPE = .SHARED }, fd, 0);
+        if (@as(isize, @bitCast(map)) < 0) {
+            _ = linux.close(fd);
+            return error.ShmFailed;
+        }
         const b = try w.gpa.create(Buf);
-        b.* = .{ .owner = w, .width = width, .height = height, .data = @as([*]align(4096) u8, @ptrCast(@alignCast(map)))[0..size] };
-        const pool = c.wl_shm_create_pool(w.shm, ifd, @intCast(size));
-        b.buffer = c.wl_shm_pool_create_buffer(pool, 0, @intCast(width), @intCast(height), @intCast(width * 4), format);
-        c.wl_shm_pool_destroy(pool);
-        _ = c.wl_buffer_add_listener(b.buffer, &buffer_listener, b);
+        b.* = .{ .owner = w, .width = width, .height = height, .data = @as([*]align(4096) u8, @ptrFromInt(map))[0..size] };
+        const pool = try w.new(I.shm_pool, .main, 0);
+        // The send closes the descriptor after the flush.
+        w.req(w.shm, 0, .{ pool, wire.Fd{ .fd = fd }, @as(i32, @intCast(size)) });
+        b.buffer = try w.new(I.buffer, .main, 0);
+        w.req(pool, 0, .{ b.buffer, @as(i32, 0), @as(i32, @intCast(width)), @as(i32, @intCast(height)), @as(i32, @intCast(width * 4)), format });
+        w.destroy(pool, 1);
         return b;
     }
 
     fn freeBufferFor(w: *Wayland, bufs: *[2]?*Buf, width: u32, height: u32, format: u32) !*Buf {
         for (bufs) |*slot| {
             if (slot.*) |b| {
-                if (b.busy) continue;
+                if (@atomicLoad(bool, &b.busy, .acquire)) continue;
                 if (b.width == width and b.height == height) return b;
                 freeBuf(w, b);
                 slot.* = null;
@@ -870,8 +1232,8 @@ pub const Wayland = struct {
         // Both buffers are busy: wait for a release.
         var spins: u32 = 0;
         while (spins < 100) : (spins += 1) {
-            _ = c.wl_display_roundtrip(w.display);
-            for (bufs) |*slot| if (slot.*) |b| if (!b.busy) {
+            try w.roundtrip();
+            for (bufs) |*slot| if (slot.*) |b| if (!@atomicLoad(bool, &b.busy, .acquire)) {
                 if (b.width == width and b.height == height) return b;
                 freeBuf(w, b);
                 slot.* = try w.makeBuf(width, height, format);
@@ -886,14 +1248,16 @@ pub const Wayland = struct {
         return .{ .ctx = self(ptr), .draw = drawFrame };
     }
 
-    /// Draws one frame into a shared memory buffer. The libwayland objects
-    /// belong to the UI thread, so this target runs in `inline_draw` mode.
+    /// Draws one frame into a shared memory buffer. The draw reads the
+    /// events of the UI queue (in `roundtrip`), so this target runs in
+    /// `inline_draw` mode.
     fn drawFrame(ctx: *anyopaque, frame: *const Frame) anyerror!void {
         const w: *Wayland = @ptrCast(@alignCast(ctx));
         const win = w.window orelse return;
         for (frame.patches.items) |p| try w.atlas.applyPatch(p);
         const scene = &frame.scene;
-        const surface = w.surface orelse return;
+        const surface = w.surface;
+        if (surface == 0) return;
         const need = @as(usize, scene.width) * scene.height * 4;
         const img = try w.gpa.alloc(u8, need);
         errdefer w.gpa.free(img);
@@ -910,7 +1274,7 @@ pub const Wayland = struct {
                 return;
             }
         }
-        const buf = try w.freeBufferFor(&w.bufs, cur.width, cur.height, c.WL_SHM_FORMAT_XRGB8888);
+        const buf = try w.freeBufferFor(&w.bufs, cur.width, cur.height, shm_xrgb8888);
         // RGBA to XRGB8888 (bytes B, G, R, X).
         var i: usize = 0;
         while (i < need) : (i += 4) {
@@ -923,21 +1287,21 @@ pub const Wayland = struct {
         w.prev = cur;
         w.last_image = null;
         // The scale: a viewport for the fractional scale, or the integer buffer scale.
-        if (w.viewport != null) {
-            c.wp_viewport_set_destination(w.viewport, win.size.w, win.size.h);
+        if (w.viewport != 0) {
+            w.req(w.viewport, 2, .{ win.size.w, win.size.h });
         } else if (w.compositor_version >= 3) {
-            c.wl_surface_set_buffer_scale(surface, @intCast(w.int_scale));
+            w.req(surface, 8, .{@as(i32, @intCast(w.int_scale))});
         }
-        c.wl_surface_attach(surface, buf.buffer, 0, 0);
+        w.req(surface, 1, .{ buf.buffer, @as(i32, 0), @as(i32, 0) });
         if (damage.len == 0) {
-            c.wl_surface_damage_buffer(surface, 0, 0, @intCast(cur.width), @intCast(cur.height));
+            w.req(surface, 9, .{ @as(i32, 0), @as(i32, 0), @as(i32, @intCast(cur.width)), @as(i32, @intCast(cur.height)) });
         } else for (damage) |d| {
-            c.wl_surface_damage_buffer(surface, 0, @intCast(d.first), @intCast(cur.width), @intCast(d.last - d.first));
+            w.req(surface, 9, .{ @as(i32, 0), @as(i32, @intCast(d.first)), @as(i32, @intCast(cur.width)), @as(i32, @intCast(d.last - d.first)) });
         }
-        buf.busy = true;
-        c.wl_surface_commit(surface);
+        @atomicStore(bool, &buf.busy, true, .release);
+        w.req(surface, 6, .{});
         w.frames_committed += 1;
-        _ = c.wl_display_flush(w.display);
+        w.flush();
     }
 
     // ---- Popups ----
@@ -946,44 +1310,25 @@ pub const Wayland = struct {
         return @ptrCast(@alignCast(win.impl orelse return null));
     }
 
-    const popup_surface_listener: c.struct_xdg_surface_listener = .{ .configure = onPopSurfaceConfigure };
-    const popup_listener: c.struct_xdg_popup_listener = .{ .configure = onPopConfigure, .popup_done = onPopDone, .repositioned = onPopRepositioned };
+    const PopField = enum { xdg_surface, popup, frame_cb };
 
-    fn onPopSurfaceConfigure(data: ?*anyopaque, surf: ?*c.xdg_surface, serial: u32) callconv(.c) void {
-        const p: *Pop = @ptrCast(@alignCast(data.?));
-        c.xdg_surface_ack_configure(surf, serial);
-        if (p.configured) return;
-        p.configured = true;
-        p.owner.push(.{ .frame = .{ .window = p.win, .time_us = nowUs() } });
+    fn popById(w: *Wayland, id: u32, field: PopField) ?*Pop {
+        w.lock.lock();
+        defer w.lock.unlock();
+        for (w.pops.items) |p| {
+            const v = switch (field) {
+                .xdg_surface => p.xdg_surface,
+                .popup => p.popup,
+                .frame_cb => p.frame_cb,
+            };
+            if (v == id) return p;
+        }
+        return null;
     }
-
-    /// The place of the window geometry in the window geometry of the parent.
-    fn onPopConfigure(data: ?*anyopaque, _: ?*c.xdg_popup, x: i32, y: i32, _: i32, _: i32) callconv(.c) void {
-        const p: *Pop = @ptrCast(@alignCast(data.?));
-        const pos: geom.Point = .{ .x = x - p.margin.left + p.parent_margin.left, .y = y - p.margin.top + p.parent_margin.top };
-        if (pos.x == p.win.pos.x and pos.y == p.win.pos.y) return;
-        p.win.pos = pos;
-        if (p.configured) p.owner.push(.{ .resize = .{ .window = p.win, .size = p.win.size } });
-    }
-
-    const pop_frame_listener: c.struct_wl_callback_listener = .{ .done = onPopFrame };
-
-    fn onPopFrame(data: ?*anyopaque, cb: ?*c.wl_callback, time_ms: u32) callconv(.c) void {
-        const p: *Pop = @ptrCast(@alignCast(data.?));
-        c.wl_callback_destroy(cb);
-        p.frame_cb = null;
-        p.owner.push(.{ .frame = .{ .window = p.win, .time_us = @as(i64, time_ms) * 1000 } });
-    }
-
-    fn onPopDone(data: ?*anyopaque, _: ?*c.xdg_popup) callconv(.c) void {
-        const p: *Pop = @ptrCast(@alignCast(data.?));
-        p.owner.push(.{ .close = .{ .window = p.win } });
-    }
-
-    fn onPopRepositioned(_: ?*anyopaque, _: ?*c.xdg_popup, _: u32) callconv(.c) void {}
 
     fn createPopup(w: *Wayland, size: geom.Size, opt: plat.Popup) !*Window {
-        var parent_xdg = w.xdg_surface orelse return error.NoParent;
+        var parent_xdg = w.xdg_surface;
+        if (parent_xdg == 0) return error.NoParent;
         var pm: geom.Insets = .{};
         if (popOf(opt.parent)) |pp| {
             parent_xdg = pp.xdg_surface;
@@ -997,26 +1342,30 @@ pub const Wayland = struct {
         win.* = .{ .size = size, .scale = @as(f32, @floatFromInt(w.scale120)) / 120.0 };
         const p = try w.gpa.create(Pop);
         errdefer w.gpa.destroy(p);
-        const pos = c.xdg_wm_base_create_positioner(w.wm_base) orelse return error.WaylandFailed;
-        defer c.xdg_positioner_destroy(pos);
-        c.xdg_positioner_set_size(pos, bw, bh);
+        const pos = try w.new(I.positioner, .main, 0);
+        w.req(w.wm_base, 1, .{pos});
+        w.req(pos, 1, .{ bw, bh });
         const a = opt.anchor;
-        c.xdg_positioner_set_anchor_rect(pos, a.x - pm.left, a.y - pm.top, @max(a.w, 1), @max(a.h, 1));
-        const A = c.XDG_POSITIONER_ANCHOR_TOP_LEFT;
-        const G = c.XDG_POSITIONER_GRAVITY_BOTTOM_RIGHT;
+        w.req(pos, 2, .{ a.x - pm.left, a.y - pm.top, @max(a.w, 1), @max(a.h, 1) });
+        // Anchors and gravities: top_left 5, bottom_left 6, top_right 7, bottom_right 8.
+        // Adjustments: slide_x 1, slide_y 2, flip_x 4, flip_y 8.
         const anchor: u32, const gravity: u32, const adjust: u32 = switch (opt.side) {
-            .below => .{ c.XDG_POSITIONER_ANCHOR_BOTTOM_LEFT, G, c.XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_Y | c.XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X | c.XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y },
-            .above => .{ A, c.XDG_POSITIONER_GRAVITY_TOP_RIGHT, c.XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_Y | c.XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X | c.XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y },
-            .right => .{ c.XDG_POSITIONER_ANCHOR_TOP_RIGHT, G, c.XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_X | c.XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X | c.XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y },
-            .left => .{ A, c.XDG_POSITIONER_GRAVITY_BOTTOM_LEFT, c.XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_FLIP_X | c.XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_X | c.XDG_POSITIONER_CONSTRAINT_ADJUSTMENT_SLIDE_Y },
+            .below => .{ 6, 8, 8 | 1 | 2 },
+            .above => .{ 5, 7, 8 | 1 | 2 },
+            .right => .{ 7, 8, 4 | 1 | 2 },
+            .left => .{ 5, 6, 4 | 1 | 2 },
         };
-        c.xdg_positioner_set_anchor(pos, anchor);
-        c.xdg_positioner_set_gravity(pos, gravity);
-        c.xdg_positioner_set_constraint_adjustment(pos, adjust);
-        c.xdg_positioner_set_offset(pos, opt.offset.x, opt.offset.y);
-        const surface = c.wl_compositor_create_surface(w.compositor) orelse return error.WaylandFailed;
-        const xs = c.xdg_wm_base_get_xdg_surface(w.wm_base, surface) orelse return error.WaylandFailed;
-        const xp = c.xdg_surface_get_popup(xs, parent_xdg, pos) orelse return error.WaylandFailed;
+        w.req(pos, 3, .{anchor});
+        w.req(pos, 4, .{gravity});
+        w.req(pos, 5, .{adjust});
+        w.req(pos, 6, .{ opt.offset.x, opt.offset.y });
+        const surface = try w.new(I.surface, .main, 0);
+        w.req(w.compositor, 0, .{surface});
+        const xs = try w.new(I.xdg_surface, .main, 0);
+        w.req(w.wm_base, 2, .{ xs, surface });
+        const xp = try w.new(I.popup, .main, 0);
+        w.req(xs, 2, .{ xp, parent_xdg, pos });
+        w.destroy(pos, 0);
         p.* = .{ .owner = w, .win = win, .surface = surface, .xdg_surface = xs, .popup = xp, .margin = m, .parent_margin = pm, .atlas = Atlas.init(w.gpa) };
         // The place before the configure: the box below or right of the anchor.
         win.pos = switch (opt.side) {
@@ -1024,12 +1373,13 @@ pub const Wayland = struct {
             .right, .above => .{ .x = a.x + a.w + opt.offset.x - m.left, .y = a.y + opt.offset.y - m.top },
         };
         win.impl = p;
-        _ = c.xdg_surface_add_listener(xs, &popup_surface_listener, p);
-        _ = c.xdg_popup_add_listener(xp, &popup_listener, p);
-        c.xdg_surface_set_window_geometry(xs, m.left, m.top, bw, bh);
+        w.req(xs, 3, .{ m.left, m.top, bw, bh });
         const serial = @atomicLoad(u32, &w.press_serial, .acquire);
-        if (opt.grab and serial != 0) if (w.seat) |seat| c.xdg_popup_grab(xp, seat, serial);
-        if (w.viewporter) |vp| p.viewport = c.wp_viewporter_get_viewport(vp, surface);
+        if (opt.grab and serial != 0 and w.seat != 0) w.req(xp, 1, .{ w.seat, serial });
+        if (w.viewporter != 0) {
+            p.viewport = try w.new(I.viewport, .main, 0);
+            w.req(w.viewporter, 1, .{ p.viewport, surface });
+        }
         w.lock.lock();
         w.pops.append(w.gpa, p) catch {
             w.lock.unlock();
@@ -1037,24 +1387,24 @@ pub const Wayland = struct {
             return error.OutOfMemory;
         };
         w.lock.unlock();
-        c.wl_surface_commit(surface);
+        w.req(surface, 6, .{});
         var spins: u32 = 0;
-        while (!p.configured and spins < 50) : (spins += 1) _ = c.wl_display_roundtrip(w.display);
+        while (!p.configured and spins < 50) : (spins += 1) try w.roundtrip();
         return win;
     }
 
     fn freePopup(w: *Wayland, p: *Pop) void {
-        if (p.frame_cb) |cb| c.wl_callback_destroy(cb);
-        if (p.viewport) |v| c.wp_viewport_destroy(v);
-        c.xdg_popup_destroy(p.popup);
-        c.xdg_surface_destroy(p.xdg_surface);
-        c.wl_surface_destroy(p.surface);
+        if (p.frame_cb != 0) w.conn.destroyed(p.frame_cb);
+        w.destroy(p.viewport, 0);
+        w.destroy(p.popup, 0);
+        w.destroy(p.xdg_surface, 0);
+        w.destroy(p.surface, 0);
         for (p.bufs) |b| if (b) |buf| freeBuf(w, buf);
         p.atlas.deinit();
         const win = p.win;
         w.gpa.destroy(p);
         w.gpa.destroy(win);
-        _ = c.wl_display_flush(w.display);
+        w.flush();
     }
 
     fn destroyPopup(w: *Wayland, p: *Pop) void {
@@ -1086,10 +1436,10 @@ pub const Wayland = struct {
                     freeBuf(w, b);
                     slot.* = null;
                 }
-                slot.* = try w.makeBuf(width, height, c.WL_SHM_FORMAT_ARGB8888);
+                slot.* = try w.makeBuf(width, height, shm_argb8888);
                 return slot.*.?;
             }
-            @import("../sys/host.zig").sleepUs(1000);
+            host.sleepUs(1000);
         }
         return error.NoFreeBuffer;
     }
@@ -1115,15 +1465,20 @@ pub const Wayland = struct {
             buf.data[i + 2] = img[i];
             buf.data[i + 3] = img[i + 3];
         }
-        if (p.viewport) |v| {
-            c.wp_viewport_set_destination(v, p.win.size.w, p.win.size.h);
+        if (p.viewport != 0) {
+            w.req(p.viewport, 2, .{ p.win.size.w, p.win.size.h });
         } else if (w.compositor_version >= 3) {
-            c.wl_surface_set_buffer_scale(p.surface, @intCast(w.int_scale));
+            w.req(p.surface, 8, .{@as(i32, @intCast(w.int_scale))});
         }
-        c.wl_surface_attach(p.surface, buf.buffer, 0, 0);
-        c.wl_surface_damage_buffer(p.surface, 0, 0, @intCast(cur.width), @intCast(cur.height));
+        w.req(p.surface, 1, .{ buf.buffer, @as(i32, 0), @as(i32, 0) });
+        w.req(p.surface, 9, .{ @as(i32, 0), @as(i32, 0), @as(i32, @intCast(cur.width)), @as(i32, @intCast(cur.height)) });
         @atomicStore(bool, &buf.busy, true, .release);
-        c.wl_surface_commit(p.surface);
-        _ = c.wl_display_flush(w.display);
+        w.req(p.surface, 6, .{});
+        w.flush();
     }
 };
+
+test {
+    _ = wire;
+    _ = xkb;
+}
