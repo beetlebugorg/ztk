@@ -296,3 +296,48 @@ int ztk___isnanf(float x) { return __builtin_isnan(x); }
 int ztk_isnanl(long double x) { return __builtin_isnan(x); }
 
 wchar_t *ztk_wmempcpy(wchar_t *d, const wchar_t *s, size_t n) { return wmemcpy(d, s, n) + n; }
+
+// A mutex of a glibc library can come from a static initializer, such as
+// PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP. That initializer puts the kind
+// in the fifth int of the mutex, and musl reads the type from the first
+// int, so musl locks a recursive mutex as a normal one and a second lock
+// of the same thread waits forever. Before each lock, a mutex with 0 in
+// the first int and a kind in the fifth int gets pthread_mutex_init with
+// that type. A mutex that musl made has its type in the first int and 0
+// in the fifth int (it is not robust), so the check is false for it.
+static pthread_mutex_t convert_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static void convert(pthread_mutex_t *m) {
+    volatile int *w = (volatile int *)m;
+    if (w[0] != 0 || w[4] == 0) return;
+    pthread_mutex_lock(&convert_lock);
+    if (w[0] == 0 && w[4] != 0) {
+        int kind = w[4] & 3;
+        pthread_mutexattr_t a;
+        pthread_mutexattr_init(&a);
+        pthread_mutexattr_settype(&a, kind == 1 ? PTHREAD_MUTEX_RECURSIVE : kind == 2 ? PTHREAD_MUTEX_ERRORCHECK : PTHREAD_MUTEX_NORMAL);
+        pthread_mutex_init(m, &a);
+        pthread_mutexattr_destroy(&a);
+    }
+    pthread_mutex_unlock(&convert_lock);
+}
+
+int ztk_pthread_mutex_lock(pthread_mutex_t *m) {
+    convert(m);
+    return pthread_mutex_lock(m);
+}
+
+int ztk_pthread_mutex_trylock(pthread_mutex_t *m) {
+    convert(m);
+    return pthread_mutex_trylock(m);
+}
+
+int ztk_pthread_mutex_timedlock(pthread_mutex_t *m, const struct timespec *at) {
+    convert(m);
+    return pthread_mutex_timedlock(m, at);
+}
+
+int ztk_pthread_mutex_unlock(pthread_mutex_t *m) {
+    convert(m);
+    return pthread_mutex_unlock(m);
+}

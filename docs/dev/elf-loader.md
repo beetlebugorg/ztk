@@ -19,6 +19,7 @@ Issue #241. A static Linux ztk (x86_64-linux-musl) has no dynamic linker, so `dl
 - A library does not unload. `dlclose` returns 0 and keeps the library.
 - A function of a library with no definition in the table gets a stub. The stub stops the program with the name of the function when it runs.
 - The destructors of `thread_local` objects of C++ do not run (`__cxa_thread_atexit_impl` of `shim.c`).
+- A mutex from a static initializer of glibc (`PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP`) has its kind in the fifth int, and musl reads the type from the first int. The `pthread_mutex_*` functions of `shim.c` call `pthread_mutex_init` with that kind before the first lock. Without that step, lavapipe (LLVM has `std::recursive_mutex` objects) waited forever on its second lock in CI.
 - The structures that glibc and musl share (`struct stat`, `pthread_mutex_t`, `sigset_t`, `struct dirent`) have the same layout on x86-64. A library that reads the fields of `FILE` through a glibc macro reads wrong values.
 
 ## The table

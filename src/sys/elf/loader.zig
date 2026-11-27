@@ -1104,3 +1104,19 @@ test "elf: each thread has its own TLS block of a library" {
     th.join();
     try t.expect(there != null and there.? != here);
 }
+
+test "elf: a recursive mutex from the glibc initializer locks twice" {
+    if (!supported) return error.SkipZigTest;
+    // PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP of glibc: the kind 1 in the fifth int.
+    var m: [10]i32 = @splat(0);
+    m[4] = 1;
+    const Fn = *const fn (*anyopaque) callconv(.c) c_int;
+    const lock_fn: Fn = @ptrFromInt(bridge.get("pthread_mutex_lock").?);
+    const unlock_fn: Fn = @ptrFromInt(bridge.get("pthread_mutex_unlock").?);
+    const try_fn: Fn = @ptrFromInt(bridge.get("pthread_mutex_trylock").?);
+    try t.expectEqual(@as(c_int, 0), lock_fn(&m));
+    try t.expectEqual(@as(c_int, 0), try_fn(&m));
+    try t.expectEqual(@as(c_int, 0), unlock_fn(&m));
+    try t.expectEqual(@as(c_int, 0), unlock_fn(&m));
+}
+
