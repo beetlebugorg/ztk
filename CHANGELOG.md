@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Adds `zig build runtimes`: the `ztk` program of each target of `ztk bundle --target`, with the full GUI backend of its platform, in `zig-out/lib/ztk/runtime/`. The release programs for Linux now have the Vulkan renderer.
 - `wm iconphoto` sets the window icon on Linux: `_NET_WM_ICON` on X11, and `xdg-toplevel-icon-v1` on Wayland.
 - Adds `ztk::debug sources`, `ztk::debug why`, and `ztk::debug geometry`: the source of each option of a widget and its geometry chain.
 - Adds `ztk::debug trace`: records of events, bindings, commands, option writes, geometry passes, dirty widgets, frames, focus, and grabs, with filters.
