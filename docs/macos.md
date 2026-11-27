@@ -24,7 +24,7 @@ ztk bundle -o Notes.app --icon notes.png --id org.example.notes notes.tcl lib/ i
 open Notes.app
 ```
 
-The app has a copy of the ztk program, the scripts and the files in `Contents/Resources/app`, an icon set made from the PNG, and an `Info.plist`. The app runs its main script with the folder `app` as the root of the file commands. Each word of the command line of the app is an argument of the script, so a flag cannot add a capability.
+The app has a copy of the ztk program, the scripts and the files in `Contents/Resources/app`, an icon set made from the PNG, and an `Info.plist`. Each file keeps its path relative to the main script, as for [an app in one file](install.md#an-app-in-one-file). The app runs its main script with the folder `app` as the root of the file commands. Each word of the command line of the app is an argument of the script, so a flag cannot add a capability.
 
 | Option | Meaning |
 |---|---|
