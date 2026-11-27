@@ -181,6 +181,16 @@ pub const JumpTask = struct {
     icon: []const u8 = "",
     icon_index: i32 = 0,
 };
+
+/// A button of the thumbnail of the taskbar button of a window on Windows
+/// (`ztk::win::thumbbar`). The tooltip is UTF-8 and is valid only during
+/// the call.
+pub const max_thumb_buttons = 7;
+pub const ThumbButton = struct {
+    icon: TrayIcon,
+    tooltip: []const u8 = "",
+    enabled: bool = true,
+};
 /// The system backdrop of a window on Windows 11 (`ztk::win::backdrop`),
 /// in the order of DWM_SYSTEMBACKDROP_TYPE.
 pub const Backdrop = enum(u32) { auto = 0, none = 1, mica = 2, acrylic = 3, tabbed = 4 };
@@ -439,6 +449,10 @@ pub const Platform = struct {
         /// The tasks of the jump list of the app; an empty list removes
         /// it. False when the shell refused the list.
         winJumpTasks: ?*const fn (ptr: *anyopaque, tasks: []const JumpTask) bool = null,
+        /// The buttons of the thumbnail of the taskbar button of a window,
+        /// at most `max_thumb_buttons`. A click gives a `thumb` event with
+        /// the index of the button.
+        winThumbBar: ?*const fn (ptr: *anyopaque, w: *Window, buttons: []const ThumbButton) void = null,
 
         // The taskbar or dock button (ztk#61).
 

@@ -104,6 +104,8 @@ pub const Event = union(enum) {
     tray: struct { window: *Window, id: u32, action: TrayAction },
     /// A global shortcut of `hotkeyAdd`. It can come when the app has no focus.
     hotkey: struct { window: ?*Window = null, id: u32 },
+    /// A click of a button of the thumbnail of `winThumbBar`, by its index.
+    thumb: struct { window: *Window, index: u32 },
     /// A drag of another app over a window that accepts drops. `x` and `y`
     /// are in the window, and 0 for `leave`. A `drop` has the files,
     /// separated by 0, with `/` between the parts, or the text. The

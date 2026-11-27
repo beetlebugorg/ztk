@@ -47,6 +47,7 @@ pub fn register(app: *App) !void {
     try it.register("ztk::mac::tabbing", @import("macapi.zig").cmdTabbing);
     try it.register("ztk::win::backdrop", @import("winapi.zig").cmdBackdrop);
     try it.register("ztk::win::jumplist", @import("winapi.zig").cmdJumpList);
+    try it.register("ztk::win::thumbbar", @import("winapi.zig").cmdThumbBar);
     try it.register("ztk::limit", cmdLimit);
     try @import("snapshot.zig").register(it);
     try @import("inject.zig").register(it);

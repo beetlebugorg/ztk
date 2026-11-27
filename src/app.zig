@@ -1054,6 +1054,7 @@ pub const App = struct {
             },
             .tray => |tr| @import("tray.zig").handleEvent(app, tr.id, tr.action),
             .hotkey => |hk| @import("hotkey.zig").handleEvent(app, hk.id),
+            .thumb => |th| @import("winapi.zig").handleThumb(app, th.window, th.index),
             .drop => |dr| @import("dnd.zig").handleEvent(app, dr, top),
             .menu => |m| @import("widgets/menu.zig").handleEvent(app, m.menu, m.entry, m.action),
             .app_command => {},
