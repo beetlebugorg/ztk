@@ -178,7 +178,7 @@ test "loop: tkwait variable and visibility" {
     defer h.deinit();
     _ = try h.eval("after 5 {set v 1}; tkwait variable v");
     try t.expectEqualStrings("1", try h.eval("set v"));
-    try t.expectEqualStrings("not supported in this stage", try h.evalError("tkwait visibility ."));
+    try t.expectEqualStrings("", try h.eval("tkwait visibility ."));
 }
 
 test "loop: argument errors" {

@@ -123,8 +123,13 @@ test "options: the names and classes of the database equal wish" {
     const expected =
         "{-bd -borderwidth} {-borderwidth borderWidth BorderWidth} {-class class Class} " ++
         "{-relief relief Relief} {-background background Background} {-bg -background} " ++
-        "{-cursor cursor Cursor} {-height height Height} {-padx padX Pad} {-pady padY Pad} " ++
-        "{-takefocus takeFocus TakeFocus} {-width width Width}";
+        "{-colormap colormap Colormap} {-container container Container} " ++
+        "{-cursor cursor Cursor} {-height height Height} " ++
+        "{-highlightbackground highlightBackground HighlightBackground} " ++
+        "{-highlightcolor highlightColor HighlightColor} " ++
+        "{-highlightthickness highlightThickness HighlightThickness} " ++
+        "{-padx padX Pad} {-pady padY Pad} {-takefocus takeFocus TakeFocus} " ++
+        "{-visual visual Visual} {-width width Width}";
     const got = try h.eval("set r {}; foreach i [.f configure] { lappend r [lrange $i 0 [expr {[llength $i] == 2 ? 1 : 2}]] }; set r");
     try t.expectEqualStrings(expected, got);
 }

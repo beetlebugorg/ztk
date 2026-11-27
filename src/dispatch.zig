@@ -411,9 +411,11 @@ fn virtualCmd(app: *App, it: *ztcl.Interp, sub: []const u8, args: []const Value)
             var hit = std.mem.eql(u8, d.name, name);
             if (hit and args.len > 1) {
                 hit = false;
-                for (args[1..]) |v| if (std.mem.eql(u8, try it.str(v), d.text)) {
-                    hit = true;
-                };
+                for (args[1..]) |v| {
+                    var buf: [128]u8 = undefined;
+                    const text = bind.formatPattern(try bind.parsePattern(it, try it.str(v)), &buf);
+                    if (std.mem.eql(u8, text, d.text)) hit = true;
+                }
             }
             if (hit) {
                 bind.freeVirtual(gpa, d);
@@ -424,8 +426,10 @@ fn virtualCmd(app: *App, it: *ztcl.Interp, sub: []const u8, args: []const Value)
     }
     if (args.len < 2) return it.wrongArgs("event add <<virtual>> sequence ?sequence ...?");
     for (args[1..]) |v| {
-        const text = try it.str(v);
-        const pat = try bind.parsePattern(it, text);
+        // `event info` gives each sequence in the form of `bind`, as in wish: <1> is <Button-1>.
+        const pat = try bind.parsePattern(it, try it.str(v));
+        var buf: [128]u8 = undefined;
+        const text = bind.formatPattern(pat, &buf);
         if (pat.type == .virtual) return it.fail("virtual event not allowed in definition of another virtual event", .{});
         var dup = false;
         for (list.items) |d| if (std.mem.eql(u8, d.name, name) and std.mem.eql(u8, d.text, text)) {
