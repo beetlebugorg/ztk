@@ -380,7 +380,17 @@ const NameCheck = struct {
         const c: *NameCheck = @ptrCast(@alignCast(ctx));
         const a = c.w.app.it.alloc();
         const child = c.w.app.find(name) orelse return std.fmt.allocPrint(a, "bad window path name \"{s}\"", .{name}) catch "bad window";
-        if (child.parent != c.w or child.isToplevel()) return std.fmt.allocPrint(a, "can't use {s} in a window item of this canvas", .{name}) catch "bad window";
+        // As in Tk, the window is a child of the canvas or of one of its
+        // ancestors.
+        var ok = false;
+        if (!child.isToplevel()) {
+            var x: ?*Widget = c.w;
+            while (x) |p| : (x = p.parent) {
+                if (child.parent == p) ok = true;
+                if (p.isToplevel()) break;
+            }
+        }
+        if (!ok) return std.fmt.allocPrint(a, "can't use {s} in a window item of this canvas", .{name}) catch "bad window";
         return null;
     }
 
@@ -856,7 +866,7 @@ fn itemDist(w: *Widget, item: *ItemT, x: f64, y: f64) f64 {
 
 fn itemFont(w: *Widget, item: *const ItemT) font_mod.FontDesc {
     w.app.ensureStyle(w);
-    return font_mod.Fonts.parseTk(item.attr.font, w.style.font, w.app.scaling) orelse w.style.font;
+    return @import("../fontcmd.zig").parse(w.app, item.attr.font, w.style.font) orelse w.style.font;
 }
 
 /// Shapes the lines of a text item for a scale, when the cache has another scale.
@@ -1773,8 +1783,16 @@ fn arrange(container: *Widget) void {
         const p = item.coords.items;
         if (p.len < 2) continue;
         const at = items.anchorPixel(item.attr.anchor, p[0] - o[0], p[1] - o[1], s[0], s[1]);
-        const r: geom.Rect = .{ .x = num.pxRound(at[0]), .y = num.pxRound(at[1]), .w = num.pxRound(s[0]), .h = num.pxRound(s[1]) };
+        var r: geom.Rect = .{ .x = num.pxRound(at[0]), .y = num.pxRound(at[1]), .w = num.pxRound(s[0]), .h = num.pxRound(s[1]) };
         const visible = effState(container, item) != .hidden and r.x + r.w > i and r.y + r.h > i and r.x < container.geom.w - i and r.y < container.geom.h - i;
+        // A window that is a child of an ancestor of the canvas gets the
+        // offset of the canvas in that ancestor.
+        var up: ?*Widget = container;
+        while (up) |x| : (up = x.parent) {
+            if (x == c.parent) break;
+            r.x +|= x.geom.x;
+            r.y +|= x.geom.y;
+        }
         _ = layout.setGeom(c, r, visible and container.mapped);
         item.box_ok = false;
     }

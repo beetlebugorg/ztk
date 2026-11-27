@@ -15,8 +15,9 @@ const scene = @import("../scene.zig");
 const App = @import("../app.zig").App;
 const Spec = options.Spec;
 
-/// The options of `wish` that ztk has, in the order of `wish`. `-colormap`,
-/// `-container`, `-visual`, and the highlight options are not in the list.
+/// The options of `wish`, in the order of `wish`. `-colormap`,
+/// `-container`, `-visual`, and the highlight options are stored and have
+/// no effect.
 pub const specs = [_]Spec{
     .{ .name = "-bd", .type = .synonym, .target = "-borderwidth" },
     .{ .name = "-borderwidth", .db_name = "borderWidth", .db_class = "BorderWidth", .type = .pixels, .default = "0", .from_style = true, .style_prop = .border_width },
@@ -24,11 +25,17 @@ pub const specs = [_]Spec{
     .{ .name = "-relief", .db_name = "relief", .db_class = "Relief", .type = .relief, .default = "flat", .from_style = true },
     .{ .name = "-background", .db_name = "background", .db_class = "Background", .type = .color, .default = "#d9d9d9", .from_style = true, .style_prop = .background },
     .{ .name = "-bg", .type = .synonym, .target = "-background" },
+    .{ .name = "-colormap", .db_name = "colormap", .db_class = "Colormap", .type = .string, .allow_empty = true, .create_only = true },
+    .{ .name = "-container", .db_name = "container", .db_class = "Container", .type = .boolean, .default = "0", .create_only = true },
     .{ .name = "-cursor", .db_name = "cursor", .db_class = "Cursor", .type = .string, .allow_empty = true },
     .{ .name = "-height", .db_name = "height", .db_class = "Height", .type = .pixels, .default = "0" },
+    .{ .name = "-highlightbackground", .db_name = "highlightBackground", .db_class = "HighlightBackground", .type = .color, .default = "#d9d9d9" },
+    .{ .name = "-highlightcolor", .db_name = "highlightColor", .db_class = "HighlightColor", .type = .color, .default = "#000000" },
+    .{ .name = "-highlightthickness", .db_name = "highlightThickness", .db_class = "HighlightThickness", .type = .pixels, .default = "0" },
     .{ .name = "-padx", .db_name = "padX", .db_class = "Pad", .type = .pixels, .default = "0" },
     .{ .name = "-pady", .db_name = "padY", .db_class = "Pad", .type = .pixels, .default = "0" },
     .{ .name = "-takefocus", .db_name = "takeFocus", .db_class = "TakeFocus", .type = .string, .default = "0" },
+    .{ .name = "-visual", .db_name = "visual", .db_class = "Visual", .type = .string, .allow_empty = true, .create_only = true },
     .{ .name = "-width", .db_name = "width", .db_class = "Width", .type = .pixels, .default = "0" },
 };
 

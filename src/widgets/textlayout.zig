@@ -137,7 +137,7 @@ fn applyTag(w: *Widget, at: *Attrs, tag: *const tags_mod.Tag, sel_colors: [2]?ge
         },
     }
     if (tag.isSet(T.font)) {
-        if (font_mod.Fonts.parseTk(tag.text[@intFromEnum(T.font)], w.style.font, w.app.scaling)) |f| at.font = f;
+        if (@import("../fontcmd.zig").parse(w.app, tag.text[@intFromEnum(T.font)], w.style.font)) |f| at.font = f;
     }
     if (tag.get(T.underline) == .boolean) at.underline = tag.get(T.underline).boolean;
     if (tag.get(T.overstrike) == .boolean) at.overstrike = tag.get(T.overstrike).boolean;

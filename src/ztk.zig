@@ -63,6 +63,10 @@ test {
     _ = app;
     _ = widget;
     _ = @import("cmds.zig");
+    _ = @import("gif.zig");
+    _ = @import("tkcolors.zig");
+    _ = @import("optiondb.zig");
+    _ = @import("fontcmd.zig");
     _ = @import("widgets/frame.zig");
     _ = options;
     _ = keysym;

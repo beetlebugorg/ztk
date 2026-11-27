@@ -39,6 +39,7 @@ const usage =
     \\  --tty DEVICE             with --direct: the VT, for example /dev/tty1 (default: the terminal of the input)
     \\  --output NAME            with --direct: auto, vulkan, or framebuffer (vulkan is not available yet)
     \\  --dark                   the dark color scheme
+    \\  --windowingsystem NAME   the result of tk windowingsystem: x11, win32, aqua, or ztk
     \\  --allow a,b              more capabilities of ztcl, with the names of the ztcl runner (file and channels are on)
     \\  --root DIR               the folder of the file commands (default: the folder of the script)
     \\  --version
@@ -153,6 +154,7 @@ pub fn main(init: std.process.Init) !void {
     var headless = false;
     var mcp = false;
     var dark = false;
+    var windowing: ?[]const u8 = null;
     // The file commands and the file channels (open, read, puts to a file)
     // are on by default (decision of the user,
     // 2026-11-26). --allow turns on more.
@@ -212,6 +214,13 @@ pub fn main(init: std.process.Init) !void {
             }
         } else if (std.mem.eql(u8, a, "--dark")) {
             dark = true;
+        } else if (std.mem.eql(u8, a, "--windowingsystem")) {
+            i += 1;
+            if (i >= args.len) fail(err, "ztk: {s} needs a value\n", .{a});
+            const v: []const u8 = args[i];
+            if (!std.mem.eql(u8, v, "x11") and !std.mem.eql(u8, v, "win32") and !std.mem.eql(u8, v, "aqua") and !std.mem.eql(u8, v, "ztk"))
+                fail(err, "ztk: bad windowing system \"{s}\": must be x11, win32, aqua, or ztk\n", .{v});
+            windowing = v;
         } else if (std.mem.eql(u8, a, "--direct")) {
             direct_on = true;
         } else if (std.mem.eql(u8, a, "--direct-unsafe-test-device")) {
@@ -298,6 +307,15 @@ pub fn main(init: std.process.Init) !void {
     it.clock_host = .{ .now = hostNow, .zone = hostZone };
     it.event_host = .{ .now = hostTicks, .sleep = hostSleep };
     try it.allow(allow_bits);
+    // With the env capability, the global array env has the environment
+    // of the program, as in wish.
+    if (allow_bits & @backingInt(ztcl.interp.Capability.env) != 0) {
+        var envs = init.environ_map.iterator();
+        while (envs.next()) |e| {
+            const name = try std.fmt.allocPrint(arena, "env({s})", .{e.key_ptr.*});
+            it.setVar(name, .{ .str = e.value_ptr.* }) catch {};
+        }
+    }
     const fs_bits = @backingInt(ztcl.interp.Capability.file) | @backingInt(ztcl.interp.Capability.channels);
     // The file commands use the real paths of the host, as in wish, and
     // --root keeps them in one folder.
@@ -391,6 +409,12 @@ pub fn main(init: std.process.Init) !void {
     try it.setVar("argv", argv_value);
     try it.setVar("argc", .{ .int = @intCast(rest.len) });
     try it.setVar("argv0", .{ .str = if (own_app != null) args[0] else path });
+    // `info script` gives the path of the main script, as in wish.
+    if (own_app == null) it.script_name = path;
+
+    // `tk windowingsystem` gives the name of --windowingsystem, for a Tk
+    // app that tests for x11, win32, or aqua.
+    if (windowing) |v| try it.setVar("::ztk::priv::windowingsystem", .{ .str = v });
 
     var status: u8 = 0;
     if (app.runScript(text)) |_| {

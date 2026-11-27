@@ -249,7 +249,12 @@ fn release(w: *Widget) void {
     w.container_manager = null;
 }
 
-pub const manager: layout.Manager = .{ .name = "pack", .measure = measure, .arrange = arrange, .forget = forgetAtDelete, .release = release, .has_content = hasContent, .propagates = propagates };
+pub const manager: layout.Manager = .{ .name = "pack", .measure = measure, .arrange = arrange, .forget = forgetAtDelete, .release = release, .has_content = hasContent, .propagates = propagates, .container_of = containerWidget };
+
+fn containerWidget(w: *const Widget) ?*Widget {
+    const e = entryOf(w) orelse return null;
+    return e.in;
+}
 
 // ---- The command ----
 
@@ -376,9 +381,7 @@ fn parseOpts(it: *ztcl.Interp, app: *App, args: []const Value) ztcl.Error!Opts {
                 if (found.idx == 0) o.after = other else o.before = other;
             },
             1 => {
-                const k = for (anchor_words, 0..) |wd, k| {
-                    if (std.mem.eql(u8, wd, text)) break k;
-                } else return it.fail("bad anchor \"{s}\": must be n, ne, e, se, s, sw, w, nw, or center", .{text});
+                const k = options.anchorIndex(text) orelse return it.fail("bad anchor \"{s}\": must be n, ne, e, se, s, sw, w, nw, or center", .{text});
                 o.anchor = @enumFromInt(k);
             },
             3 => o.expand = try grid.boolArg(it, v),
@@ -464,9 +467,13 @@ fn configure(it: *ztcl.Interp, app: *App, args: []const Value) ztcl.Error!Value 
         e.managed = true;
         w.manager = &manager;
         w.dirty.layout = true;
-        // The next window of the same command goes after this one.
-        anchor_widget = w;
-        after = true;
+        // With -after or -before, the next window of the same command
+        // goes after this one. With neither, each window goes at the end
+        // of the list of its own parent, as the manual page says.
+        if (o.after != null or o.before != null) {
+            anchor_widget = w;
+            after = true;
+        }
         container.invalidate(.{ .style = false, .measure = true, .layout = true, .paint = true });
     }
     return Value.empty;

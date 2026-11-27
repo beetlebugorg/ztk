@@ -1,0 +1,9 @@
+# The pinned release of each app in tests/apps: the name, the version,
+# the URL of the release archive, and its SHA-256. tools/fetch-apps.sh
+# downloads each archive and unpacks it into .apps-src/NAME.
+tk 8.6.16 https://prdownloads.sourceforge.net/tcl/tk8.6.16-src.tar.gz be9f94d3575d4b3099d84bc3c10de8994df2d7aa405208173c709cc404a7e5fe
+tkcon 2.5 https://downloads.sourceforge.net/project/tkcon/tkcon/2.5/tkcon-2.5.tar.gz 3ff3eb7198b060d2c3bdc195c1f7d8532e63742447179fbb6091a3886bab42a9
+bwidget 1.10.1 https://downloads.sourceforge.net/project/tcllib/BWidget/1.10.1/bwidget-1.10.1.tar.gz 4aea02f38cf92fa4aa44732d4ed98648df839e6537d6f0417c3fe18e1a34f880
+tablelist 7.12 https://www.nemethi.de/tablelist/tablelist7.12.tar.gz 7223dcba90097a8539f95791282a668ebcd50c15da6ec8c491c3cd1947a34197
+tklib 0.9 https://downloads.sourceforge.net/project/tcllib/tklib/0.9/tklib-0.9.tar.gz b5dd9440fbc42a2a85c33bca0dcb71efea0ba8b735f63bd787a38ca8f57a1b88
+tkdiff 5.7 https://downloads.sourceforge.net/project/tkdiff/tkdiff/5.7/tkdiff-5-7.zip e2dec98e4c2f7c79a1e31290d3deaaa5915f53c8220c05728f282336bb2e405d

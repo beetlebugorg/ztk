@@ -186,6 +186,10 @@ pub const App = struct {
     scroll_link: ?@import("scroll.zig").Link = null,
     /// The contents of the clipboard (`clipboard append`).
     clipboard: @import("clipboard.zig").Store = .{},
+    named_fonts: @import("fontcmd.zig").Store = .{},
+    option_db: @import("optiondb.zig").Store = .{},
+    /// The sequences of the virtual events of `event add`.
+    virtual_events: std.ArrayListUnmanaged(bind.VirtualDef) = .empty,
     /// The input method: what the backend has, and the composition text.
     text_input: @import("textinput.zig").State = .{},
     /// The icons of `ztk::tray`.
@@ -383,6 +387,10 @@ pub const App = struct {
         app.menu_ids.deinit(app.gpa);
         app.classes.deinit(app.gpa);
         app.clipboard.deinit(app.gpa);
+        app.named_fonts.deinit(app.gpa);
+        app.option_db.deinit(app.gpa);
+        for (app.virtual_events.items) |d| bind.freeVirtual(app.gpa, d);
+        app.virtual_events.deinit(app.gpa);
         app.text_input.deinit(app.gpa);
         app.trays.deinit(app);
         app.hotkeys.deinit(app);
@@ -627,7 +635,8 @@ pub const App = struct {
         if (w.class.paint) |f| try app.paintOwn(w, b, f);
         b.pushClip(.{ .x = 0, .y = 0, .w = w.geom.w, .h = w.geom.h });
         defer b.popClip();
-        for (w.children.items) |c| try app.paintNode(c, b);
+        // A child toplevel has its own window and its own scene.
+        for (w.children.items) |c| if (!c.isToplevel()) try app.paintNode(c, b);
         if (w.class.overlay) |f| try f(w, b);
     }
 
@@ -828,6 +837,11 @@ pub const App = struct {
             w.cfg_mapped = w.mapped;
             var ev: bind.WidgetEvent = .{ .type = if (w.mapped) .map else .unmap, .widget = w };
             bind.deliver(app, &ev);
+            // A window that maps becomes visible, as X11 reports it.
+            if (w.mapped and w.alive()) {
+                var vis: bind.WidgetEvent = .{ .type = .visibility, .widget = w };
+                bind.deliver(app, &vis);
+            }
         }
         if (!w.alive()) return;
         const g = w.geom;

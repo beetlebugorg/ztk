@@ -324,6 +324,17 @@ pub fn classCommand(comptime class: *const Class) ztcl.interp.NativeFn {
             if (argv.len < 2) return it.wrongArgs(class.command ++ " pathName ?-option value ...?");
             const w = try create(app, class, try it.str(argv[1]));
             const pathcopy = try it.alloc().dupe(u8, w.path);
+            // The option database gives the values that the script does
+            // not give. A bad value of the database is left out.
+            if (app.option_db.entries.items.len > 0) {
+                const a = it.alloc();
+                for (class.specs) |sp| {
+                    if (sp.type == .synonym or sp.db_name.len == 0) continue;
+                    const v = @import("optiondb.zig").lookup(app, w, sp.db_name, sp.db_class, a) orelse continue;
+                    const pair = [_]ztcl.Value{ .{ .str = sp.name }, .{ .str = v } };
+                    options.applyEx(w, it, &pair, true) catch {};
+                }
+            }
             options.applyEx(w, it, argv[2..], true) catch |e| {
                 destroy(w);
                 return e;
@@ -336,6 +347,15 @@ pub fn classCommand(comptime class: *const Class) ztcl.interp.NativeFn {
             return .{ .str = pathcopy };
         }
     }.call;
+}
+
+/// True when the command of the widget path is not the command of ztk:
+/// an app renamed it and put a procedure in its place, as ctext does.
+/// The class bindings then edit through that procedure, as the bindings
+/// of Tk do.
+pub fn commandWrapped(w: *const Widget) bool {
+    const c = w.app.it.findCommand(w.path) orelse return false;
+    return !isWidgetCommand(c);
 }
 
 /// True for a command that runs `widgetCommand`, also under an execution trace.
@@ -395,6 +415,18 @@ pub fn widgetCommand(it: *ztcl.Interp, argv: []const ztcl.Value, cmd: ?*ztcl.int
     }
     if (w.class.subcommand) |f| {
         if (try f(w, it, argv)) |v| return own(it, v);
+        // A unique start of a subcommand names it, as in Tk: `.t comp`
+        // is `.t compare`.
+        if (w.alive()) if (try expandSub(w, it, sub)) |full| {
+            const words = try it.alloc().dupe(ztcl.Value, argv);
+            words[1] = .{ .str = full };
+            if (std.mem.eql(u8, full, "configure")) return own(it, try options.configure(w, it, words[2..]));
+            if (std.mem.eql(u8, full, "cget")) {
+                if (words.len != 3) return it.fail("wrong # args: should be \"{s} cget option\"", .{w.path});
+                return own(it, try options.cget(w, it, words[2]));
+            }
+            if (try f(w, it, words)) |v| return own(it, v);
+        };
     }
     if (w.class.bad_option_list.len > 0) return it.fail("bad option \"{s}\": must be {s}", .{ sub, w.class.bad_option_list });
     if (w.class.extra_subcommands.len == 0) return it.fail("bad option \"{s}\": must be cget or configure", .{sub});
@@ -408,10 +440,42 @@ pub fn widgetCommand(it: *ztcl.Interp, argv: []const ztcl.Value, cmd: ?*ztcl.int
     return it.fail("bad option \"{s}\": must be {s}", .{ sub, list.items });
 }
 
+/// The full name of a subcommand of the class that starts with `sub`,
+/// when one name only starts with it, and the name differs from `sub`.
+fn expandSub(w: *const Widget, it: *ztcl.Interp, sub: []const u8) ztcl.Error!?[]const u8 {
+    if (sub.len == 0) return null;
+    var names: std.ArrayList([]const u8) = .empty;
+    const a = it.alloc();
+    if (w.class.bad_option_list.len > 0) {
+        var parts = std.mem.splitSequence(u8, w.class.bad_option_list, ", ");
+        while (parts.next()) |p| {
+            const n = if (std.mem.startsWith(u8, p, "or ")) p[3..] else p;
+            try names.append(a, n);
+        }
+    } else {
+        try names.append(a, "cget");
+        try names.append(a, "configure");
+        for (w.class.extra_subcommands) |n| try names.append(a, n);
+    }
+    var pick: ?[]const u8 = null;
+    for (names.items) |n| {
+        if (std.mem.eql(u8, n, sub)) return null;
+        if (std.mem.startsWith(u8, n, sub)) {
+            if (pick != null) return null;
+            pick = n;
+        }
+    }
+    return pick;
+}
+
 /// Makes a widget and its command. `path` must have an existing parent.
 pub fn create(app: *App, class: *const Class, path: []const u8) ztcl.Error!*Widget {
     const it = app.it;
     if (path.len == 0 or path[0] != '.') return it.fail("bad window path name \"{s}\"", .{path});
+    // Tk makes ".x" from "..x": the parent is "." and the name is "x".
+    if (path.len > 2 and path[1] == '.' and std.mem.indexOfScalarPos(u8, path, 2, '.') == null) {
+        return create(app, class, path[1..]);
+    }
     const dot = std.mem.lastIndexOfScalar(u8, path, '.').?;
     const leaf = path[dot + 1 ..];
     if (path.len == 1) return it.fail("window name \"\" already exists in parent", .{});
@@ -434,7 +498,7 @@ pub fn makeNode(app: *App, class: *const Class, path: []const u8, parent: ?*Widg
     const owned = try gpa.dupe(u8, path);
     errdefer gpa.free(owned);
     // Tk gives a new widget the size 1 by 1 until the first layout.
-    w.* = .{ .app = app, .path = owned, .class = class, .tk_class = class.tk_class, .parent = parent, .geom = .{ .w = 1, .h = 1 }, .req = .{ .w = 1, .h = 1 } };
+    w.* = .{ .app = app, .path = owned, .class = class, .tk_class = class.tk_class, .parent = parent, .geom = .{ .w = 1, .h = 1 }, .cfg_geom = .{ .w = 1, .h = 1 }, .req = .{ .w = 1, .h = 1 } };
     if (parent == null) w.tk_class = app.root_class;
     if (parent) |p| try p.children.append(gpa, w);
     errdefer if (parent) |p| {

@@ -294,9 +294,7 @@ fn configure(it: *ztcl.Interp, app: *App, w: *Widget, args: []const Value) ztcl.
         const text = try it.str(args[i + 1]);
         switch (found.?.idx) {
             0 => {
-                const k = for (anchor_words, 0..) |wd, k| {
-                    if (std.mem.eql(u8, wd, text)) break k;
-                } else return it.fail("bad anchor \"{s}\": must be n, ne, e, se, s, sw, w, nw, or center", .{text});
+                const k = options.anchorIndex(text) orelse return it.fail("bad anchor \"{s}\": must be n, ne, e, se, s, sw, w, nw, or center", .{text});
                 e.anchor = @enumFromInt(k);
             },
             1 => {

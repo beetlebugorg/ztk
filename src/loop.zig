@@ -460,7 +460,28 @@ fn cmdTkwait(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.E
     if (argv.len != 3) return it.wrongArgs(usage);
     const sub = try it.str(argv[1]);
     if (sub.len >= 2 and startsWith("variable", sub)) return vwait(it, try it.str(argv[2]));
-    if (sub.len >= 2 and startsWith("visibility", sub)) return it.fail("not supported in this stage", .{});
+    if (sub.len >= 2 and startsWith("visibility", sub)) {
+        // The wait ends when the widget and its ancestors are mapped, as
+        // after the first VisibilityNotify of Tk.
+        const path = try it.str(argv[2]);
+        if (app.find(path) == null) return it.fail("bad window path name \"{s}\"", .{path});
+        while (true) {
+            app.flush() catch {};
+            const w = app.find(path) orelse return it.fail("window \"{s}\" was deleted before its visibility changed", .{path});
+            var shown = true;
+            var x: ?*@import("widget.zig").Widget = w;
+            while (x) |p| : (x = p.parent) {
+                if (!p.mapped) shown = false;
+                if (p.isToplevel()) {
+                    if (app.wmOf(p).withdrawn) shown = false;
+                    break;
+                }
+            }
+            if (shown) return Value.empty;
+            const worked = try app.doOneEvent(true);
+            if (!worked and !app.canWait()) return waitForever(it, "visibility", path);
+        }
+    }
     if (startsWith("window", sub)) {
         const path = try it.str(argv[2]);
         if (app.find(path) == null) return it.fail("bad window path name \"{s}\"", .{path});

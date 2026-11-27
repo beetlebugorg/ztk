@@ -373,9 +373,18 @@ pub fn entryAtY(w: *Widget, y: i32) i64 {
 // ---- Entries ----
 
 fn kindOf(it: *ztcl.Interp, text: []const u8) ztcl.Error!Kind {
+    // A unique prefix names a type, as in Tk: `add sep` adds a separator.
+    var pick: ?Kind = null;
+    var count: usize = 0;
     inline for (.{ "cascade", "checkbutton", "command", "radiobutton", "separator" }) |name| {
         if (std.mem.eql(u8, text, name)) return @field(Kind, name);
+        if (text.len > 0 and std.mem.startsWith(u8, name, text)) {
+            pick = @field(Kind, name);
+            count += 1;
+        }
     }
+    if (count == 1) return pick.?;
+    if (count > 1) return it.fail("ambiguous menu entry type \"{s}\": must be cascade, checkbutton, command, radiobutton, or separator", .{text});
     return it.fail("bad menu entry type \"{s}\": must be cascade, checkbutton, command, radiobutton, or separator", .{text});
 }
 

@@ -207,21 +207,12 @@ fn cmdMove(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Err
     return Value.empty;
 }
 
-fn cmdFocusNext(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
-    return tk(it, argv, true);
-}
-
-fn cmdFocusPrev(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
-    return tk(it, argv, false);
-}
-
-fn tk(it: *ztcl.Interp, argv: []const Value, forward: bool) ztcl.Error!Value {
+/// `::ztk::priv::focus_ok window`: 1 when a traversal can stop at it.
+fn cmdFocusOk(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
     const app = App.of(it);
-    if (argv.len != 2) return it.fail("wrong # args: should be \"{s} w\"", .{if (forward) "tk_focusNext" else "tk_focusPrev"});
-    const path = try it.str(argv[1]);
-    const w = app.find(path) orelse return it.fail("bad window path name \"{s}\"", .{path});
-    const r = if (forward) next(app, w) else prev(app, w);
-    return .{ .str = try it.alloc().dupe(u8, r.path) };
+    if (argv.len != 2) return it.wrongArgs("::ztk::priv::focus_ok window");
+    const w = app.find(try it.str(argv[1])) orelse return .{ .int = 0 };
+    return .{ .int = @intFromBool(accepts(w)) };
 }
 
 /// `tk_focusFollowsMouse`: from now on the focus follows the pointer.
@@ -247,8 +238,10 @@ pub fn register(app: *App) !void {
     try it.register("tk_focusFollowsMouse", cmdFollows);
     try it.register("ztk::priv::focus_follow", cmdFollow);
     try it.register("focus", cmdFocus);
-    try it.register("tk_focusNext", cmdFocusNext);
-    try it.register("tk_focusPrev", cmdFocusPrev);
+    // tk_focusNext and tk_focusPrev are Tcl in library/tk.tcl, as in Tk:
+    // an app such as Tablelist reads their bodies. They ask this command
+    // whether a traversal can stop at a widget.
+    try it.register("ztk::priv::focus_ok", cmdFocusOk);
     try it.register("ztk::priv::focus_move", cmdMove);
     _ = try it.eval("bind all <Key-Tab> {::ztk::priv::focus_move %W next}; bind all <Shift-Key-Tab> {::ztk::priv::focus_move %W prev}; bind all <Key-ISO_Left_Tab> {::ztk::priv::focus_move %W prev}");
 }

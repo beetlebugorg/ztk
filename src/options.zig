@@ -163,6 +163,14 @@ fn matchWord(text: []const u8, words: []const []const u8) ?usize {
     return found;
 }
 
+/// The index of an anchor word in `anchor_words`. As in Tk, a start of
+/// "center" such as "c" is center.
+pub fn anchorIndex(text: []const u8) ?usize {
+    for (anchor_words, 0..) |w, i| if (std.mem.eql(u8, w, text)) return i;
+    if (text.len > 0 and std.mem.startsWith(u8, "center", text)) return 8;
+    return null;
+}
+
 pub fn parseBool(text: []const u8) ?bool {
     var buf: [8]u8 = undefined;
     if (text.len == 0 or text.len > buf.len) return null;
@@ -235,7 +243,7 @@ pub fn parseValue(w: *const Widget, it: *ztcl.Interp, spec: Spec, text: []const 
             return .{ .boolean = b };
         },
         .anchor => {
-            const i = matchExact(text, &anchor_words) orelse
+            const i = anchorIndex(text) orelse
                 return it.fail("bad anchor \"{s}\": must be n, ne, e, se, s, sw, w, nw, or center", .{text});
             return .{ .anchor = @enumFromInt(i) };
         },
