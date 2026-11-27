@@ -70,8 +70,8 @@ pub fn build(b: *std.Build) void {
     const backends = b.option([]const u8, "backends", "The backends to build, separated by commas: wayland, direct, appkit, headless (default: wayland, direct, and headless on Linux, appkit and headless on macOS, headless elsewhere)") orelse
         if (is_linux) "wayland,direct,headless" else if (is_macos) "appkit,headless" else "headless";
     const wayland_on = std.mem.indexOf(u8, backends, "wayland") != null;
-    // The AppKit backend links the frameworks of the macOS SDK, so a build
-    // from another system gives -Dbackends=headless for a macOS target.
+    // The AppKit backend links the frameworks through the text stubs in
+    // `src/sys/macos-stubs`, so a build on each host has it.
     const appkit_on = is_macos and std.mem.indexOf(u8, backends, "appkit") != null;
     const vulkan_on = b.option(bool, "vulkan", "Build the Vulkan renderer (default: true on Linux)") orelse is_linux;
     const strip = b.option(bool, "strip", "Remove the debug sections from the program");
@@ -100,6 +100,8 @@ pub fn build(b: *std.Build) void {
     }
     if (appkit_on) {
         ztk.link_libc = true;
+        ztk.addLibraryPath(b.path("src/sys/macos-stubs/usr/lib"));
+        ztk.addFrameworkPath(b.path("src/sys/macos-stubs/Frameworks"));
         ztk.linkSystemLibrary("objc", .{});
         ztk.linkFramework("Foundation", .{});
         ztk.linkFramework("Metal", .{});

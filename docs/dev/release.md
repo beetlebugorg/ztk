@@ -23,7 +23,7 @@ Each archive has the program, `LICENSE`, `README.md`, and the license files of z
 
 ## Backends in a release
 
-The Linux archives are static musl programs, and a cross build cannot link the Wayland libraries. When the build has the `-Dbackends` option, the script selects `direct,headless` on Linux and `headless` on macOS and Windows. Review this choice before the first release that has a window backend.
+The Linux archives are static musl programs, and a cross build cannot link the Wayland libraries. When the build has the `-Dbackends` option, the script selects `direct,headless` on Linux, `appkit,headless` on macOS (linked through the stubs of `src/sys/macos-stubs`), and `headless` on Windows. Review this choice before the first release that has a window backend.
 
 ## Debug data in a release
 

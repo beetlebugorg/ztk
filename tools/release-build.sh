@@ -26,6 +26,7 @@ options=$(zig build -h)
 flags() {
     case "$1" in
         *linux*) backends=direct,headless ;;
+        *macos*) backends=appkit,headless ;;
         *) backends=headless ;;
     esac
     case "$options" in *-Dbackends*) printf ' -Dbackends=%s' "$backends" ;; esac

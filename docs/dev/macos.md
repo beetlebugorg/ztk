@@ -51,7 +51,7 @@ AppKit runs its windows and events on the main thread of the process. The UI thr
 - Each window has a Metal renderer of its own, so the render threads of two windows share no buffer and no atlas.
 - An embedder that runs its own `NSApplication` loop calls `poll` from a run loop observer. That mode is a later PR.
 
-The backend calls the Objective-C runtime with `objc_msgSend` through typed function pointers, from Zig, so it needs no Objective-C compiler and no framework headers. It links AppKit, Metal, QuartzCore, and CoreGraphics (for the sRGB colorspace of the layer), and no other library. The link needs the macOS SDK of the Command Line Tools, so the cross job on Linux keeps `-Dbackends=headless` for the macOS targets.
+The backend calls the Objective-C runtime with `objc_msgSend` through typed function pointers, from Zig, so it needs no Objective-C compiler and no framework headers. It links AppKit, Metal, QuartzCore, and CoreGraphics (for the sRGB colorspace of the layer), and no other library. The link needs no macOS SDK. `src/sys/macos-stubs` has text stubs (`.tbd` files) that ztk wrote for `libobjc` and the five frameworks: each stub has the install name of the library and the symbols that ztk uses, and no other content. The Zig linker reads the stubs, so `zig build -Dtarget=aarch64-macos` links the AppKit backend on Linux and Windows too. A new `extern` symbol of a framework needs a line in its stub. The CI job `cross-macos-window` builds the program on Linux and opens a window with it on the macOS runner, in the run every 6 hours.
 
 ## The Metal renderer
 
