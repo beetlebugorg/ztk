@@ -185,11 +185,28 @@ fn noteOrFail(w: *Widget, it: *ztcl.Interp, i: usize, kind: Kind, pairs: []const
     slot.src = s;
 }
 
+/// The short answers and the MCP tools, as Tcl procs.
+const library = @embedFile("library/debug.tcl");
+
 pub fn register(it: *ztcl.Interp) !void {
     try it.register("ztk::debug", cmdDebug);
+    _ = it.eval(library) catch |e| switch (e) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => @panic("src/library/debug.tcl failed"),
+    };
 }
 
-const usage = "ztk::debug sources ?on|off? | why pathName ?option? ?-all? | geometry pathName | trace subcommand ?arg ...? | mark name ?pathName? | diff name ?-image? ?-tolerance n? | marks | forget name";
+/// The subcommands that the procs of `library` answer, with their usage.
+const short_cmds = [_]struct { name: []const u8, usage: []const u8, min: usize, max: usize }{
+    .{ .name = "explain", .usage = "ztk::debug explain pathName ?option?", .min = 1, .max = 2 },
+    .{ .name = "ran", .usage = "ztk::debug ran ?seq?", .min = 0, .max = 1 },
+    .{ .name = "click", .usage = "ztk::debug click pathName ?button?", .min = 1, .max = 2 },
+    .{ .name = "type", .usage = "ztk::debug type text ?pathName?", .min = 1, .max = 2 },
+    .{ .name = "changes", .usage = "ztk::debug changes name", .min = 1, .max = 1 },
+    .{ .name = "tree", .usage = "ztk::debug tree ?pathName?", .min = 0, .max = 1 },
+};
+
+const usage = "ztk::debug sources ?on|off? | why pathName ?option? ?-all? | geometry pathName | trace subcommand ?arg ...? | mark name ?pathName? | diff name ?-image? ?-tolerance n? | marks | forget name | explain pathName ?option? | ran ?seq? | click pathName ?button? | type text ?pathName? | changes name | tree ?pathName?";
 
 fn cmdDebug(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
     if (argv.len < 2) return it.wrongArgs(usage);
@@ -204,6 +221,15 @@ fn cmdDebug(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
         }
         return .{ .int = @intFromBool(app.dbg.keep) };
     }
+    inline for (short_cmds) |c| if (std.mem.eql(u8, sub, c.name)) {
+        const n = argv.len - 2;
+        if (n < c.min or n > c.max) return it.wrongArgs(c.usage);
+        const a = it.alloc();
+        const words = try a.alloc(Value, argv.len - 1);
+        words[0] = .{ .str = try std.mem.concat(a, u8, &.{ "::ztk::priv::dbg::", c.name }) };
+        @memcpy(words[1..], argv[2..]);
+        return it.eval(try it.str(try ztcl.value.newList(a, words)));
+    };
     if (std.mem.eql(u8, sub, "why")) return cmdWhy(it, app, argv[2..]);
     if (std.mem.eql(u8, sub, "trace")) return cmdTrace(it, app, argv[2..]);
     if (std.mem.eql(u8, sub, "mark")) return cmdMark(it, app, argv[2..]);
@@ -228,7 +254,7 @@ fn cmdDebug(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
         if (argv.len != 3) return it.wrongArgs("ztk::debug geometry pathName");
         return cmdGeometry(it, app, try it.str(argv[2]));
     }
-    return it.fail("bad option \"{s}\": must be diff, forget, geometry, mark, marks, sources, trace, or why", .{sub});
+    return it.fail("bad option \"{s}\": must be changes, click, diff, explain, forget, geometry, mark, marks, ran, sources, trace, tree, type, or why", .{sub});
 }
 
 fn widgetOf(it: *ztcl.Interp, app: *App, path: []const u8) ztcl.Error!*Widget {
@@ -490,7 +516,14 @@ pub fn event(app: *App, ev: *const bind.WidgetEvent) u64 {
         .key_press, .key_release => ev.keysym,
         else => 0,
     };
-    const name = bind.formatPattern(.{ .type = ev.type, .detail = detail, .virtual = ev.virtual }, &buf);
+    var name = bind.formatPattern(.{ .type = ev.type, .detail = detail, .virtual = ev.virtual }, &buf);
+    // The short form of a key ("a") gets its type, so each name has the form <Type-detail>.
+    var long: [80]u8 = undefined;
+    if (name.len > 0 and name[0] != '<') {
+        name = std.fmt.bufPrint(&long, "<KeyPress-{s}>", .{name}) catch name;
+    } else if (std.mem.startsWith(u8, name, "<Key-")) {
+        name = std.fmt.bufPrint(&long, "<KeyPress-{s}", .{name[5..]}) catch name;
+    }
     return add(app, if (motion) .motion else .event, ev.widget.path, &.{
         .{ .str = "event" }, .{ .str = name },
         .{ .str = "x" },     .{ .int = ev.x },

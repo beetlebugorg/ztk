@@ -170,6 +170,61 @@ puts [ztk::debug diff before]
 
 The answer has only the keys with a change. The answer `pixels 0` with no other key means that the image and the widgets are the same. `-tolerance n` counts a pixel only when a channel changed by more than `n` (default 0). `ztk::debug marks` gives the names of the marks, and `ztk::debug forget name` removes one.
 
+## Short answers
+
+These subcommands give lines of text for a person or an agent. Each answer has at most 24 lines, and a longer answer ends with a line that gives the count of the lines that it left out.
+
+| Command | The question that it answers |
+|---|---|
+| `ztk::debug explain path ?option?` | "Why is `.f.ok` disabled?" With an option: the value, the call that set it with its line and stack, the value before, and the style. With no option: the box, the geometry notes, and each option that a call set. |
+| `ztk::debug click path ?button?` | "What ran when I clicked Save?" It clicks the center of the widget through the hit test and gives each event with its bindings, commands, option changes, and dirty widgets, then the geometry passes and the frames. |
+| `ztk::debug type text ?path?` | The same for text: into the widget with the focus, or into `path` after a click on it. |
+| `ztk::debug ran ?seq?` | What ran for the last event that ran a binding, or for the event with the number `seq`. It needs the trace. |
+| `ztk::debug changes name` | "Diff the UI before and after": the answer of `ztk::debug diff` as lines. |
+| `ztk::debug tree ?path?` | One line for each widget: the path, the class, the box, and the map state. |
+
+`click` and `type` start the trace when it is off, and stop it again after. For example, `ztk --headless app.tcl` with this `app.tcl`:
+
+```tcl
+ztk::debug sources on
+button .save -text Save -command save
+label .status -text Ready
+pack .save .status
+proc save {} { .status configure -text Saved; lock .save }
+proc lock {w} { $w configure -state disabled }
+puts [ztk::debug click .save]
+puts [ztk::debug explain .save -state]
+```
+
+The second answer is:
+
+```
+.save -state is "disabled": set by $w configure -state disabled at line 1 of proc lock in app.tcl.
+Before: "normal". Writes: 1.
+Stack: lock .save < save
+A click on .save runs no -command while it is disabled.
+```
+
+## MCP tools
+
+`ztk --mcp app.tcl` runs the script on the headless backend and then serves the Model Context Protocol on stdin and stdout: one JSON-RPC message on each line. The output of the script goes to stderr. The app runs only inside the calls of the tools, so two runs with the same calls give the same answers. The trace is on from the start.
+
+| Tool | Arguments | What it gives |
+|---|---|---|
+| `ui_tree` | `path` | The answer of `ztk::debug tree`. |
+| `ui_explain` | `path`, `option` | The answer of `ztk::debug explain`. |
+| `ui_geometry` | `path` | The geometry chain, one line for each level. |
+| `ui_click` | `path`, `button` | The answer of `ztk::debug click`. |
+| `ui_type` | `text`, `path` | The answer of `ztk::debug type`. |
+| `ui_ran` | `seq` | The answer of `ztk::debug ran`. |
+| `ui_trace` | `kind`, `widget`, `last` | The trace records, one line each (default: the last 20). |
+| `ui_mark` | `name` | Takes a mark for `ui_diff`. |
+| `ui_diff` | `name`, `image` | The answer of `ztk::debug changes`. With `image`, also the PNG with the changed pixels in red. |
+| `ui_snapshot` | `path` | A PNG image of the widget. |
+| `tcl_eval` | `script` | The result of the script at the global level, after an `update`. |
+
+An MCP client that starts a server from a command line gets the command `ztk` and the arguments `--mcp /path/to/app.tcl`.
+
 ## Cost
 
 A script with 200,000 calls of `.b configure -text $i -state normal` ran 1,161,719,315 instructions before `ztk::debug` existed, 1,165,918,947 with the record off (0.36 % more, 21 instructions for each call), and 2,211,793,540 with the record on. The command was `perf stat -e instructions:u -r 3 ztk --headless --allow clock bench/debug-configure.tcl` on a ReleaseFast build, on 2026-11-26, on an Intel Core i7-6700K with Linux. The difference in time with the record off was smaller than the spread between runs.

@@ -25,6 +25,7 @@ const usage =
     \\usage: ztk [flags] script.tcl [arguments]
     \\       ztk bundle -o Name.app [options] main.tcl [files]   (ztk bundle for its options)
     \\  --headless               use the headless backend and the CPU renderer
+    \\  --mcp                    run the script headless, then serve the MCP tools of ztk::debug on stdin and stdout
     \\  --cpu                    use the CPU renderer on Wayland
     \\  --exit-after-frames N    exit with status 0 after N frames
     \\  --screenshot FILE.png    with --headless: write the last frame at the exit
@@ -57,6 +58,38 @@ fn fail(err: *Io.Writer, comptime fmt: []const u8, args: anytype) noreturn {
 }
 
 /// The panic handler gives the text console back, and then does what Zig does.
+/// The MCP server of `--mcp`: one JSON-RPC message on each line of
+/// stdin, and each answer on one line of stdout. The procs of
+/// `src/library/debug.tcl` answer. The app runs only inside the calls.
+fn serveMcp(io: Io, it: *ztcl.Interp, app: *ztk.App, out: *Io.Writer) !void {
+    var in_buf: [1 << 20]u8 = undefined;
+    var in_r: Io.File.Reader = .init(.stdin(), io, &in_buf);
+    const in = &in_r.interface;
+    // The trace is on from the start, so ui_ran has the events of each call.
+    _ = it.eval("ztk::debug trace start") catch {};
+    while (true) {
+        const line = in.takeDelimiterExclusive('\n') catch |e| switch (e) {
+            error.EndOfStream => return,
+            else => return e,
+        };
+        _ = in.take(1) catch {};
+        const call = try ztcl.value.newList(it.alloc(), &.{ .{ .str = "::ztk::priv::dbg::mcp" }, .{ .str = line } });
+        const answer = it.eval(try it.str(call)) catch |e| {
+            const msg = if (e == error.TclError) it.str(it.result) catch "error" else @errorName(e);
+            std.debug.print("ztk: --mcp: {s}\n", .{msg});
+            continue;
+        };
+        const text = try it.str(answer);
+        if (text.len > 0) {
+            try out.writeAll(text);
+            try out.writeAll("\n");
+            try out.flush();
+        }
+        _ = app.maybeCompact();
+        if (app.root == null) return;
+    }
+}
+
 pub const panic = std.debug.FullPanic(onPanic);
 
 fn onPanic(msg: []const u8, first_trace_addr: ?usize) noreturn {
@@ -118,6 +151,7 @@ pub fn main(init: std.process.Init) !void {
     exit_err = err;
 
     var headless = false;
+    var mcp = false;
     var dark = false;
     // The file commands and the file channels (open, read, puts to a file)
     // are on by default (decision of the user,
@@ -156,6 +190,8 @@ pub fn main(init: std.process.Init) !void {
         const a: []const u8 = args[i];
         if (std.mem.eql(u8, a, "--headless")) {
             headless = true;
+        } else if (std.mem.eql(u8, a, "--mcp")) {
+            mcp = true;
         } else if (std.mem.eql(u8, a, "--cpu")) {
             // The Wayland backend renders with the CPU renderer, so the flag has no other effect.
         } else if (std.mem.eql(u8, a, "--allow") or std.mem.eql(u8, a, "--root")) {
@@ -239,6 +275,7 @@ pub fn main(init: std.process.Init) !void {
         allow_bits = app.allow;
         root_dir = app.root;
     }
+    if (mcp) headless = true;
     const path = script orelse {
         try err.writeAll(usage);
         err.flush() catch {};
@@ -253,7 +290,8 @@ pub fn main(init: std.process.Init) !void {
         };
     // `info script` gives the file, as in wish.
     if (own_app == null) it.script_name = path;
-    it.output = .{ .ctx = out, .write = write };
+    // With --mcp, stdout has only the answers, so the output of the script goes to stderr.
+    it.output = .{ .ctx = if (mcp) err else out, .write = write };
     // The capabilities of the program: the file commands by default, as a
     // desktop program needs them, and more from --allow.
     host_io = io;
@@ -364,7 +402,12 @@ pub fn main(init: std.process.Init) !void {
             if (app.root) |r| r.invalidate(.{ .style = true, .measure = false, .layout = false, .paint = true });
             if (app.max_frames) |m| app.max_frames = m + app.frames;
         };
-        app.run() catch |e| {
+        if (mcp) {
+            serveMcp(io, &it, app, out) catch |e| {
+                err.print("ztk: --mcp: {s}\n", .{@errorName(e)}) catch {};
+                status = 1;
+            };
+        } else app.run() catch |e| {
             const msg = if (e == error.TclError) it.str(it.result) catch "error" else @errorName(e);
             err.print("{s}\n", .{msg}) catch {};
             status = 1;
