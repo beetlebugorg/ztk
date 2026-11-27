@@ -339,6 +339,7 @@ pub fn main(init: std.process.Init) !void {
 
     var head: ?*ztk.headless.Headless = null;
     var wl: if (ztk.wayland_enabled) ?*ztk.wayland.Wayland else void = if (ztk.wayland_enabled) null else {};
+    var xc: if (ztk.wayland_enabled) ?*ztk.x11.X11 else void = if (ztk.wayland_enabled) null else {};
     var mac: if (ztk.appkit_enabled) ?*ztk.appkit.AppKit else void = if (ztk.appkit_enabled) null else {};
     var platform: ztk.platform.Platform = undefined;
     var direct_be: ?*ztk.direct.Direct = null;
@@ -363,9 +364,19 @@ pub fn main(init: std.process.Init) !void {
     } else if (ztk.appkit_enabled) {
         mac = ztk.appkit.AppKit.init(init.gpa) catch |e| fail(err, "ztk: cannot use AppKit: {s}\n", .{@errorName(e)});
         platform = mac.?.platform();
+    } else if (ztk.wayland_enabled and init.environ_map.get("WAYLAND_DISPLAY") == null and init.environ_map.get("DISPLAY") != null) {
+        // No Wayland compositor: the X server of DISPLAY.
+        var auth_buf: [4096]u8 = undefined;
+        const authority = init.environ_map.get("XAUTHORITY") orelse if (init.environ_map.get("HOME")) |h| std.fmt.bufPrint(&auth_buf, "{s}/.Xauthority", .{h}) catch null else null;
+        xc = ztk.x11.X11.init(init.gpa, .{
+            .display = init.environ_map.get("DISPLAY").?,
+            .authority = authority,
+            .app_id = if (own_app != null) std.fs.path.basename(args[0]) else "ztk",
+        }) catch |e| fail(err, "ztk: cannot use the X display: {s}\n", .{@errorName(e)});
+        platform = xc.?.platform();
     } else if (ztk.wayland_enabled) {
         if (init.environ_map.get("WAYLAND_DISPLAY") == null) {
-            fail(err, "ztk: no Wayland display. Use --headless or ZTK_HEADLESS=1, or run in a Wayland session.\n", .{});
+            fail(err, "ztk: no Wayland or X display. Use --headless or ZTK_HEADLESS=1, or run in a desktop session.\n", .{});
         }
         wl = ztk.wayland.Wayland.init(init.gpa, .{
             .runtime_dir = init.environ_map.get("XDG_RUNTIME_DIR"),
@@ -403,6 +414,7 @@ pub fn main(init: std.process.Init) !void {
     };
     defer if (ztk.wayland_enabled) {
         if (wl) |w| w.deinit();
+        if (xc) |x| x.deinit();
     };
 
     // The folder of the script is the root of `ztk::style load`.

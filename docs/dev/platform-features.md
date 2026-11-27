@@ -63,6 +63,8 @@ The features of ztk go through `Platform.VTable`, as the menus do: optional entr
 
 **Bundles (ztk#56, ztk#59, ztk#60).** `ztk bundle` writes a program with the scripts and the style sheets inside it, from any host, as ztcl#40 asks for ztcl. On Windows the bundle is one `.exe` with its resources written by ztk in Zig: the icon, a manifest with the per-monitor DPI awareness and the common controls, and the version info. The build needs no resource compiler, so a build on Linux or macOS works.
 
+**X11 client.** For a Linux desktop with no Wayland compositor, `ztk` uses the X server of `DISPLAY` when `WAYLAND_DISPLAY` is not set (`src/platform/x11.zig`, docs/references/x11.md). The first version has one window, the CPU renderer with `PutImage`, the keys from `GetKeyboardMapping` (with autorepeat), the buttons and the wheel, enter, leave, focus, resize, `WM_DELETE_WINDOW`, the title (`_NET_WM_NAME`), and the minimum size. It has no popups (the core draws menus in the window), no clipboard, no input method, and no scale from `Xft.dpi` yet. tests/x11-input.sh runs it on Xvfb with xdotool, also in CI.
+
 ## The order
 
 Windows: the tray, the file dialogs, `ztcl::open` and `ztcl::notify` in ztcl, then the `.exe` bundle. macOS: the order of the macOS session, with the same interface. The first PR of each feature adds its entries to `platform.zig` or its commands to ztcl, and the second backend builds to them.

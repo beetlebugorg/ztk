@@ -27,6 +27,8 @@ pub const bundle = @import("bundle.zig");
 pub const elfload = @import("sys/elf/loader.zig");
 pub const appbin = @import("appbin.zig");
 pub const wayland = if (@import("build_options").wayland) @import("platform/wayland.zig") else struct {};
+/// The X11 client, with the Wayland backend: for a desktop with no Wayland compositor.
+pub const x11 = if (@import("build_options").wayland) @import("platform/x11.zig") else struct {};
 /// True on Windows, where the Win32 backend exists.
 pub const windows_enabled = @import("builtin").os.tag == .windows;
 pub const windows = if (windows_enabled) @import("platform/windows.zig") else struct {};

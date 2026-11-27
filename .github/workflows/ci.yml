@@ -123,6 +123,12 @@ jobs:
       - name: Test the D-Bus client on a private bus
         if: hashFiles('build.zig') != '' && runner.os == 'Linux'
         run: sh tests/dbus.sh
+      - name: Test the X11 client on Xvfb
+        if: hashFiles('build.zig') != '' && runner.os == 'Linux'
+        timeout-minutes: 5
+        run: |
+          sudo apt-get install -y xvfb xdotool
+          sh tests/x11-input.sh
 
   test-arm:
     needs: changes
