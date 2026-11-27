@@ -138,11 +138,22 @@ const Data = struct {
     sel_a: ?Pos = null,
     sel_b: ?Pos = null,
     selecting: bool = false,
-    /// The size of a cell in logical pixels from the last measure.
-    cell_w: i32 = 8,
+    /// The width of a cell in device pixels: the advance of the font at
+    /// the scale of the last draw, rounded once, as a terminal of the
+    /// system does, so the columns keep the spacing of the font at each
+    /// scale. A width in whole logical pixels adds up to a device pixel
+    /// to each column on a Retina screen.
+    cell_dw: f32 = 8,
+    /// The scale of the last draw.
+    scale: f32 = 1,
+    /// The height of a cell in logical pixels from the last measure.
     cell_h: i32 = 16,
     /// True when the PTY needs the size of the screen.
     resize_pty: bool = false,
+    /// The program has written nothing since its start.
+    starting: bool = false,
+    /// The size of the PTY changed while the program started.
+    resized_starting: bool = false,
     /// The count of quiet reads in a row.
     quiet: u32 = 0,
     focused: bool = false,
@@ -329,6 +340,8 @@ fn spawn(w: *Widget) ztcl.Error!void {
     try cfg.appendSlice(a, " -blocking 0");
     _ = try it.eval(cfg.items);
     d.quiet = 0;
+    d.starting = true;
+    d.resized_starting = false;
     schedule(w, 0);
 }
 
@@ -383,6 +396,7 @@ fn tick(ctx: ?*anyopaque) void {
         var buf: [32]u8 = undefined;
         const extra = std.fmt.bufPrint(&buf, " {d} {d}", .{ d.screen.cols, d.screen.rows }) catch "";
         _ = ptyCall(w, "resize", extra) catch {};
+        if (d.starting) d.resized_starting = true;
     }
     flushPending(w);
     var got = false;
@@ -407,6 +421,16 @@ fn tick(ctx: ?*anyopaque) void {
     }
     if (got) {
         d.quiet = 0;
+        // A program reads the size of its terminal as it starts, and a
+        // SIGWINCH that comes before its handler is lost: it then draws
+        // for the old size. A window manager that places a new window (a
+        // tiling one) resizes it in that time. So a resize while the
+        // program started is told again at its first output, when it
+        // draws and so listens.
+        if (d.starting) {
+            d.starting = false;
+            if (d.resized_starting) _ = ptyCall(w, "kill", " WINCH") catch {};
+        }
         afterOutput(w);
     } else d.quiet +|= 1;
     // The output pipe of a pseudo console stays open after its program
@@ -527,8 +551,22 @@ fn cellFont(w: *const Widget, st: *const style_mod.Style) font_mod.FontDesc {
 
 fn cellSize(w: *Widget, desc: font_mod.FontDesc) void {
     const d = data(w);
-    d.cell_w = @max(paint.zeroWidth(w.app, desc), 1);
+    d.cell_dw = @max(@round(paint.zeroAdvance(w.app, desc) * d.scale), 1);
     d.cell_h = @max(paint.lineHeight(w.app, desc), 1);
+}
+
+/// The left edge of column `col` in logical pixels from the content
+/// rectangle. Adjacent cells share their edge, so backgrounds and box
+/// drawing have no gap at a scale where a cell is not whole logical
+/// pixels.
+fn edge(d: *const Data, col: i32) i32 {
+    return @intFromFloat(@round(@as(f32, @floatFromInt(col)) * d.cell_dw / d.scale));
+}
+
+/// A rectangle of cells, columns `x0` to `x1`, in logical pixels.
+fn cellsRect(d: *const Data, r: geom.Rect, x0: i32, x1: i32, y: i32, h: i32) geom.Rect {
+    const l = edge(d, x0);
+    return .{ .x = r.x + l, .y = y, .w = edge(d, x1) - l, .h = h };
 }
 
 fn measure(w: *Widget) geom.Size {
@@ -540,7 +578,7 @@ fn measure(w: *Widget) geom.Size {
     const cols = std.math.clamp(optInt(w, "-width", 80), 1, 1000);
     const rows = std.math.clamp(optInt(w, "-height", 24), 1, 1000);
     const ins = paint.insets(st);
-    return .{ .w = num.add(@intCast(cols * d.cell_w), ins.horizontal()), .h = num.add(@intCast(rows * d.cell_h), ins.vertical()) };
+    return .{ .w = num.add(edge(d, @intCast(cols)), ins.horizontal()), .h = num.add(@intCast(rows * d.cell_h), ins.vertical()) };
 }
 
 /// The 16 colors of the palette: the xterm colors with a lighter blue.
@@ -633,10 +671,11 @@ fn paintTerminal(w: *Widget, b: *scene.Builder) anyerror!void {
     const st = &solid_style;
     const d = data(w);
     try paint.box(w, b, st);
+    d.scale = b.scale;
     cellSize(w, cellFont(w, st));
     const r = paint.contentRect(w, st);
     // The size of the grid follows the size of the widget.
-    const cols: u16 = @intCast(std.math.clamp(@divFloor(r.w, d.cell_w), 1, 1000));
+    const cols: u16 = @intFromFloat(std.math.clamp(@floor(@as(f32, @floatFromInt(r.w)) * d.scale / d.cell_dw), 1, 1000));
     const rows: u16 = @intCast(std.math.clamp(@divFloor(r.h, d.cell_h), 1, 1000));
     if (cols != d.screen.cols or rows != d.screen.rows) {
         try d.screen.resize(cols, rows);
@@ -675,7 +714,7 @@ fn paintTerminal(w: *Widget, b: *scene.Builder) anyerror!void {
                 const next = cellColors(d, cellOf(cells, end), li, end, st, sel, show_cursor and d.focused and ry == cy and end == cx);
                 if (!sameColor(next.bg, here.bg)) break;
             }
-            if (here.bg) |bg| try b.box(.{ .x = r.x + @as(i32, x) * d.cell_w, .y = r.y + @as(i32, @intCast(ry)) * d.cell_h, .w = @as(i32, end - x) * d.cell_w, .h = d.cell_h }, .{ .fill = bg });
+            if (here.bg) |bg| try b.box(cellsRect(d, r, x, end, r.y + @as(i32, @intCast(ry)) * d.cell_h, d.cell_h), .{ .fill = bg });
             x = end;
         }
     }
@@ -702,7 +741,7 @@ fn paintTerminal(w: *Widget, b: *scene.Builder) anyerror!void {
                 if (c.width == 0) continue;
                 if (boxdraw.covers(c.cp)) {
                     const cc0 = cellColors(d, c, li, end, st, sel, show_cursor and d.focused and ry == cy and end == cx);
-                    try boxdraw.draw(b, c.cp, .{ .x = r.x + @as(i32, end) * d.cell_w, .y = y, .w = d.cell_w, .h = d.cell_h }, cc0.fg);
+                    try boxdraw.draw(b, c.cp, cellsRect(d, r, end, end + 1, y, d.cell_h), cc0.fg);
                     continue;
                 }
                 const cc = cellColors(d, c, li, end, st, sel, show_cursor and d.focused and ry == cy and end == cx);
@@ -713,18 +752,17 @@ fn paintTerminal(w: *Widget, b: *scene.Builder) anyerror!void {
                 try text.appendSlice(a, ub[0..n]);
             }
             if (end == x) end = x + 1;
-            const run_x = r.x + @as(i32, x) * d.cell_w;
             const fg = here.fg;
-            if (std.mem.trim(u8, text.items, " ").len > 0) try drawRun(app, b, cfont, c0.attrs, text.items, starts.items, run_x, y + ascent, d.cell_w, fg);
-            if (c0.attrs.underline) try b.box(.{ .x = run_x, .y = y + ascent + 1, .w = @as(i32, end - x) * d.cell_w, .h = 1 }, .{ .fill = fg });
-            if (c0.attrs.strike) try b.box(.{ .x = run_x, .y = y + @divFloor(d.cell_h, 2), .w = @as(i32, end - x) * d.cell_w, .h = 1 }, .{ .fill = fg });
+            if (std.mem.trim(u8, text.items, " ").len > 0) try drawRun(app, b, cfont, c0.attrs, text.items, starts.items, r.x, x, y + ascent, d.cell_dw, fg);
+            if (c0.attrs.underline) try b.box(cellsRect(d, r, x, end, y + ascent + 1, 1), .{ .fill = fg });
+            if (c0.attrs.strike) try b.box(cellsRect(d, r, x, end, y + @divFloor(d.cell_h, 2), 1), .{ .fill = fg });
             x = end;
         }
     }
     // The cursor without the focus is a frame, and the bar and the
     // underline styles are thin boxes.
     if (show_cursor) {
-        const rect: geom.Rect = .{ .x = r.x + @as(i32, cx) * d.cell_w, .y = r.y + @as(i32, cy) * d.cell_h, .w = d.cell_w, .h = d.cell_h };
+        const rect = cellsRect(d, r, cx, @as(i32, cx) + 1, r.y + @as(i32, cy) * d.cell_h, d.cell_h);
         const style = d.screen.modes.cursor_style;
         if (!d.focused) {
             try b.box(rect, .{ .border = .{ 1, 1, 1, 1 }, .border_color = st.color });
@@ -743,7 +781,9 @@ fn sameColor(x: ?geom.Color, y: ?geom.Color) bool {
     return p.r == q.r and p.g == q.g and p.b == q.b and p.a == q.a;
 }
 
-fn drawRun(app: *App, b: *scene.Builder, base: font_mod.FontDesc, attrs: screen_mod.Attrs, text: []const u8, starts: []const u16, x: i32, baseline: i32, cell_w: i32, color: geom.Color) !void {
+/// Draws a run of cells from column `col0`: glyph k at the left edge of
+/// its cell, `cell_dw` device pixels for each column from `origin_x`.
+fn drawRun(app: *App, b: *scene.Builder, base: font_mod.FontDesc, attrs: screen_mod.Attrs, text: []const u8, starts: []const u16, origin_x: i32, col0: u16, baseline: i32, cell_dw: f32, color: geom.Color) !void {
     var desc = base;
     if (attrs.bold) desc.weight = 700;
     if (attrs.italic) desc.italic = true;
@@ -760,9 +800,9 @@ fn drawRun(app: *App, b: *scene.Builder, base: font_mod.FontDesc, attrs: screen_
             byte += n;
             k += 1;
         }
-        g.x = @as(f32, @floatFromInt(@as(i32, starts[k]) * cell_w)) * b.scale;
+        g.x = @as(f32, @floatFromInt(@as(u32, col0) + starts[k])) * cell_dw;
     }
-    try b.text(&app.atlas, &run, x, baseline, color);
+    try b.text(&app.atlas, &run, origin_x, baseline, color);
 }
 
 // Events.
@@ -771,7 +811,8 @@ fn cellAt(w: *Widget, ev_x: i32, ev_y: i32) Pos {
     const d = data(w);
     const st = &w.style;
     const r = paint.contentRect(w, st);
-    const col = std.math.clamp(@divFloor(ev_x - r.x, d.cell_w), 0, d.screen.cols - 1);
+    const fx = @as(f32, @floatFromInt(ev_x - r.x)) * d.scale / d.cell_dw;
+    const col = std.math.clamp(@as(i32, @intFromFloat(@floor(fx))), 0, d.screen.cols - 1);
     const row = std.math.clamp(@divFloor(ev_y - r.y, d.cell_h), 0, d.screen.rows - 1);
     return .{ .line = topLine(d) + @as(usize, @intCast(row)), .col = @intCast(col) };
 }
