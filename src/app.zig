@@ -361,6 +361,7 @@ pub const App = struct {
 
     pub fn deinit(app: *App) void {
         app.closing = true;
+        app.dbg.deinit(app.gpa);
         // The render thread draws no held frame into a window that goes away.
         if (app.render_ready) {
             if (app.window) |win| win.render.store(null, .release);
@@ -865,7 +866,8 @@ pub const App = struct {
         if (app.anim_more and now != app.anim_more_us) top.dirty.paint = true;
         if (!top.dirty.any() and !app.style_pending and app.styles.generation == app.style_gen) return false;
         const wall = &app.wall;
-        app.stats.begin(.style, wall.*());
+        const wall0 = wall.*();
+        app.stats.begin(.style, wall0);
         app.restyle();
         app.stats.end(.style, wall.*());
         app.stats.begin(.layout, wall.*());
@@ -923,6 +925,7 @@ pub const App = struct {
         top.dirty = widget.Dirty.none;
         app.anim_more_us = now;
         app.frames += 1;
+        if (app.dbg.trace.mask != 0) @import("debug.zig").frame(app, top, wall.*() - wall0);
         if (app.frames == 1) app.stats.first_frame_us = wall.*() - app.start_us;
         app.stats.frameDone(wall.*());
         // An animation asks for the next frame.

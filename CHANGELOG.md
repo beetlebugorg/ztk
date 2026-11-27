@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Adds `ztk::debug sources`, `ztk::debug why`, and `ztk::debug geometry`: the source of each option of a widget and its geometry chain.
+- Adds `ztk::debug trace`: records of events, bindings, commands, option writes, geometry passes, dirty widgets, frames, focus, and grabs, with filters.
 - Adds the `ttk` widgets `ttk::button`, `ttk::checkbutton`, `ttk::radiobutton`, `ttk::label`, `ttk::frame`, `ttk::labelframe`, `ttk::entry`, `ttk::separator`, and `ttk::sizegrip`, the command `ttk::style`, and the `classic` theme.
 - Adds `spinbox`, entry validation, `-placeholder`, the search field, undo, and the `clipboard` command.
 - Adds the `canvas` widget with all item types, scrolling, `image create photo`, and item animation.

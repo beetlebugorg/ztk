@@ -9,6 +9,7 @@
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
+const debug = @import("debug.zig");
 const ztcl = @import("ztcl");
 const num = @import("num.zig");
 const geom = @import("geom.zig");
@@ -118,7 +119,9 @@ fn arrangeNode(w: *Widget, changed: *bool) void {
     if (w.dirty.layout) {
         w.dirty.layout = false;
         if (w.container_manager) |m| {
+            const before = if (w.app.dbg.trace.mask != 0) debug.boxesBefore(w) else debug.Boxes{};
             m.arrange(w);
+            if (w.app.dbg.trace.mask != 0) debug.arranged(w, m.name, before);
             w.app.arrange_count += 1;
             changed.* = true;
         }

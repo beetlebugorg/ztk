@@ -221,6 +221,7 @@ pub const Widget = struct {
     /// new size request changes the layout of each ancestor. Each change
     /// paints the toplevel again.
     pub fn invalidate(w: *Widget, d: Dirty) void {
+        if (w.app.dbg.trace.mask != 0) @import("debug.zig").dirty(w, d);
         w.dirty = w.dirty.merge(d);
         // The App keeps a style flag, so a frame with no change can return at once.
         if (d.style) w.app.style_pending = true;
