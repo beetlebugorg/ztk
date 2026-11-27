@@ -439,3 +439,8 @@ test "appkit: the menu of the Dock icon and the tabs of a window" {
     const id = objc.call(fn (objc.Id, objc.Sel) callconv(.c) objc.Id, w.ns_window, "tabbingIdentifier", .{});
     try t.expectEqualStrings("docs", objc.utf8(id));
 }
+
+test {
+    _ = @import("../platform/macdrag.zig");
+    _ = @import("../platform/macdialog.zig");
+}

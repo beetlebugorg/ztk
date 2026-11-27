@@ -54,6 +54,7 @@ const nsmenu = @import("nsmenu.zig");
 const macdock = @import("macdock.zig");
 const mactray = @import("mactray.zig");
 const macdialog = @import("macdialog.zig");
+const macdrag = @import("macdrag.zig");
 const Id = objc.Id;
 const Sel = objc.Sel;
 const Class = objc.Class;
@@ -232,6 +233,7 @@ pub const AppKit = struct {
         .fileDialog = vFileDialog,
         .messageBox = vMessageBox,
         .colorDialog = vColorDialog,
+        .dragStart = vDragStart,
     };
 
     // ---- The tray ----
@@ -360,6 +362,11 @@ pub const AppKit = struct {
     fn menuKey(ctx: *anyopaque, ev: Id) void {
         const w = self(ctx).key_win orelse return;
         send(w.view, "keyDown:", .{ev});
+    }
+
+    fn vDragStart(ptr: *anyopaque, win: *Window, d: plat.DragData) plat.DragAction {
+        const a = self(ptr);
+        return macdrag.run(a.gpa, a.app, winOf(win).view, d);
     }
 
     fn vFileDialog(_: *anyopaque, gpa: std.mem.Allocator, opts: *const plat.FileDialog) ?plat.FileDialogResult {
