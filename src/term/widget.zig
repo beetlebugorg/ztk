@@ -724,6 +724,7 @@ fn paintTerminal(w: *Widget, b: *scene.Builder) anyerror!void {
     const ascent = font_mod.Fonts.metrics(mfont).ascent;
     var text: std.ArrayList(u8) = .empty;
     var starts: std.ArrayList(u16) = .empty;
+    var offs: std.ArrayList(u32) = .empty;
     const a = app.it.alloc();
     for (0..rows) |ry| {
         const li = top + ry;
@@ -735,6 +736,7 @@ fn paintTerminal(w: *Widget, b: *scene.Builder) anyerror!void {
             const here = cellColors(d, c0, li, x, st, sel, show_cursor and d.focused and ry == cy and x == cx);
             text.clearRetainingCapacity();
             starts.clearRetainingCapacity();
+            offs.clearRetainingCapacity();
             var end = x;
             while (end < cols) : (end += 1) {
                 const c = cellOf(cells, end);
@@ -746,14 +748,15 @@ fn paintTerminal(w: *Widget, b: *scene.Builder) anyerror!void {
                 }
                 const cc = cellColors(d, c, li, end, st, sel, show_cursor and d.focused and ry == cy and end == cx);
                 if (end > x and (!sameColor(cc.fg, here.fg) or c.attrs.bold != c0.attrs.bold or c.attrs.italic != c0.attrs.italic or c.attrs.underline != c0.attrs.underline or c.attrs.strike != c0.attrs.strike)) break;
-                var ub: [4]u8 = undefined;
-                const n = std.unicode.utf8Encode(c.cp, &ub) catch 0;
+                // The text of the cell is its whole grapheme cluster.
+                var ub: [32]u8 = undefined;
                 try starts.append(a, end - x);
-                try text.appendSlice(a, ub[0..n]);
+                try offs.append(a, @intCast(text.items.len));
+                try text.appendSlice(a, ztcl.vt.cellText(c, &ub, 0));
             }
             if (end == x) end = x + 1;
             const fg = here.fg;
-            if (std.mem.trim(u8, text.items, " ").len > 0) try drawRun(app, b, cfont, c0.attrs, text.items, starts.items, r.x, x, y + ascent, d.cell_dw, fg);
+            if (std.mem.trim(u8, text.items, " ").len > 0) try drawRun(app, b, cfont, c0.attrs, text.items, starts.items, offs.items, r.x, x, y + ascent, d.cell_dw, fg);
             if (c0.attrs.underline) try b.box(cellsRect(d, r, x, end, y + ascent + 1, 1), .{ .fill = fg });
             if (c0.attrs.strike) try b.box(cellsRect(d, r, x, end, y + @divFloor(d.cell_h, 2), 1), .{ .fill = fg });
             x = end;
@@ -783,24 +786,27 @@ fn sameColor(x: ?geom.Color, y: ?geom.Color) bool {
 
 /// Draws a run of cells from column `col0`: glyph k at the left edge of
 /// its cell, `cell_dw` device pixels for each column from `origin_x`.
-fn drawRun(app: *App, b: *scene.Builder, base: font_mod.FontDesc, attrs: screen_mod.Attrs, text: []const u8, starts: []const u16, origin_x: i32, col0: u16, baseline: i32, cell_dw: f32, color: geom.Color) !void {
+fn drawRun(app: *App, b: *scene.Builder, base: font_mod.FontDesc, attrs: screen_mod.Attrs, text: []const u8, starts: []const u16, offs: []const u32, origin_x: i32, col0: u16, baseline: i32, cell_dw: f32, color: geom.Color) !void {
     var desc = base;
     if (attrs.bold) desc.weight = 700;
     if (attrs.italic) desc.italic = true;
     const pfont = try app.fonts.get(desc, b.scale);
     var run = try shape.shape(app.gpa, pfont, text);
     defer run.deinit(app.gpa);
-    // Glyph k goes to the left edge of its cell. The cluster is the byte
-    // index of the code point of the glyph.
-    var byte: usize = 0;
+    // The glyphs of cell k go to the left edge of the cell, and each keeps
+    // its offset from the first glyph of the cell (a combining mark). The
+    // cluster of a glyph is a byte offset in `text`, and `offs` has the
+    // offset of the text of each cell.
     var k: usize = 0;
+    var first_x: f32 = 0;
+    var have: ?usize = null;
     for (run.glyphs) |*g| {
-        while (k + 1 < starts.len and byte < g.cluster) {
-            const n = std.unicode.utf8ByteSequenceLength(text[byte]) catch 1;
-            byte += n;
-            k += 1;
+        while (k + 1 < offs.len and offs[k + 1] <= g.cluster) k += 1;
+        if (have != k) {
+            have = k;
+            first_x = g.x;
         }
-        g.x = @as(f32, @floatFromInt(@as(u32, col0) + starts[k])) * cell_dw;
+        g.x = @as(f32, @floatFromInt(@as(u32, col0) + starts[k])) * cell_dw + (g.x - first_x);
     }
     try b.text(&app.atlas, &run, origin_x, baseline, color);
 }

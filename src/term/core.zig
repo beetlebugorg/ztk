@@ -150,9 +150,8 @@ pub const Screen = struct {
         var x = from;
         while (x < end) : (x += 1) {
             if (cells[x].width == 0) continue;
-            var buf: [4]u8 = undefined;
-            const n = std.unicode.utf8Encode(cells[x].cp, &buf) catch 0;
-            try out.appendSlice(a, buf[0..n]);
+            var buf: [32]u8 = undefined;
+            try out.appendSlice(a, vt.cellText(cells[x], &buf, 0));
         }
         return out.toOwnedSlice(a);
     }

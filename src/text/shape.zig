@@ -1,9 +1,17 @@
 //! Text layout for one line of left-to-right text. `shape` decodes the
 //! UTF-8, maps each code point to a glyph, and places each glyph at the
 //! sum of the advances and the kerning before it. Positions are device
-//! pixels and are not rounded per advance. The layout has no ligatures, no
-//! combining marks, and no right-to-left text. An invalid UTF-8 byte
-//! gives the glyph 0 and uses one byte. `measure` caches the widths.
+//! pixels and are not rounded per advance. An invalid UTF-8 byte gives
+//! the glyph 0 and uses one byte. `measure` caches the widths.
+//!
+//! The text goes in extended grapheme clusters (UAX #29, `ztcl.text`).
+//! Each glyph of a cluster has the byte offset of the cluster start, so
+//! the caret stops only at cluster boundaries. A code point of width 0
+//! after the first one of a cluster does not move the pen: a combining
+//! mark with an advance of 0 stays at the pen (fonts draw such marks to
+//! the left of the origin), a mark with an advance is centered on the
+//! base, and ZWJ and the variation selectors get no glyph. The layout has
+//! no ligatures and no right-to-left text.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -11,6 +19,7 @@ const num = @import("../num.zig");
 const font_mod = @import("font.zig");
 const Font = font_mod.Font;
 const Fonts = font_mod.Fonts;
+const seg = @import("ztcl").text;
 
 /// Device pixels from the line origin.
 pub const Glyph = @import("system.zig").Glyph;
@@ -77,22 +86,52 @@ pub fn shape(gpa: std.mem.Allocator, font: *Font, text: []const u8) !Run {
         return .{ .font = font, .glyphs = owned, .width = ceilWidth(end, font.scale), .end_x = end };
     };
     try glyphs.ensureTotalCapacityPrecise(gpa, text.len);
-    const us = font.unitScale();
+    const pen = try layout(font, text, gpa, &glyphs);
+    const owned = try glyphs.toOwnedSlice(gpa);
+    return .{ .font = font, .glyphs = owned, .width = ceilWidth(pen, font.scale), .end_x = pen };
+}
 
+/// True for a code point that has no glyph inside a cluster: ZWJ and the
+/// variation selectors.
+fn invisible(cp: u21) bool {
+    return cp == 0x200D or (cp >= 0xFE00 and cp <= 0xFE0F) or (cp >= 0xE0100 and cp <= 0xE01EF);
+}
+
+/// Places the glyphs of `text` with the built-in faces, by clusters, and
+/// gives the end of the pen. With no list, it only measures.
+fn layout(font: *Font, text: []const u8, gpa: std.mem.Allocator, out: ?*std.ArrayListUnmanaged(Glyph)) !f32 {
+    const us = font.unitScale();
     var pen: f32 = 0;
     var prev: ?u16 = null;
     var i: usize = 0;
     while (i < text.len) {
-        const d = decode(text, i);
-        const gid: u16 = if (d.valid) font.glyph(d.cp) else 0;
-        if (prev) |p| pen += @as(f32, @floatFromInt(font.kern(p, gid))) * us;
-        try glyphs.append(gpa, .{ .id = gid, .x = pen, .y = 0, .cluster = std.math.cast(u32, i) orelse std.math.maxInt(u32) });
-        pen += @as(f32, @floatFromInt(font.advance(gid))) * us;
-        prev = gid;
-        i += d.len;
+        const end = seg.graphemeEnd(text, i);
+        const at = std.math.cast(u32, i) orelse std.math.maxInt(u32);
+        var base_x = pen;
+        var base_adv: f32 = 0;
+        var j = i;
+        while (j < end) {
+            const d = decode(text, j);
+            const gid: u16 = if (d.valid) font.glyph(d.cp) else 0;
+            const adv = @as(f32, @floatFromInt(font.advance(gid))) * us;
+            if (j > i and d.valid and seg.props(d.cp).width == 0) {
+                if (!invisible(d.cp)) {
+                    const x = if (adv == 0) pen else base_x + (base_adv - adv) / 2;
+                    if (out) |o| try o.append(gpa, .{ .id = gid, .x = x, .y = 0, .cluster = at });
+                }
+            } else {
+                if (prev) |p| pen += @as(f32, @floatFromInt(font.kern(p, gid))) * us;
+                base_x = pen;
+                base_adv = adv;
+                if (out) |o| try o.append(gpa, .{ .id = gid, .x = pen, .y = 0, .cluster = at });
+                pen += adv;
+                prev = gid;
+            }
+            j += d.len;
+        }
+        i = end;
     }
-    const owned = try glyphs.toOwnedSlice(gpa);
-    return .{ .font = font, .glyphs = owned, .width = ceilWidth(pen, font.scale), .end_x = pen };
+    return pen;
 }
 
 /// The width of a line in logical pixels. The result is cached.
@@ -120,18 +159,6 @@ fn computeWidth(gpa: std.mem.Allocator, font: *Font, text: []const u8) i32 {
         defer run.deinit(gpa);
         return run.width;
     };
-    const us = font.unitScale();
-
-    var pen: f32 = 0;
-    var prev: ?u16 = null;
-    var i: usize = 0;
-    while (i < text.len) {
-        const d = decode(text, i);
-        const gid: u16 = if (d.valid) font.glyph(d.cp) else 0;
-        if (prev) |p| pen += @as(f32, @floatFromInt(font.kern(p, gid))) * us;
-        pen += @as(f32, @floatFromInt(font.advance(gid))) * us;
-        prev = gid;
-        i += d.len;
-    }
+    const pen = layout(font, text, gpa, null) catch return 0;
     return ceilWidth(pen, font.scale);
 }

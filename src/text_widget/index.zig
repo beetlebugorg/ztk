@@ -9,7 +9,9 @@
 //!
 //! - `+ count ?submodifier? units` and `- count ...`, with the units
 //!   `chars`, `indices`, `lines`, or a prefix of them, and the
-//!   submodifier `display` or `any`;
+//!   submodifier `display` or `any`. The unit `graphemes` (a prefix of
+//!   1 letter or more) is a ztk extension: it counts the extended
+//!   grapheme clusters of UAX #29, with a newline as one cluster;
 //! - `?submodifier? linestart`, `lineend`, `wordstart`, and `wordend`,
 //!   with a prefix of 5 letters or more.
 //!
@@ -180,6 +182,13 @@ fn modifiers(c: Ctx, start: Pos, s: []const u8) Error!Pos {
             const count: i64 = if (neg) -n.v else n.v;
             if (prefixOf(unit, "chars", 1) or prefixOf(unit, "indices", 1)) {
                 p = if (count >= 0) buf.forward(p, @intCast(count)) else buf.backward(p, @abs(count));
+            } else if (prefixOf(unit, "graphemes", 1)) {
+                var k: u64 = @abs(count);
+                while (k > 0) : (k -= 1) {
+                    const q = if (count >= 0) buf.nextCluster(p) else buf.prevCluster(p);
+                    if (q.eql(p)) break;
+                    p = q;
+                }
             } else if (prefixOf(unit, "lines", 1) and disp and c.display != null) {
                 p = c.display.?(c.ptr, .lines, p, count);
             } else if (prefixOf(unit, "lines", 1)) {

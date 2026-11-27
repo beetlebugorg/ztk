@@ -5,8 +5,9 @@
 //! page `text.n` gives them: a click puts the mark `insert` at the
 //! character under the pointer and sets the mark `tk::anchor1`, a drag
 //! and a click with Shift select from the anchor, a double click selects
-//! a word, and a triple click selects a line. The arrow keys move by
-//! characters and by display lines, Home and End go to the ends of the
+//! a word segment of UAX #29, and a triple click selects a line.
+//! Backspace and Delete remove one grapheme cluster. The arrow keys move by
+//! grapheme clusters (UAX #29) and by display lines, Home and End go to the ends of the
 //! display line, and Prior and Next move by the lines of a page. Shift
 //! with a move selects from the anchor. A typed character replaces the
 //! selection when the mark `insert` is in it.
@@ -149,9 +150,9 @@ fn doMove(w: *Widget, how: Move, select: bool) void {
     const buf = &d.buf;
     if (how != .up and how != .down and how != .pageup and how != .pagedown) goal_widget = null;
     const np: Pos = switch (how) {
-        .left => buf.backward(p, 1),
+        .left => buf.prevCluster(p),
         .right => blk: {
-            const q = buf.forward(p, 1);
+            const q = buf.nextCluster(p);
             break :blk if (q.line >= buf.lineCount()) buf.last() else q;
         },
         .home => textview.displayEdge(w, p, false),
@@ -256,8 +257,9 @@ fn cmdText(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Err
         },
         .double => {
             const p = text.nearestChar(w, xy[0], xy[1]);
-            const s = index.wordStart(&d.buf, p);
-            var e = index.wordEnd(&d.buf, p);
+            const r = d.buf.wordSegment(p);
+            const s = r[0];
+            var e = r[1];
             if (e.line >= d.buf.lineCount()) e = d.buf.last();
             setAnchor(w, s);
             setSel(w, s, e);
@@ -285,16 +287,16 @@ fn cmdText(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Err
                 if (insideSel(w, insertPos(w))) {
                     try viaCommand(w, &.{ .{ .str = "delete" }, .{ .str = "sel.first" }, .{ .str = "sel.last" } });
                 } else if (act == .backspace) {
-                    try viaCommand(w, &.{ .{ .str = "delete" }, .{ .str = "insert-1c" } });
-                } else try viaCommand(w, &.{ .{ .str = "delete" }, .{ .str = "insert" } });
+                    try viaCommand(w, &.{ .{ .str = "delete" }, .{ .str = "insert-1graphemes" }, .{ .str = "insert" } });
+                } else try viaCommand(w, &.{ .{ .str = "delete" }, .{ .str = "insert" }, .{ .str = "insert+1graphemes" } });
                 if (w.alive()) textview.see(w, insertPos(w));
                 return Value.empty;
             }
             if (insideSel(w, insertPos(w)) and deleteSel(w)) {} else {
                 const p = insertPos(w);
                 if (act == .backspace) {
-                    if (p.line != 0 or p.ch != 0) text.deleteText(w, d.buf.backward(p, 1), p);
-                } else text.deleteText(w, p, d.buf.forward(p, 1));
+                    if (p.line != 0 or p.ch != 0) text.deleteText(w, d.buf.prevCluster(p), p);
+                } else text.deleteText(w, p, d.buf.nextCluster(p));
             }
             textview.see(w, insertPos(w));
         },
