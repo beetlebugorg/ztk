@@ -485,7 +485,13 @@ fn propagates(_: *const Widget) bool {
     return true;
 }
 
-pub const manager: layout.Manager = .{ .name = "panedwindow", .measure = measure, .arrange = arrange, .forget = forget, .release = release, .has_content = hasContent, .propagates = propagates };
+pub const manager: layout.Manager = .{ .name = "panedwindow", .measure = measure, .arrange = arrange, .forget = forget, .release = release, .has_content = hasContent, .propagates = propagates, .container_of = containerWidget };
+
+/// The container of a pane: a pane can be a descendant of the parent of
+/// the container, not only a child.
+fn containerWidget(c: *const Widget) ?*Widget {
+    return @ptrCast(@alignCast(c.manager_data orelse return null));
+}
 
 /// Makes the widget the manager of `c`, at the place `at` of the list.
 fn manage(w: *Widget, c: *Widget, at: usize) ztcl.Error!*Pane {

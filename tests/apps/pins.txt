@@ -7,3 +7,4 @@ bwidget 1.10.1 https://downloads.sourceforge.net/project/tcllib/BWidget/1.10.1/b
 tablelist 7.12 https://www.nemethi.de/tablelist/tablelist7.12.tar.gz 7223dcba90097a8539f95791282a668ebcd50c15da6ec8c491c3cd1947a34197
 tklib 0.9 https://downloads.sourceforge.net/project/tcllib/tklib/0.9/tklib-0.9.tar.gz b5dd9440fbc42a2a85c33bca0dcb71efea0ba8b735f63bd787a38ca8f57a1b88
 tkdiff 5.7 https://downloads.sourceforge.net/project/tkdiff/tkdiff/5.7/tkdiff-5-7.zip e2dec98e4c2f7c79a1e31290d3deaaa5915f53c8220c05728f282336bb2e405d
+git 2.56.0 https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.56.0.tar.xz 26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3

@@ -14,6 +14,8 @@ namespace eval app {
     variable checks 0
     variable errors {}
     variable shots ""
+    # The dialogs that answerDialogs closed.
+    variable answered {}
 }
 
 # Records the background errors of the app, for example an error in a
@@ -187,6 +189,7 @@ proc app::answerDialogs {{on 1}} {
         if {$pick eq ""} continue
         lassign $pick path class x y bw bh
         chan puts stdout "answer: $top with [$path cget -text]"
+        lappend ::app::answered $top
         set cx [expr {$x + $bw / 2}]
         set cy [expr {$y + $bh / 2}]
         ztk::inject $top motion $cx $cy

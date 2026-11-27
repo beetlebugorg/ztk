@@ -486,3 +486,21 @@ proc ::selection {sub args} {
         }
     }
 }
+
+# The grid of `wm grid` for a toplevel: a text or a listbox with
+# -setgrid 1 gives its size in characters and lines and the size of one
+# character and one line. An empty list when no widget sets a grid.
+proc ::ztk::priv::wmgrid {top} {
+    set todo [winfo children $top]
+    while {[llength $todo]} {
+        set w [lindex $todo 0]
+        set todo [lrange $todo 1 end]
+        if {[winfo toplevel $w] ne $top} continue
+        lappend todo {*}[winfo children $w]
+        if {[winfo class $w] ni {Text Listbox}} continue
+        if {[catch {$w cget -setgrid} g] || !$g} continue
+        set f [$w cget -font]
+        return [list [$w cget -width] [$w cget -height] [font measure $f 0] [font metrics $f -linespace]]
+    }
+    return {}
+}

@@ -30,6 +30,7 @@ grep -v '^#' "$root/tests/apps/pins.txt" | while read -r name version url sum; d
     fi
     case "$url" in
         *.zip) (cd "$dest/$name" && unzip -q "$file") ;;
+        *.tar.xz) tar -xJf "$file" -C "$dest/$name" ;;
         *) tar -xzf "$file" -C "$dest/$name" ;;
     esac
     rm -f "$file"

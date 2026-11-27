@@ -328,6 +328,8 @@ pub fn classCommand(comptime class: *const Class) ztcl.interp.NativeFn {
             // not give. A bad value of the database is left out.
             if (app.option_db.entries.items.len > 0) {
                 const a = it.alloc();
+                app.dbg.from_db = true;
+                defer app.dbg.from_db = false;
                 for (class.specs) |sp| {
                     if (sp.type == .synonym or sp.db_name.len == 0) continue;
                     const v = @import("optiondb.zig").lookup(app, w, sp.db_name, sp.db_class, a) orelse continue;

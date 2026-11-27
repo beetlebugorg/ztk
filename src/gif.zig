@@ -143,10 +143,13 @@ fn lzw(gpa: std.mem.Allocator, r: *Reader, out: []u8) !void {
     // Collect the sub-blocks into one stream.
     var data: std.ArrayListUnmanaged(u8) = .empty;
     defer data.deinit(gpa);
-    while (true) {
+    // A file that ends in the data keeps the data that it has, as the
+    // decoder of Tk does.
+    while (r.pos < r.b.len) {
         const n = try r.byte();
         if (n == 0) break;
-        try data.appendSlice(gpa, try r.take(n));
+        const have = @min(@as(usize, n), r.b.len - r.pos);
+        try data.appendSlice(gpa, try r.take(have));
     }
     const clear: u16 = @as(u16, 1) << @intCast(min);
     const end: u16 = clear + 1;

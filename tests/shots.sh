@@ -19,6 +19,8 @@ if ! $cap "$root/tools/shots.sh" "$work/shots" >/dev/null; then
 fi
 for file in "$root"/docs/site/shots/*.png; do
     name="$(basename "$file")"
+    # The screenshots of the famous apps come from tests/famous-apps.sh.
+    case "$name" in app-*) continue ;; esac
     if cmp -s "$file" "$work/shots/$name"; then
         echo "ok: $name"
     else

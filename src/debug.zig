@@ -48,6 +48,8 @@ pub const State = struct {
     sources: bool = false,
     /// True while option writes keep their source.
     keep: bool = false,
+    /// True while a new widget takes the values of the option database.
+    from_db: bool = false,
     trace: trace_mod.Trace = .{},
     /// The marks of `ztk::debug mark`, by name. The keys are owned.
     marks: diff_mod.Marks = .empty,
@@ -68,7 +70,9 @@ pub const State = struct {
     }
 };
 
-pub const Kind = enum { create, configure, animate, internal };
+/// `optiondb`: a value of the option database (`option add`) that a new
+/// widget took.
+pub const Kind = enum { create, configure, animate, internal, optiondb };
 
 /// The last write of one option. All text is owned by the App allocator.
 pub const Source = struct {
@@ -126,6 +130,7 @@ fn noteOrFail(w: *Widget, it: *ztcl.Interp, i: usize, kind: Kind, pairs: []const
     switch (kind) {
         .create => try words.appendSlice(a, &.{ .{ .str = w.class.command }, .{ .str = w.path } }),
         .configure => try words.appendSlice(a, &.{ .{ .str = w.path }, .{ .str = "configure" } }),
+        .optiondb => try words.appendSlice(a, &.{ .{ .str = "option" }, .{ .str = "get" }, .{ .str = w.path } }),
         .animate, .internal => {},
     }
     try words.appendSlice(a, pairs);
