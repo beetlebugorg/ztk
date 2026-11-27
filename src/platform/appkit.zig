@@ -109,6 +109,8 @@ pub const Win = struct {
     ime: Ime = .{},
     /// The menu bar of the window (`toplevel -menu`), or 0.
     bar: plat.MenuId = 0,
+    /// The kinds of data that the window accepts from drags (ztk#62).
+    drop_types: plat.DropTypes = .{},
 };
 
 pub const AppKit = struct {
@@ -209,6 +211,7 @@ pub const AppKit = struct {
         .appearance = vAppearance,
         .reducedMotion = vReducedMotion,
         .setWindowState = vSetWindowState,
+        .dropTypes = vDropTypes,
         .clipboardSet = vClipboardSet,
         .clipboardGet = vClipboardGet,
         .textInput = vTextInput,
@@ -975,6 +978,116 @@ pub const AppKit = struct {
         objc.call(fn (Id, Sel, isize) callconv(.c) void, w.ns_window, "setLevel:", .{@as(isize, if (st.topmost) 3 else 0)});
     }
 
+    // ---- The drops of other apps (ztk#62) ----
+
+    const type_file_url = "public.file-url";
+    const type_text = "public.utf8-plain-text";
+
+    /// Registers the view for the pasteboard types of `types`, or for
+    /// none, which stops the drops.
+    fn vDropTypes(_: *anyopaque, win: *Window, types: plat.DropTypes) void {
+        const w = winOf(win);
+        w.drop_types = types;
+        const pool = objc.Pool.push();
+        defer pool.pop();
+        send(w.view, "unregisterDraggedTypes", .{});
+        if (!types.any()) return;
+        const arr = objc.call(fn (Class, Sel) callconv(.c) Id, objc.class("NSMutableArray").?, "array", .{});
+        if (types.files) objc.call(fn (Id, Sel, Id) callconv(.c) void, arr, "addObject:", .{nsTemp(type_file_url)});
+        if (types.text) objc.call(fn (Id, Sel, Id) callconv(.c) void, arr, "addObject:", .{nsTemp(type_text)});
+        objc.call(fn (Id, Sel, Id) callconv(.c) void, w.view, "registerForDraggedTypes:", .{arr});
+    }
+
+    fn nsTemp(text: []const u8) Id {
+        return objc.call(fn (Id, Sel) callconv(.c) Id, objc.nsString(text), "autorelease", .{});
+    }
+
+    /// The point of a drag in the view, in logical pixels from the top left.
+    fn dragPoint(w: *Win, info: Id) NSPoint {
+        const loc = objc.call(fn (Id, Sel) callconv(.c) NSPoint, info, "draggingLocation", .{});
+        return objc.call(fn (Id, Sel, NSPoint, ?Id) callconv(.c) NSPoint, w.view, "convertPoint:fromView:", .{ loc, null });
+    }
+
+    /// True when the pasteboard of the drag has a kind that the window takes.
+    fn dragWanted(w: *Win, info: Id) bool {
+        const pb = objc.call(fn (Id, Sel) callconv(.c) Id, info, "draggingPasteboard", .{});
+        const types = objc.call(fn (Id, Sel) callconv(.c) ?Id, pb, "types", .{}) orelse return false;
+        const has = struct {
+            fn of(list: Id, name: []const u8) bool {
+                return objc.call(fn (Id, Sel, Id) callconv(.c) bool, list, "containsObject:", .{nsTemp(name)});
+            }
+        };
+        return (w.drop_types.files and has.of(types, type_file_url)) or (w.drop_types.text and has.of(types, type_text));
+    }
+
+    /// NSDragOperationCopy, or NSDragOperationNone.
+    fn dragPhase(view: Id, info: Id, phase: event.DropPhase) usize {
+        const w = dataOf(view) orelse return 0;
+        const pool = objc.Pool.push();
+        defer pool.pop();
+        if (!dragWanted(w, info)) return 0;
+        const p = dragPoint(w, info);
+        w.owner.push(.{ .drop = .{ .window = &w.window, .phase = phase, .x = @floatCast(p.x), .y = @floatCast(p.y) } });
+        return 1;
+    }
+
+    fn onDragEnter(view: Id, _: Sel, info: Id) callconv(.c) usize {
+        return dragPhase(view, info, .enter);
+    }
+
+    fn onDragUpdate(view: Id, _: Sel, info: Id) callconv(.c) usize {
+        return dragPhase(view, info, .over);
+    }
+
+    fn onDragExit(view: Id, _: Sel, _: ?Id) callconv(.c) void {
+        const w = dataOf(view) orelse return;
+        w.owner.push(.{ .drop = .{ .window = &w.window, .phase = .leave } });
+    }
+
+    fn onDragPrepare(view: Id, _: Sel, info: Id) callconv(.c) bool {
+        const w = dataOf(view) orelse return false;
+        return dragWanted(w, info);
+    }
+
+    /// The drop: the file URLs as host paths separated by 0, or the text.
+    fn onDragPerform(view: Id, _: Sel, info: Id) callconv(.c) bool {
+        const w = dataOf(view) orelse return false;
+        const pool = objc.Pool.push();
+        defer pool.pop();
+        const a = w.owner;
+        const pb = objc.call(fn (Id, Sel) callconv(.c) Id, info, "draggingPasteboard", .{});
+        var files: std.ArrayList(u8) = .empty;
+        defer files.deinit(a.gpa);
+        if (w.drop_types.files) {
+            const classes = [1]Id{@ptrCast(objc.class("NSURL").?)};
+            const arr = objc.call(fn (Class, Sel, [*]const Id, usize) callconv(.c) Id, objc.class("NSArray").?, "arrayWithObjects:count:", .{ &classes, 1 });
+            const yes_num = objc.call(fn (Class, Sel, bool) callconv(.c) Id, objc.class("NSNumber").?, "numberWithBool:", .{true});
+            const keys = [1]Id{nsTemp("NSPasteboardURLReadingFileURLsOnlyKey")};
+            const vals = [1]Id{yes_num};
+            const dict = objc.call(fn (Class, Sel, [*]const Id, [*]const Id, usize) callconv(.c) Id, objc.class("NSDictionary").?, "dictionaryWithObjects:forKeys:count:", .{ &vals, &keys, 1 });
+            if (objc.call(fn (Id, Sel, Id, Id) callconv(.c) ?Id, pb, "readObjectsForClasses:options:", .{ arr, dict })) |urls| {
+                const n = objc.call(fn (Id, Sel) callconv(.c) usize, urls, "count", .{});
+                var i: usize = 0;
+                while (i < n) : (i += 1) {
+                    const url = objc.call(fn (Id, Sel, usize) callconv(.c) Id, urls, "objectAtIndex:", .{i});
+                    const path = objc.call(fn (Id, Sel) callconv(.c) ?Id, url, "path", .{}) orelse continue;
+                    if (files.items.len > 0) files.append(a.gpa, 0) catch return false;
+                    files.appendSlice(a.gpa, objc.utf8(path)) catch return false;
+                }
+            }
+        }
+        var text: []const u8 = "";
+        if (files.items.len == 0 and w.drop_types.text) {
+            if (objc.call(fn (Id, Sel, Id) callconv(.c) ?Id, pb, "stringForType:", .{nsTemp(type_text)})) |str| text = objc.utf8(str);
+        }
+        if (files.items.len == 0 and text.len == 0) return false;
+        const f = if (files.items.len > 0) a.keepText(files.items) orelse return false else "";
+        const t = if (text.len > 0) a.keepText(text) orelse return false else "";
+        const p = dragPoint(w, info);
+        a.push(.{ .drop = .{ .window = &w.window, .phase = .drop, .x = @floatCast(p.x), .y = @floatCast(p.y), .files = f, .text = t } });
+        return true;
+    }
+
     fn vAppearance(ptr: *anyopaque) plat.Appearance {
         const a = self(ptr);
         const pool = objc.Pool.push();
@@ -1070,6 +1183,12 @@ pub const AppKit = struct {
         b.method("firstRectForCharacterRange:actualRange:", @ptrCast(&onFirstRect), "{CGRect={CGPoint=dd}{CGSize=dd}}@:{_NSRange=QQ}^{_NSRange=QQ}");
         // The first click on a window that is not the key window also goes to the view.
         b.method("acceptsFirstMouse:", @ptrCast(&yesFor), "c@:@");
+        // NSDraggingDestination: the drags of other apps (ztk#62).
+        b.method("draggingEntered:", @ptrCast(&onDragEnter), "Q@:@");
+        b.method("draggingUpdated:", @ptrCast(&onDragUpdate), "Q@:@");
+        b.method("draggingExited:", @ptrCast(&onDragExit), "v@:@");
+        b.method("prepareForDragOperation:", @ptrCast(&onDragPrepare), "c@:@");
+        b.method("performDragOperation:", @ptrCast(&onDragPerform), "c@:@");
         return b.finish();
     }
 
