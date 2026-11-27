@@ -1,8 +1,7 @@
 //! The glibc names that the ELF loader (`loader.zig`) gives to the
 //! libraries it loads, each with the name of its definition in this
 //! program: the C library that the static program links, or a function
-//! of `shim.c` (prefix `ztk_`). docs/dev/elf-loader.md says how the
-//! list was made.
+//! of `shim.c` (prefix `ztk_`). tools/gen-elf-names.py writes this file.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 pub const names = [_][2][]const u8{
@@ -1143,11 +1142,11 @@ pub const names = [_][2][]const u8{
     .{ "pthread_mutex_destroy", "pthread_mutex_destroy" },
     .{ "pthread_mutex_getprioceiling", "pthread_mutex_getprioceiling" },
     .{ "pthread_mutex_init", "pthread_mutex_init" },
-    .{ "pthread_mutex_lock", "pthread_mutex_lock" },
+    .{ "pthread_mutex_lock", "ztk_pthread_mutex_lock" },
     .{ "pthread_mutex_setprioceiling", "pthread_mutex_setprioceiling" },
-    .{ "pthread_mutex_timedlock", "pthread_mutex_timedlock" },
-    .{ "pthread_mutex_trylock", "pthread_mutex_trylock" },
-    .{ "pthread_mutex_unlock", "pthread_mutex_unlock" },
+    .{ "pthread_mutex_timedlock", "ztk_pthread_mutex_timedlock" },
+    .{ "pthread_mutex_trylock", "ztk_pthread_mutex_trylock" },
+    .{ "pthread_mutex_unlock", "ztk_pthread_mutex_unlock" },
     .{ "pthread_mutexattr_destroy", "pthread_mutexattr_destroy" },
     .{ "pthread_mutexattr_getprotocol", "pthread_mutexattr_getprotocol" },
     .{ "pthread_mutexattr_getpshared", "pthread_mutexattr_getpshared" },
