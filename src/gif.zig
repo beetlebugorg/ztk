@@ -89,7 +89,8 @@ fn decodeImage(gpa: std.mem.Allocator, r: *Reader, global: []const u8, transpare
     var table = global;
     if (flags & 0x80 != 0) table = try r.take(3 * (@as(usize, 2) << @intCast(flags & 7)));
     const interlaced = flags & 0x40 != 0;
-    if (w == 0 or h == 0) return error.BadGif;
+    // The limit of the PNG decoder: 32,768 pixels on each side.
+    if (w == 0 or h == 0 or w > 1 << 15 or h > 1 << 15) return error.BadGif;
     const count = @as(usize, w) * h;
     const index = try gpa.alloc(u8, count);
     defer gpa.free(index);
@@ -285,6 +286,12 @@ test "a 2 by 2 GIF with a transparent index" {
     try std.testing.expectEqualSlices(u8, &.{ 0, 0, 0, 0 }, img.pixels[4..8]);
     try std.testing.expectEqualSlices(u8, &.{ 0, 0, 0, 0 }, img.pixels[8..12]);
     try std.testing.expectEqualSlices(u8, &.{ 255, 0, 0, 255 }, img.pixels[12..16]);
+}
+
+test "a GIF wider than 32,768 pixels is refused" {
+    const file = [_]u8{ 'G', 'I', 'F', '8', '9', 'a', 1, 0, 1, 0, 0, 0, 0 } ++
+        [_]u8{ 0x2c, 0, 0, 0, 0, 0xff, 0xff, 1, 0, 0, 2, 2, 0x4c, 0x01, 0, 0x3b };
+    try std.testing.expectError(error.BadGif, decodeGif(std.testing.allocator, &file));
 }
 
 test "a binary PPM" {
