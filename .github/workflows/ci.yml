@@ -106,10 +106,11 @@ jobs:
         # with the ELF loader of src/sys/elf. A failure to load prints its
         # reason in the SKIP line of the Vulkan tests.
         if: hashFiles('build.zig') != '' && runner.os == 'Linux'
+        timeout-minutes: 30
         run: |
-          sudo apt-get install -y mesa-vulkan-drivers libvulkan1
-          zig build test -Dtarget=x86_64-linux-musl -Dtest-filter=elf --summary all
-          zig build test -Dtarget=x86_64-linux-musl -Dtest-filter=vulkan --summary all
+          sudo apt-get install -y mesa-vulkan-drivers libvulkan1 gdb
+          timeout 600 zig build test -Dtarget=x86_64-linux-musl -Dtest-filter=elf --summary all
+          sh tests/static-vulkan.sh
       - name: Run a script
         if: hashFiles('build.zig') != ''
         run: |
