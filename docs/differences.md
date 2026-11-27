@@ -1,57 +1,84 @@
 # Differences from Tk
 
-ztk follows Tk 8.6.16. A script that runs in `wish` 8.6 runs in ztk when it uses the widgets that ztk has. This page lists the differences that a script can see. The full list, with each option and each test, is [the limits file](dev/stage2-limits.md).
-
-## Missing today
-
-- Widgets: the `text` widget has no peers.
-- Commands: `send`. `selection` works inside the app only: it is not connected to the selections of the system. `tk busy` keeps the busy mark of a window and does not block its input. `tk fontchooser` keeps its options and shows no dialog.
-- Event sequences of more than one event, such as `<Control-x><Control-s>`.
-- `text` peers, and Tk in a child interpreter (`load {} Tk child`).
-- The clipboard is local to the app. It is not connected to the clipboard of the system.
-- `canvas postscript`.
-- Fonts come from ztk (Inter by default), so text widths differ from `wish`.
-- `TkFixedFont` is JetBrains Mono, and `TkDefaultFont` is Inter. A font list with a named font as its family, such as `{TkFixedFont 9 bold}`, keeps the face of that named font with the new size and style, as Tk does on its platforms. With the faces of the package, a bold monospace font renders in the regular weight: ztk has no bold file of JetBrains Mono.
+ztk follows Tk 8.6.16, with some commands of Tk 8.7 and 9. A script that runs in `wish` 8.6 runs in ztk when it uses the widgets and the commands that ztk has. This page lists what a script can see that differs, what is in progress, and what ztk leaves out on purpose. It was checked against ztk `main` on 2026-11-27. The full list, with each option and each test, is [the limits file](dev/stage2-limits.md).
 
 ## Platforms
 
-- Linux: a Wayland window with the CPU renderer, a headless backend, and a direct backend for the framebuffer. The Vulkan renderer works offscreen only.
-- macOS and Windows: the headless backend only. The native backends are planned.
-- The web: one window (`.`) on a canvas. A second `toplevel` has no canvas.
-- `tk windowingsystem` gives `ztk`, so a script that tests for `x11`, `win32`, or `aqua` gets none of them. The flag `--windowingsystem x11` of the `ztk` program gives the name that such an app needs.
+Each platform has a native backend of its own, with no toolkit library between ztk and the system.
 
-## The look
+| Platform | Window and renderer | What the system gives a script | Reference |
+|---|---|---|---|
+| Linux, Wayland | The Wayland client of ztk, Vulkan into dma-bufs or the CPU renderer | The clipboard, drops and drags, tray icons, file dialogs through the portal, full screen, window icons, less motion | [On Linux](linux.md) |
+| Linux, X11 | The X11 client of ztk with the CPU renderer, for a desktop with no Wayland compositor | One window, the keys, the pointer, and window icons. No clipboard, no popups, and no input method yet | [On Linux](linux.md#what-works-on-x11) |
+| macOS 13 and later | AppKit and Metal, with live resize | Native menus and dialogs, Core Text with SF Pro, drops and drags, tray, the Dock menu and badge, window tabs, full screen | [On macOS](macos.md) |
+| Windows 10 and 11 | Win32 and Direct3D 12 | Native menus and dialogs, DirectWrite with Segoe UI Variable, the Fluent look, drops and drags, tray, taskbar, jump list, global shortcuts | [On Windows](windows.md) |
+| The web | WebGPU, WebGL 2, or a 2D canvas, in WebAssembly | One window (`.`) on a canvas. A second `toplevel` has no canvas | [On the web](web.md) |
+| No display | The headless backend with the CPU renderer | Screenshots and input for tests and agents | [For agents](agents.md) |
 
-- The theme gives the border and the padding. So `-borderwidth`, `-padx`, and `-pady` of a label, a button, and a check button default to 0. A value of the script still applies.
-- Options for looks that the modern theme does not draw are stored and have no effect: for example `-highlightthickness`, `-activebackground`, `-overrelief`, `-troughcolor`, `-repeatdelay` of a scale, and the canvas stipples.
+`ztk::has` tells a script which platform features this program has ([ztk::has](commands/tray.md#platform-features)).
+
+## Missing today
+
+| Feature of Tk | State in ztk | Issue |
+|---|---|---|
+| `send` | Not in ztk. | [#257](https://github.com/beetlebugorg/ztk/issues/257) |
+| Event sequences of more than one event, such as `<Control-x><Control-s>` | `bind` gives an error. | [#256](https://github.com/beetlebugorg/ztk/issues/256) |
+| Text peers (`text peer create`) | `peer names` gives an empty list, and `peer create` gives an error. | [#249](https://github.com/beetlebugorg/ztk/issues/249) |
+| `canvas postscript` | Gives an error. | [#181](https://github.com/beetlebugorg/ztk/issues/181) |
+| Rotated canvas text (`-angle`) | The option is stored, and the text renders level. | |
+| Tk in a child interpreter (`load {} Tk child`) | Not in ztk. One app has one Tk. | |
+| `selection` with other apps | The selection works inside the app only. The clipboard is the clipboard of the system on Windows, macOS, and Wayland, and local to the app on X11 and the web. | |
+| `tk busy` | Keeps the busy mark of a window and does not block its input. | |
+| `tk fontchooser` | Keeps its options and shows no dialog. | |
+| Bold monospace text | ztk has the regular face of JetBrains Mono only, so `{TkFixedFont 9 bold}` renders in the regular weight. | [#300](https://github.com/beetlebugorg/ztk/issues/300) |
+
+## In progress
+
+- Python tkinter apps on ztk, through a drop-in `libtk8.6` (libztk) with libztcl: [#223](https://github.com/beetlebugorg/ztk/issues/223).
+- Grapheme clusters in the text widgets, in the renderer, and in the cell widths of the terminal: [#296](https://github.com/beetlebugorg/ztk/issues/296). Fallback faces and color emoji: [#300](https://github.com/beetlebugorg/ztk/issues/300).
+- Well-known Tk apps: the Tk widget demo, tkcon, BWidget, Tablelist, tklib with Plotchart, and gitk run with no change. TkDiff and git gui are in progress ([Runs on ztk](apps.md)).
+
+## Differences that a script can see
+
+### Text and fonts
+
+- The fonts come with ztk: `TkDefaultFont` is Inter and `TkFixedFont` is JetBrains Mono on Linux, the web, and headless. macOS uses SF Pro through Core Text, and Windows uses Segoe UI Variable through DirectWrite. So text widths differ from `wish`. The reason: an app has the same layout on each Linux system and in each browser.
+- A font list with a named font as its family, such as `{TkFixedFont 9 bold}`, keeps the face of that named font with the new size and style, as Tk does.
+
+### Windows
+
+- `tk windowingsystem` gives `ztk`, so a script that tests for `x11`, `win32`, or `aqua` gets none of them. The flag `--windowingsystem NAME` of the `ztk` program gives the name that such an app needs ([Install](install.md)).
+- `winfo rootx` and `rooty` of a widget in a second toplevel count from the corner of its own window on Wayland, because a Wayland program does not know the position of its windows.
+- `grab -global` acts as a local grab, and `grab status` reports `global`.
+
+### The look
+
+- The theme gives the border and the padding. So `-borderwidth`, `-padx`, and `-pady` of a label, a button, and a check button default to 0. A value of the script still applies ([Styling and themes](styling.md)).
+- Options for looks that the modern theme does not draw are stored and have no effect: for example `-highlightthickness`, `-activebackground`, `-overrelief`, `-troughcolor`, `-repeatdelay` of a scale, and the canvas stipples. The theme `classic` has the look of Tk on X11.
 - The modern scrollbar has no arrows, so `identify` never gives `arrow1` or `arrow2`, and `fraction` and `delta` count from the ends of the trough.
-- Canvas items that keep the default black of Tk draw with the text color of the theme. `itemcget` still gives `#000000`.
-- A canvas text item does not rotate with `-angle`.
+- Canvas items that keep the default black of Tk render with the text color of the theme, so they stay visible in the dark scheme. `itemcget` still gives `#000000`.
 
-## Menus
+### Menus
 
-- On Linux and the web, the menus are drawn inside the window for now. A menu cannot extend past the edges of the window. The popup surfaces of Wayland and the web are planned.
-- The drawn menu bar is a top inset of the toplevel, so `winfo height` of the toplevel includes the row of the bar.
-- The coordinates of `post` and `tk_popup` are those of the window of the toplevel of the menu, as `%X` and `%Y` give them.
+- On macOS and Windows, the `-menu` of a toplevel is the menu bar of the system, and `tk_popup` shows a menu of the system. On Wayland, a posted menu and each cascade is a popup surface that can extend past the window. On X11 and the web, ztk renders the menus inside the window ([Menus](widgets/menus.md)).
+- The menu bar that ztk renders is a top inset of the toplevel, so `winfo height` of the toplevel includes the row of the bar.
 - A tearoff entry shows as a line. A click on it does not tear off the menu.
-- The entry `-image`, `-bitmap`, `-compound`, `-hidemargin`, and `-columnbreak` are stored and have no effect on a drawn menu.
-- The modern theme draws a chevron on each menu button, also with `-indicatoron 0`.
+- The entry options `-image`, `-bitmap`, `-compound`, `-hidemargin`, and `-columnbreak` are stored and have no effect on a menu that ztk renders.
 
-## Styles and themes
+### Styles and themes
 
 - `ttk::style configure` and `map` change the look through CSS for `-foreground`, `-background`, `-fieldbackground`, `-bordercolor`, `-borderwidth`, `-relief`, `-padding`, `-font`, and `-indicatorcolor`. Other options are stored for `lookup`.
-- `ttk::style layout` and `element create` store their data with no effect on the look.
+- `ttk::style layout` and `element create` store their data with no effect on the look, because CSS gives the look of each part ([ttk::style](styling.md#ttkstyle)).
 - In `ttk::style map`, a pair with more states wins over an earlier pair with fewer states. Tk takes the earlier pair.
 - The states `active` and `hover` are one flag.
 - The themes `default`, `clam`, and `alt` have the modern look.
 
-## Behavior
+### Behavior
 
-- `grab -global` acts as a local grab, and `grab status` reports `global`.
 - A press on the trough of a scale or a scrollbar moves one step. Holding the button does not repeat.
 - A `scale` runs `-command` at once after a change by the user. `wish` runs it as an idle callback.
-- The list of a `ttk::combobox` is drawn by ztk in the window of the combobox, and no `$cb.popdown` toplevel or listbox exists. A combobox with no values does not open its list. `ttk::scale set` gives an empty result, where `wish` gives the result of `-command`. `ttk::progressbar start` runs `step` with `after`, as in `wish`, and the indeterminate bar moves on its own while the timer runs.
-- A `listbox` binds the keys of the virtual events (`<<PrevLine>>`, `<<SelectAll>>`, and the others) to `event generate`, so `bind Listbox` has more patterns than in `wish`. The rows have the height of the theme, and a drag above or below the rows scrolls one row for each motion event.
+- The list of a `ttk::combobox` is rendered by ztk in the window of the combobox, and no `$cb.popdown` toplevel or listbox exists. A combobox with no values does not open its list. `ttk::scale set` gives an empty result, where `wish` gives the result of `-command`.
+- A `listbox` binds the keys of the virtual events (`<<PrevLine>>`, `<<SelectAll>>`, and the others) to `event generate`, so `bind Listbox` has more patterns than in `wish`. The rows have the height of the theme.
 - `xview scroll` and `yview scroll` accept a fraction of a unit, and a scroll eases over 160 ms.
 - `<MouseWheel>` and `<Shift-MouseWheel>` follow Tk 8.7. The wheel does not send `<Button-4>` and `<Button-5>`.
 - `<<Paste>>` deletes the selection before it inserts, as Tk does on Windows and macOS.
@@ -59,6 +86,20 @@ ztk follows Tk 8.6.16. A script that runs in `wish` 8.6 runs in ztk when it uses
 - A `panedwindow` that is smaller than its panes, with no pane that can stretch, cuts the last pane at its end. Over a sash, the pointer shape changes with no change of `-cursor`.
 - The row of tabs of a `ttk::notebook` has the height of the theme, so the place of a page differs from `wish`. `-image` and `-compound` of a tab are stored with no effect.
 
+## Absent by design
+
+- No code of Tk and no Xlib: ztk is a new implementation. The behavior follows the manual pages of Tk and the results of `wish` 8.6.16 ([References](references/README.md)). Its X11 client is only a backend for a window.
+- No global grab: `grab -global` stays local, so an app cannot take the input of other apps.
+
 ## Additions
 
-ztk adds `ztk::terminal` (a terminal emulator widget, with `-shell` for the shell of `ztcl`), `ztk::style`, `ztk::class`, `ztk::animate`, `ztk::tooltip`, `ztk::limit` (a compute limit and a memory limit for one script, `ztk::limit ?-compute units? ?-memory bytes? script`), `ztk::snapshot` (a PNG image of a widget as base64 text), `ztk::tree` (each widget below a path with its class, its position in the toplevel, its size, and its map state), `ztk::inject` (pointer, wheel, key, and text events that go through the hit test, the hover state, and the focus, as the events of a backend do), the style classes `switch`, `segmented`, and `search`, `-placeholder` on entries, undo in entries, and fractional wheel steps.
+ztk adds these commands and options. [The ztk:: commands](commands/README.md) lists the reference page of each.
+
+- `ztk::terminal`, a terminal widget on libghostty-vt, with `-shell` for the shell of ztcl ([Terminal](widgets/terminal.md)).
+- `ztk::style`, `ztk::class`, and `ztk::animate`: CSS styles, style classes, and animation ([Styling and themes](styling.md), [Animation](animation.md)).
+- `ztk::tooltip`, `ztk::limit`, and `ztk::clock` ([ztk::limit](commands/limit.md)).
+- `ztk::snapshot`, `ztk::tree`, and `ztk::inject` for tests and agents ([For agents](agents.md)), and `ztk::debug` with the Inspect panel and its Probe tab on the site ([Debugging](debugging.md)).
+- The platform commands: `ztk::dnd`, `ztk::tray`, `ztk::taskbar`, `ztk::recent`, `ztk::hotkey`, `ztk::win::*`, and `ztk::mac::*`.
+- `image create photo -density 2`: a photo made for a screen of scale 2. A widget lays it out at its logical size and renders its pixels 1:1 on such a screen.
+- `wm iconphoto` sets the window icon on each desktop platform, and the Dock icon on macOS.
+- The style classes `switch`, `segmented`, and `search`, `-placeholder` on entries, undo in entries, and fractional wheel steps.
