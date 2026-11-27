@@ -184,6 +184,16 @@ pub fn build(b: *std.Build) void {
     bench_run.setCwd(b.path("."));
     b.step("bench", "Run the benchmark (ReleaseFast)").dependOn(&bench_run.step);
 
+    // The virtual pointer of tests/wayland-drag.sh, in zig-out/bin.
+    const wire_mod = b.createModule(.{ .root_source_file = b.path("src/platform/wl/wire.zig"), .target = target, .optimize = optimize });
+    const test_pointer = b.addExecutable(.{ .name = "ztk-test-pointer", .root_module = b.createModule(.{
+        .root_source_file = b.path("tests/wayland/pointer.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "wire", .module = wire_mod }},
+    }) });
+    b.step("test-pointer", "Build the virtual pointer of the Wayland drag test").dependOn(&b.addInstallArtifact(test_pointer, .{}).step);
+
     const tests = b.addTest(.{
         .use_llvm = use_llvm,
         .use_lld = use_lld,

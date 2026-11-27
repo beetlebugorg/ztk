@@ -213,6 +213,13 @@ pub const Wayland = struct {
     drag_offer: u32 = 0,
     drag_mime: ?[]const u8 = null,
     drop_data: []u8 = &.{},
+    /// A drag out of a window (`ztk::dnd drag`): its data source, the
+    /// data as a `text/uri-list` and as text, and the answer of the target.
+    out_source: u32 = 0,
+    out_uris: []u8 = &.{},
+    out_text: []const u8 = "",
+    out_action: u32 = 0,
+    out_done: bool = false,
     pointer: u32 = 0,
     keyboard: u32 = 0,
     cursor_device: u32 = 0,
@@ -367,6 +374,7 @@ pub const Wayland = struct {
         .setWindowState = vSetWindowState,
         .reducedMotion = vReducedMotion,
         .dropTypes = vDropTypes,
+        .dragStart = vDragStart,
     };
 
     /// With a file chooser portal: `tk_getOpenFile` and the others use it.
@@ -861,6 +869,23 @@ pub const Wayland = struct {
     // ---- The seat ----
 
     fn onCapabilities(w: *Wayland, caps: u32) void {
+        // A seat that loses its pointer or its keyboard makes the object
+        // inert. Release it, so that a new device gets a new object.
+        if (caps & 1 == 0 and w.pointer != 0) {
+            if (w.cursor_device != 0) w.destroy(w.cursor_device, 0);
+            w.cursor_device = 0;
+            // Request 1 of wl_pointer (version 3) is release.
+            w.destroy(w.pointer, 1);
+            w.pointer = 0;
+            w.lock.lock();
+            w.buttons = 0;
+            w.lock.unlock();
+        }
+        if (caps & 2 == 0 and w.keyboard != 0) {
+            w.destroy(w.keyboard, 0);
+            w.keyboard = 0;
+            w.repeat_key = null;
+        }
         if (caps & 1 != 0 and w.pointer == 0) {
             w.pointer = w.new(I.pointer, .main, 0) catch return;
             w.req(w.seat, 0, .{w.pointer});
@@ -868,7 +893,7 @@ pub const Wayland = struct {
                 w.cursor_device = w.new(I.cursor_dev, .main, 0) catch 0;
                 w.req(w.cursor_mgr, 1, .{ w.cursor_device, w.pointer });
             }
-            w.startInput();
+            if (w.input_thread != null) w.conn.setQueue(w.pointer, .input) else w.startInput();
         }
         if (caps & 2 != 0 and w.keyboard == 0) {
             // Event 0 (keymap) has a file descriptor.
@@ -1207,12 +1232,19 @@ pub const Wayland = struct {
         if (@as(isize, @bitCast(linux.pipe2(&fds, .{ .CLOEXEC = true }))) < 0) return;
         defer _ = linux.close(fds[0]);
         // The send closes the write end after the flush.
-        w.req(w.drag_offer, 1, .{ wire.Str{ .s = mime }, wire.Fd{ .fd = fds[1] } });
-        w.flush();
+        if (w.out_source == 0) {
+            w.req(w.drag_offer, 1, .{ wire.Str{ .s = mime }, wire.Fd{ .fd = fds[1] } });
+            w.flush();
+        }
         var data: std.ArrayListUnmanaged(u8) = .empty;
         defer data.deinit(w.gpa);
         var buf: [4096]u8 = undefined;
-        while (data.items.len < 64 << 20) {
+        // A drop of a drag of this app: this thread is the source, so the
+        // data cannot come through the pipe.
+        if (w.out_source != 0) {
+            _ = linux.close(fds[1]);
+            data.appendSlice(w.gpa, if (std.mem.eql(u8, mime, "text/uri-list")) w.out_uris else w.out_text) catch return;
+        } else while (data.items.len < 64 << 20) {
             var pfd = [1]linux.pollfd{.{ .fd = fds[0], .events = linux.POLL.IN, .revents = 0 }};
             if (@as(isize, @bitCast(linux.poll(&pfd, 1, 2000))) <= 0) break;
             const rc = linux.read(fds[0], &buf, buf.len);
@@ -1225,6 +1257,96 @@ pub const Wayland = struct {
         const files = std.mem.eql(u8, mime, "text/uri-list");
         w.drop_data = (if (files) uriListPaths(w.gpa, data.items) else w.gpa.dupe(u8, data.items)) catch return;
         w.push(.{ .drop = .{ .window = win, .phase = .drop, .files = if (files) w.drop_data else "", .text = if (files) "" else w.drop_data } });
+    }
+
+    // ---- Drags out of a window ----
+
+    /// Runs a drag of files or text to its end. The drag needs the serial of
+    /// the press that holds the pointer, so a script starts it from a
+    /// binding of a button motion.
+    fn vDragStart(ptr: *anyopaque, win: *Window, d: plat.DragData) plat.DragAction {
+        const w = self(ptr);
+        // Version 3 has the actions and the end of a drop.
+        if (w.data_device == 0 or w.data_version < 3 or w.out_source != 0) return .none;
+        const serial = @atomicLoad(u32, &w.press_serial, .acquire);
+        const surface = if (popOf(win)) |p| p.surface else w.surface;
+        if (serial == 0 or surface == 0) return .none;
+        var uris: std.ArrayListUnmanaged(u8) = .empty;
+        for (d.files) |f| {
+            portal.appendFileUri(w.gpa, &uris, f) catch return .none;
+            uris.appendSlice(w.gpa, "\r\n") catch return .none;
+        }
+        w.out_uris = uris.toOwnedSlice(w.gpa) catch return .none;
+        w.out_text = d.text;
+        w.out_action = 0;
+        w.out_done = false;
+        defer {
+            w.gpa.free(w.out_uris);
+            w.out_uris = &.{};
+            w.out_text = "";
+        }
+        // Event 1 (send) has a file descriptor.
+        const src = w.new(I.data_source, .main, 2) catch return .none;
+        w.out_source = src;
+        w.req(w.data_mgr, 0, .{src});
+        if (d.files.len > 0) w.req(src, 0, .{wire.Str{ .s = "text/uri-list" }});
+        if (d.text.len > 0) for (text_types) |t| w.req(src, 0, .{wire.Str{ .s = t }});
+        // Request 2: set_actions, copy (1) and move (2).
+        w.req(src, 2, .{@as(u32, if (d.allow_move) 3 else 1)});
+        // Request 0 of wl_data_device: start_drag(source, origin, icon, serial).
+        w.req(w.data_device, 0, .{ src, surface, @as(u32, 0), serial });
+        w.flush();
+        while (!w.out_done) {
+            w.dispatchMain();
+            if (w.out_done) break;
+            _ = w.readWait(100) catch break;
+        }
+        w.destroy(src, 1);
+        w.out_source = 0;
+        // The compositor keeps the release of the button for the drag: the
+        // window gets it here, so that the core has no held button.
+        w.lock.lock();
+        const held = w.buttons;
+        w.buttons = 0;
+        w.lock.unlock();
+        for (0..3) |i| if (held & (@as(u8, 1) << @intCast(i)) != 0) {
+            w.push(.{ .button = .{ .window = win, .button = @intCast(i + 1), .pressed = false, .x = w.px, .y = w.py, .mods = w.currentMods(), .time_ms = timeMs() } });
+        };
+        return switch (w.out_action) {
+            1 => .copy,
+            2 => .move,
+            else => .none,
+        };
+    }
+
+    /// The events of the source of a drag out of a window.
+    fn onDragSource(w: *Wayland, op: u16, a: *wire.Args) void {
+        switch (op) {
+            1 => {
+                const mime = a.string() orelse "";
+                const fd = a.fd();
+                if (fd < 0) return;
+                defer _ = linux.close(fd);
+                const data = if (std.mem.eql(u8, mime, "text/uri-list")) w.out_uris else w.out_text;
+                var off: usize = 0;
+                while (off < data.len) {
+                    const rc = linux.write(fd, data[off..].ptr, data.len - off);
+                    if (@as(isize, @bitCast(rc)) <= 0) break;
+                    off += rc;
+                }
+            },
+            // cancelled: no target took the drop. wlroots also sends it
+            // after dnd_finished, when the drag ends.
+            2 => {
+                if (!w.out_done) w.out_action = 0;
+                w.out_done = true;
+            },
+            // dnd_finished: the target read the data.
+            4 => w.out_done = true,
+            // action: the action that the compositor chose.
+            5 => w.out_action = a.uint(),
+            else => {},
+        }
     }
 
     /// The paths of the `file://` URIs of a `text/uri-list`, separated by 0.
@@ -1265,6 +1387,7 @@ pub const Wayland = struct {
     }
 
     fn onSource(w: *Wayland, id: u32, op: u16, a: *wire.Args) void {
+        if (id == w.out_source) return w.onDragSource(op, a);
         switch (op) {
             1 => {
                 _ = a.string();
