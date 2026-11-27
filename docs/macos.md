@@ -64,6 +64,10 @@ An app for other people needs a Developer ID signature and a notarization from A
 
    `xcrun notarytool store-credentials notary` saves the profile one time.
 
+## Window state
+
+`wm attributes .w -fullscreen 1` takes the window to the full screen of macOS (a space of its own, with the animation of the system), and `-fullscreen 0` brings it back. `-topmost 1` keeps it above the windows of other apps, at the level of floating panels. `ztk::animate` reads Reduce motion of the Accessibility settings at the start and again when it changes, and shows each end state at once while it is on.
+
 ## Direct APIs of macOS
 
 The commands of `ztk::mac::*` exist on each platform and give the error `ZTK MAC UNAVAILABLE` away from macOS. `ztk::has mac` gives 1 where they work.
