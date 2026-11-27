@@ -50,9 +50,9 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
 <section class="section" id="play">
   <div class="wrap">
     <p class="eyebrow">Play</p>
-    <h2>A pinball table, in ztk, in this page.</h2>
-    <p class="lede">Moth Lamp is a ztk app that runs in this page as WebAssembly, and its Tcl code is next to it. Its flippers are two check buttons: hold Up and Down, or click them. Click the table or press Space to launch, light the three lamps for a multiplier, and keep three balls in play as long as you can. A hit with the middle of a flipper sends the ball out of the table and across this page. <a href="widgets/toggles/#play-moth-lamp">Moth Lamp on its widget page</a> · <a href="toys/">All the toys</a></p>
-    <!-- live: toy-mothlamp -->
+    <h2>A balloon game, in ztk, in this page.</h2>
+    <p class="lede">Tin Moon is a ztk app that runs in this frame as WebAssembly. Its burner is a <code>ttk::scale</code> and its fuel gauge is a <code>ttk::progressbar</code>. Click the frame to play, and press Escape to give the keys back. <a href="toys/">Two more games</a> are on the Toys page.</p>
+    <!-- live: toy-tinmoon -->
   </div>
 </section>
 
@@ -79,7 +79,7 @@ if (location.hash && !document.getElementById(decodeURIComponent(location.hash.s
       <div class="card"><span class="tag">Works</span><h3>Files for agents</h3><p class="muted"><a href="llms.txt">llms.txt</a>, <a href="llms-full.txt">llms-full.txt</a>, an <a href="api.json">API index</a>, and a <a href="agents/">skill</a> with a check script that CI runs.</p></div>
       <div class="card"><span class="tag">Works</span><h3>Watch it get built</h3><p class="muted">A <a href="replay/">replay</a> of an agent that builds an app, step by step. The app is live at each step, and the check of each step runs in it.</p></div>
       <div class="card"><span class="tag">Works</span><h3>Runs on ztk</h3><p class="muted"><a href="apps/">Well-known Tcl/Tk apps</a> with no change to their code: the widget demo of Tk, tkcon, BWidget, Tablelist, tklib, and gitk. A script drives each app in the CI run.</p></div>
-      <div class="card"><span class="tag">Works</span><h3>Toys</h3><p class="muted"><a href="toys/">Eight small arcade games</a> on the widget pages. A widget drives each game, and its code is next to it.</p></div>
+      <div class="card"><span class="tag">Works</span><h3>Toys</h3><p class="muted"><a href="toys/">Three games</a>, each one a short Tcl script: a platform game on a <code>ttk::notebook</code>, a puzzle with a <code>listbox</code> bag, and a balloon flight on a <code>ttk::scale</code>.</p></div>
     </div>
   </div>
 </section>

@@ -148,10 +148,12 @@ PY
         done
     done
 done
-# The keys of the handheld of the Toys page: a click on the pad, the keys
-# of the pad and of the game, pause, and Escape, with no scroll of the page.
-timeout 180 node "$root/tests/toy-keys.mjs" "$browser" "$work/profile-keys" "http://127.0.0.1:$port/toys/" \
-    --enable-unsafe-webgpu --use-angle=vulkan --enable-features=Vulkan --use-vulkan=swiftshader || fail=1
+# The frame of the games of the Toys page: the wheel scrolls the page
+# before a click, a click gives the keys, Escape gives them back, and
+# the window stays inside its frame.
+timeout 900 node "$root/tests/toy-keys.mjs" "$browser" "$work/profile-keys" "http://127.0.0.1:$port/toys/" \
+    --enable-unsafe-webgpu --use-angle=vulkan --enable-features=Vulkan --use-vulkan=swiftshader \
+    --disable-gpu-vsync --disable-frame-rate-limit || fail=1
 # The panel of Inspect: in view and off its widget, at three widths.
 timeout 180 node "$root/tests/inspect.mjs" "$browser" "$work/profile-inspect" "http://127.0.0.1:$port/widgets/basic/" \
     --use-angle=swiftshader --enable-unsafe-swiftshader || fail=1

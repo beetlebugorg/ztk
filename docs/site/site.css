@@ -426,59 +426,52 @@ figure.chart { margin: 0; }
 .replay .rp-check.ok { color: var(--tok-str); }
 .replay .rp-check.bad { color: var(--warn); }
 
-/* The handheld of a toy (assets/toys.js): our own shape, in the colors of the site. */
-.live-demo.toy .ld-view { gap: 12px; align-content: start; }
-.live-demo.toy .ld-frame { border: 10px solid #24213a; border-radius: 14px 14px 30px 14px; box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 55%, #24213a), var(--shadow); image-rendering: pixelated; background: #1d1a33; }
-.toy-pad { width: 360px; max-width: 100%; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px 12px; padding: 12px 16px; border-radius: 16px 16px 36px 36px; background: color-mix(in srgb, var(--accent) 18%, var(--surface)); border: 1px solid var(--line-strong); box-sizing: border-box; }
-.toy-pad button { font: 700 14px/1 var(--mono); width: 36px; height: 36px; border-radius: 50%; border: 0; cursor: pointer; color: #f2e6c4; background: #24213a; box-shadow: 0 3px 0 color-mix(in srgb, #24213a 60%, black); touch-action: none; }
-.toy-pad button:active { transform: translateY(2px); box-shadow: 0 1px 0 #000; }
-.toy-pad button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.toy-dpad { display: inline-flex; flex-direction: column; gap: 4px; }
-.toy-dpad button { border-radius: 8px; width: 40px; height: 28px; font-size: 11px; }
-.toy-ab { display: inline-flex; gap: 10px; transform: rotate(-12deg); }
-.toy-ab button { background: #ef5b5b; color: #1d1a33; }
-.toy-brand { font: 700 12px/1 var(--mono); letter-spacing: .2em; color: var(--text-3); text-align: center; }
-.toy-led { position: absolute; margin: -4px 0 0 -6px; width: 8px; height: 8px; border-radius: 50%; background: var(--line-strong); }
-.live-demo.toy-on .toy-led { background: #4ade80; box-shadow: 0 0 6px #4ade80; }
-.toy-switches { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: center; font-size: 13px; color: var(--text-2); }
-.toy-switches label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
-.toy-layer { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 50; image-rendering: pixelated; }
-.live-demo.toy .ld-frame { position: static; }
-.toy-pad { order: 2; }
-/* A toy: one column, the handheld first and large, and the code under "Show the code". */
-.live-demo.toy { grid-template-columns: minmax(0, 1fr); }
-.live-demo.toy .ld-view { padding: 20px 16px; }
-.live-demo.toy .ld-frame { width: 480px; position: static; }
-.live-demo.toy .toy-pad { width: 480px; }
-.live-demo.toy .ld-more, .live-demo.wide .ld-more { border-top: 1px solid var(--line); }
-.live-demo.toy .ld-more > summary, .live-demo.wide .ld-more > summary { cursor: pointer; padding: 10px 14px; font-size: 14px; color: var(--text-2); }
-.live-demo.toy .ld-more > summary:hover, .live-demo.wide .ld-more > summary:hover { color: var(--accent); }
-.live-demo.toy .ld-more .ld-code, .live-demo.wide .ld-more .ld-code { border-right: 0; border-top: 1px solid var(--line); }
-/* The handheld of the Toys page: the device, and the code of the game next to it. */
-/* The code goes under the handheld, so that a line of 80 columns fits with no wrap. */
-.live-demo.toy-console { grid-template-columns: minmax(0, 1fr); }
-.live-demo.toy-console .ld-code { max-height: 720px; overflow: auto; border-right: 0; border-top: 1px solid var(--line); }
-.live-demo.toy-console .ld-bar { grid-column: 1 / -1; }
-.toy-console .toy-brand { display: grid; gap: 6px; justify-items: center; }
-.toy-pad .toy-menu { width: auto; height: 22px; padding: 0 10px; border-radius: 11px; font-size: 10px; letter-spacing: .1em; }
-.toy-console .toy-page { margin-left: auto; }
-.toy-console .toy-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-/* The keyboard focus of a toy: a ring on the device, and PAUSED over the screen. */
-.live-demo.toy .ld-view:focus-within .ld-frame { outline: 3px solid var(--accent); outline-offset: 4px; }
-.live-demo.toy-paused .ld-frame::after { content: "PAUSED"; position: absolute; inset: 0; display: grid; place-items: center; font: 700 24px/1 var(--mono); letter-spacing: .2em; color: #ffcf5c; background: rgb(29 26 51 / 70%); }
-.toy-keys { grid-column: 1 / -1; margin: 0; font-size: 12px; color: var(--text-3); text-align: center; }
-/* The shell of the handheld: one molded body around the screen and the pad,
-   lit from the top, with a speaker grille. */
-.live-demo.toy .ld-view { justify-self: center; align-self: start; width: fit-content; margin: 20px 16px; padding: 22px 22px 26px; gap: 14px; border-radius: 30px 30px 72px 30px;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 26%, #ece6f6) 0%, color-mix(in srgb, var(--accent) 34%, #d9d0ea) 100%);
-  box-shadow: inset 0 2px 1px rgb(255 255 255 / 70%), inset 0 -5px 10px rgb(40 20 80 / 22%), 0 1px 2px rgb(0 0 0 / 20%), 0 14px 28px rgb(40 20 80 / 22%); }
-.live-demo.toy .ld-frame { box-shadow: inset 0 0 0 2px #3a3560, 0 1px 0 rgb(255 255 255 / 60%); border-radius: 12px 12px 34px 12px; }
-.live-demo.toy .toy-pad { background: none; border: 0; box-shadow: none; padding: 4px 6px 0; }
-.toy-pad::after { content: ""; grid-column: 3; justify-self: end; width: 52px; height: 30px; transform: rotate(-12deg); background: radial-gradient(circle, rgb(40 20 80 / 45%) 1.6px, transparent 2.2px) 0 0 / 8px 8px; }
-@media (prefers-color-scheme: dark) {
-  .live-demo.toy .ld-view { background: linear-gradient(180deg, #4a4470 0%, #34304f 100%); box-shadow: inset 0 2px 1px rgb(255 255 255 / 22%), inset 0 -5px 10px rgb(0 0 0 / 40%), 0 14px 28px rgb(0 0 0 / 45%); }
-  .toy-pad::after { background: radial-gradient(circle, rgb(0 0 0 / 55%) 1.6px, transparent 2.2px) 0 0 / 8px 8px; }
+/* A game (assets/toys.js): a closed frame of 16 by 9. The frame clips
+   its content, and the game gets the keys only after a click on it. */
+.live-demo.toy { grid-template-columns: minmax(0, 1fr); max-width: 880px; margin-inline: auto; }
+.live-demo.toy .ld-view { display: block; padding: 0; overflow: hidden; contain: paint; isolation: isolate; aspect-ratio: 480 / 270; width: 100%; background: #0b0f1a; }
+.live-demo.toy .ld-frame { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; aspect-ratio: auto; border: 0; border-radius: 0; box-shadow: none; }
+.live-demo.toy .ld-frame canvas, .live-demo.toy .ld-frame img { width: 100% !important; height: 100% !important; display: block; }
+.live-demo.toy.toy-active .ld-view { box-shadow: inset 0 0 0 3px var(--accent); }
+.live-demo.toy.toy-active .ld-frame { inset: 3px; width: auto; height: auto; }
+.toy-cover { position: absolute; inset: 0; z-index: 2; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 16px; background: rgb(6 8 18 / 50%); }
+.toy-cover[hidden] { display: none; }
+.toy-go { font: 600 16px/1 var(--sans); padding: 12px 22px; border-radius: 999px; border: 0; background: var(--accent); color: var(--accent-ink); cursor: pointer; box-shadow: 0 6px 20px rgb(0 0 0 / 35%); }
+.toy-go:hover { background: var(--accent-strong); }
+.toy-go:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+.toy-keys { margin: 0; max-width: 40ch; font-size: 13px; line-height: 1.45; color: #eceaf4; text-align: center; text-shadow: 0 1px 2px #000; }
+.toy-touch { display: none; }
+@media (pointer: coarse) {
+  .toy-active .toy-touch { position: absolute; inset: auto 10px 10px; z-index: 3; display: flex; justify-content: space-between; align-items: end; pointer-events: none; }
+  .toy-touch button { pointer-events: auto; width: 44px; height: 44px; border-radius: 50%; border: 0; font: 700 14px/1 var(--mono); color: #fff; background: rgb(255 255 255 / 22%); touch-action: none; }
+  .toy-dpad { display: grid; grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); }
+  .toy-dpad [data-in="up"] { grid-area: 1 / 2; } .toy-dpad [data-in="left"] { grid-area: 2 / 1; } .toy-dpad [data-in="right"] { grid-area: 2 / 3; } .toy-dpad [data-in="down"] { grid-area: 3 / 2; }
+  .toy-ab { display: flex; gap: 12px; }
 }
+.toy-controls { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; padding: 10px 12px; border-top: 1px solid var(--line); }
+.toy-controls button { font: 500 13px/1 var(--sans); padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--text-2); cursor: pointer; }
+.toy-controls button:hover { color: var(--text); border-color: var(--line-strong); }
+.toy-controls button[aria-pressed="true"] { color: var(--text); border-color: var(--accent); }
+.live-demo.toy .ld-more { border-top: 1px solid var(--line); }
+.live-demo.toy .ld-more > summary { cursor: pointer; padding: 10px 14px; font-size: 14px; color: var(--text-2); }
+.live-demo.toy .ld-more > summary:hover { color: var(--accent); }
+.live-demo.toy .ld-more .ld-code { max-height: 560px; overflow: auto; border-right: 0; border-top: 1px solid var(--line); }
+/* The picker of the Toys page. */
+.toy-pick { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 8px 0 14px; }
+.toy-pick button { display: grid; gap: 6px; padding: 6px 6px 8px; border-radius: 12px; border: 2px solid var(--line); background: var(--surface); color: var(--text-2); font: 600 14px/1.2 var(--sans); cursor: pointer; }
+.toy-pick button img { display: block; width: 160px; height: 90px; border-radius: 7px; }
+.toy-pick button:hover { border-color: var(--line-strong); color: var(--text); }
+.toy-pick button[aria-pressed="true"] { border-color: var(--accent); color: var(--text); }
+.toy-note { max-width: 720px; margin: 10px auto 0; }
+.toy-note p { margin: 4px 0; }
+/* A card of a widget page that links to its game. */
+.toy-card { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 16px; align-items: center; margin: 16px 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: inherit; text-decoration: none; }
+.toy-card:hover { border-color: var(--accent); }
+.toy-card img { display: block; width: 240px; height: auto; border-radius: 8px; }
+.tc-text { display: grid; gap: 4px; }
+.tc-kicker { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.tc-go { color: var(--accent); font-weight: 600; }
+@media (max-width: 560px) { .toy-card { grid-template-columns: minmax(0, 1fr); } .toy-card img { width: 100%; } }
 
 /* A folded section of a page: <!-- more: TITLE --> in the Markdown. */
 details.more { margin: 16px 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
