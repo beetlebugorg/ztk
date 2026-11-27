@@ -394,6 +394,13 @@ figure.chart { margin: 0; }
 .live-demo .ld-inspect .ld-isrc { flex: 0 0 100%; color: var(--text-3); font-size: 11.5px; padding: 1px 0 0 2px; overflow-wrap: anywhere; }
 .live-demo .ld-inspect h4 { margin: 8px 0 2px; font: 600 12px var(--mono); }
 .live-demo .ld-icode { margin: 0 0 4px; padding: 4px 6px; font: 12px/1.45 var(--mono); background: var(--code-bg); border-radius: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.live-demo .ld-iprobe { border-collapse: collapse; width: 100%; font-size: 12px; }
+.live-demo .ld-iprobe td { padding: 1px 4px 1px 0; vertical-align: top; }
+.live-demo .ld-iprobe td:first-child { color: var(--text-3); text-align: right; font: 12px/1.45 var(--mono); }
+.live-demo .ld-iprobe td.ld-icode { width: 100%; margin: 0; padding: 0 4px; background: none; }
+.live-demo .ld-iprobe button { font-size: 11px; padding: 1px 6px; }
+.live-demo .ld-iprobe button[aria-pressed="true"] { background: var(--accent); color: var(--bg); }
+.live-demo .ld-istop { margin: 6px 0; padding: 4px 6px; border-left: 3px solid var(--accent); }
 
 /* The live snippet of the landing page: the window above the code. */
 .live-demo.stack { grid-template-columns: minmax(0, 1fr); margin: 0; box-shadow: var(--shadow); }

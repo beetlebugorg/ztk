@@ -99,7 +99,7 @@ const tabs = await value(`(async () => {
   d.pick(null);
   return out;
 })()`);
-const tabsOk = tabs && tabs.same && tabs.worst < 16.7 && tabs.tabs.length === 5 && /line \d+/.test(tabs.src);
+const tabsOk = tabs && tabs.same && tabs.worst < 16.7 && tabs.tabs.length === 6 && /line \d+/.test(tabs.src);
 console.log(`${tabsOk ? "ok" : "FAIL"}: the tabs of Inspect on ${tabs?.path}: ${tabs?.tabs?.join(", ")}; same box ${tabs?.same}; slowest change ${tabs?.worst?.toFixed(1)} ms; source of -text "${tabs?.src}"`);
 if (!tabsOk) fail = 1;
 // The console runs a command in the window and shows the answer.

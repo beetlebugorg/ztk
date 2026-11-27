@@ -57,6 +57,48 @@ pub const State = struct {
     site: ?*ztcl.interp.Cmd = null,
     /// Counts the recorded writes and the trace records, so two can be ordered.
     seq: u64 = 0,
+    /// The texts of the scripts that ztk ran, newest last. A command in
+    /// a proc body points into the text of its file, so the place of its
+    /// text gives its line in the file.
+    texts: std.ArrayList(Text) = .empty,
+
+    /// Keeps the place of a script text. `line` is the line of its
+    /// first byte in `file`. An older text at the same memory goes.
+    pub fn noteText(s: *State, gpa: std.mem.Allocator, text: []const u8, line: u32, file: []const u8) void {
+        const start = @intFromPtr(text.ptr);
+        const end = start + text.len;
+        var k: usize = 0;
+        for (s.texts.items) |t| {
+            if (t.start < end and start < t.start + t.len) {
+                gpa.free(t.file);
+                continue;
+            }
+            s.texts.items[k] = t;
+            k += 1;
+        }
+        s.texts.shrinkRetainingCapacity(k);
+        if (s.texts.items.len == max_texts) {
+            gpa.free(s.texts.items[0].file);
+            _ = s.texts.orderedRemove(0);
+        }
+        const name = gpa.dupe(u8, file) catch return;
+        s.texts.append(gpa, .{ .start = start, .len = text.len, .line = line, .file = name }) catch gpa.free(name);
+    }
+
+    /// The file and the line in the file of the command text `code`, or
+    /// null when it is not in a kept script text.
+    pub fn fileLine(s: *const State, code: []const u8) ?struct { file: []const u8, line: u32 } {
+        const at = @intFromPtr(code.ptr);
+        var i = s.texts.items.len;
+        while (i > 0) {
+            i -= 1;
+            const t = s.texts.items[i];
+            if (at < t.start or at >= t.start + t.len) continue;
+            const before: [*]const u8 = @ptrFromInt(t.start);
+            return .{ .file = t.file, .line = t.line + @as(u32, @intCast(std.mem.count(u8, before[0 .. at - t.start], "\n"))) };
+        }
+        return null;
+    }
 
     /// Sets the gate of `note` from the record and the trace.
     pub fn update(s: *State) void {
@@ -67,8 +109,16 @@ pub const State = struct {
     pub fn deinit(s: *State, gpa: std.mem.Allocator) void {
         s.trace.deinit(gpa);
         diff_mod.deinit(&s.marks, gpa);
+        for (s.texts.items) |t| gpa.free(t.file);
+        s.texts.deinit(gpa);
     }
 };
+
+/// The place of a script text in memory and in its file.
+pub const Text = struct { start: usize, len: usize, line: u32, file: []u8 };
+
+/// The count of script texts that the state keeps.
+const max_texts = 64;
 
 /// `optiondb`: a value of the option database (`option add`) that a new
 /// widget took.
@@ -87,8 +137,11 @@ pub const Source = struct {
     /// The line of the command in its own script: a proc body, a
     /// binding script, or the file.
     line: u32,
-    /// The value of `info script` at the write.
+    /// The file of the command, or else the value of `info script` at the write.
     file: []u8,
+    /// The line of the command in `file`, also in a proc body, or 0 when
+    /// the text of the command is not in a script that ztk ran.
+    file_line: u32,
     /// The value before the write.
     prev: []u8,
     /// One entry for each proc frame, innermost first: the words of the call.
@@ -138,7 +191,8 @@ fn noteOrFail(w: *Widget, it: *ztcl.Interp, i: usize, kind: Kind, pairs: []const
     errdefer gpa.free(call);
     const code = try clip(gpa, if (site) |c| c.text else "");
     errdefer gpa.free(code);
-    const file = try gpa.dupe(u8, it.script_name);
+    const at = if (site) |c| app.dbg.fileLine(c.text) else null;
+    const file = try gpa.dupe(u8, if (at) |x| x.file else it.script_name);
     errdefer gpa.free(file);
     const prev_own = try clip(gpa, prev);
     errdefer gpa.free(prev_own);
@@ -185,7 +239,7 @@ fn noteOrFail(w: *Widget, it: *ztcl.Interp, i: usize, kind: Kind, pairs: []const
         gpa.free(stack);
         return e;
     };
-    s.* = .{ .kind = kind, .seq = app.dbg.seq, .count = count, .code = code, .call = call, .line = if (site) |c| c.line else 0, .file = file, .prev = prev_own, .stack = stack };
+    s.* = .{ .kind = kind, .seq = app.dbg.seq, .count = count, .code = code, .call = call, .line = if (site) |c| c.line else 0, .file = file, .file_line = if (at) |x| x.line else 0, .prev = prev_own, .stack = stack };
     if (slot.src) |old| old.free(gpa);
     slot.src = s;
 }
@@ -396,6 +450,7 @@ fn why(it: *ztcl.Interp, w: *Widget, i: usize) ztcl.Error!Value {
             .{ .str = "call" },   .{ .str = try a.dupe(u8, s.call) },
             .{ .str = "file" },   .{ .str = try a.dupe(u8, s.file) },
             .{ .str = "line" },   .{ .int = s.line },
+            .{ .str = "fileline" }, .{ .int = s.file_line },
             .{ .str = "proc" },   .{ .str = if (s.stack.len > 0) try a.dupe(u8, firstWord(s.stack[0])) else "" },
             .{ .str = "prev" },   .{ .str = try a.dupe(u8, s.prev) },
             .{ .str = "count" },  .{ .int = s.count },

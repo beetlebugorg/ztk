@@ -5,7 +5,7 @@ This page has a small sign-up form with three bugs. The form runs live in the pa
 The bar of the snippet has two tools for this page:
 
 - **Console** opens a line under the window. A Tcl command in the line runs in the window, and the answer shows above the line. Use the up arrow for the last commands.
-- **Inspect** shows the widget under the pointer. A click on a widget opens a panel with its options and the source of each value, its bindings, its geometry chain, its code, and its trace.
+- **Inspect** shows the widget under the pointer. A click on a widget opens a panel with its options and the source of each value, its bindings, its geometry chain, its code, its trace, and the probes and breakpoints of its procs.
 
 <!-- live -->
 ```tcl
@@ -57,7 +57,7 @@ ztk::debug explain .f.save -state
 ```
 
 ```
-.f.save -state is "disabled": set by .f.save configure -state [expr {$ok ? "normal" : "disabled"}] at line 3 of proc check.
+.f.save -state is "disabled": set by .f.save configure -state [expr {$ok ? "normal" : "disabled"}] at line 20, in proc check.
 Before: "disabled". Writes: 19.
 Stack: check ::mail {} write
 A click on .f.save runs no -command while it is disabled.
@@ -74,7 +74,7 @@ ztk::debug explain .f.email -textvariable
 Before: "". Writes: 1.
 ```
 
-Line 9 of the code gives the entry the variable `mail`, so `::email` stays empty. With Inspect, the same answer is in the Options tab of `.f.save`: the source of `-state` is `configure line 3 in check`.
+Line 9 of the code gives the entry the variable `mail`, so `::email` stays empty. With Inspect, the same answer is in the Options tab of `.f.save`: the source of `-state` is `configure line 20 in check`. The Probe tab of `.f.save` has the lines of `check`: a probe on line 3 records `ok` and the other locals at each key.
 
 The fix: change `mail` to `email` on line 9 and in the `trace add variable mail write check` line. Type in the window again, and the button gets enabled.
 

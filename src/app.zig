@@ -1127,6 +1127,7 @@ pub const App = struct {
         var line: u32 = 1;
         while (true) {
             const src = try it.alloc().dupe(u8, text[pos..]);
+            app.dbg.noteText(app.gpa, src, line, it.script_name);
             var p: ztcl.interp.Parser = .{ .a = it.alloc(), .src = src, .line = line };
             const s = p.parseScript(false) catch |e| switch (e) {
                 error.OutOfMemory => return error.OutOfMemory,

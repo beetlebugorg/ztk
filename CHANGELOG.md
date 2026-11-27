@@ -8,6 +8,8 @@
 - Adds `ztk::debug explain`, `click`, `type`, `ran`, `changes`, and `tree`, short answers for agents, and `ztk --mcp`, which serves them as MCP tools.
 - Adds the page "Debug a form": a live form with three bugs to find with `ztk::debug`, and the Console of the live snippets.
 - The Inspect panel of the live snippets has tabs: the options with the source of each value, the bindings, the geometry chain, the scripts and procs, and the trace of the widget. A change of an option goes into the line of the code that set it.
+- The Inspect panel has a Probe tab: probes and breakpoints on the lines of the procs behind a widget (`ztcl::probe`), and their records. A breakpoint stops the frames of the snippet until Continue.
+- `ztk::debug why` gives `fileline`, the line of a command in its file, also inside a proc. A change of an option in the Inspect panel then goes into the line in the proc.
 - Adds the `ttk` widgets `ttk::button`, `ttk::checkbutton`, `ttk::radiobutton`, `ttk::label`, `ttk::frame`, `ttk::labelframe`, `ttk::entry`, `ttk::separator`, and `ttk::sizegrip`, the command `ttk::style`, and the `classic` theme.
 - Adds `spinbox`, entry validation, `-placeholder`, the search field, undo, and the `clipboard` command.
 - Adds the `canvas` widget with all item types, scrolling, `image create photo`, and item animation.
