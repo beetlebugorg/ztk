@@ -13,7 +13,11 @@ setting index widgets/
 setting index_label Widgets
 setting areas widgets
 # The checks run each example with `ztk --headless`, and `exit` ends the
-# event loop after the examples. ztk has one Tcl release, so the file has
-# no release.
+# event loop after the examples.
 setting flags --headless
 setting epilog exit
+
+# The examples run once for each release of Tcl and Tk, with these flags
+# of ztk. An example or an entry with `tcl` runs only in that release.
+release 9.1 {--tcl 9.1}
+release 8.6 {--tcl 8.6}
