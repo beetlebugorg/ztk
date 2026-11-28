@@ -615,9 +615,9 @@ test "windows: the thumbnail buttons keep their slots, and a click gives a thumb
         .{ .icon = .{ .width = 16, .height = 16, .pixels = &px }, .tooltip = "Next", .enabled = false },
     });
     const r = o.b.recOf(o.w).?;
-    // A hidden window has no taskbar button, so the shell has not taken
-    // the buttons yet; the message of the button adds them.
-    try t.expect(!r.thumbs.added);
+    // The shell of some Windows releases refuses the buttons of a hidden
+    // window, and the shell of Windows 11 25H2 accepts them, so `added`
+    // has no fixed value here.
     try t.expect(r.thumbs.buttons[0].hIcon != null);
     try t.expectEqualSlices(u16, std.unicode.utf8ToUtf16LeStringLiteral("Next"), std.mem.sliceTo(&r.thumbs.buttons[1].szTip, 0));
     try t.expectEqual(tb.THBF_DISABLED, r.thumbs.buttons[1].dwFlags);
@@ -656,6 +656,10 @@ test "windows: a drag out gives the files and the text, and a cancel ends DoDrag
     _ = @import("../sys/com.zig").call(i32, e.?, 3, .{ @as(u32, 4), &got, &n });
     try t.expectEqual(@as(u32, 2), n);
     // A source that cancels at once: DoDragDrop ends with no drop.
+    // DoDragDrop asks the source after a message of the mouse or a change
+    // of a button. On a desktop with no input it asked no question, and
+    // the test did not end. The posted mouse move gives it one message.
+    _ = w32.PostMessageW(null, 0x0200, 0, 0); // WM_MOUSEMOVE
     var src: drag.DropSource = .{ .cancel_now = true };
     try t.expectEqual(@import("../platform/platform.zig").DragAction.none, drag.runWith(&gpa, .{ .text = "x" }, &src));
 }
