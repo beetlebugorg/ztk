@@ -148,15 +148,21 @@ fn optItem(a: std.mem.Allocator, tag: *const Tag, i: usize) !Value {
 /// one index for one character.
 fn changeRanges(w: *Widget, it: *ztcl.Interp, tag: *Tag, args: []const Value, add: bool) ztcl.Error!void {
     const d = text.data(w);
+    var lo: u32 = std.math.maxInt(u32);
+    var hi: u32 = 0;
     var i: usize = 0;
     while (i < args.len) : (i += 2) {
         const a = try text.getIndex(w, it, args[i]);
         const z = if (i + 1 < args.len) try text.getIndex(w, it, args[i + 1]) else d.buf.forward(a, 1);
         if (!a.lt(z)) continue;
         if (add) try tag.add(w.app.gpa, a, z) else try tag.remove(w.app.gpa, a, z);
+        lo = @min(lo, a.line);
+        hi = @max(hi, z.line);
     }
     if (std.mem.eql(u8, tag.name, "sel")) @import("textbind.zig").selectionChanged(w);
-    text.tagsChanged(w);
+    // Only the lines of the ranges can change their heights, and only
+    // for a tag with an option of the layout.
+    text.tagLinesChanged(w, tag, lo, hi);
 }
 
 const sub_names = [_][]const u8{ "add", "bind", "cget", "configure", "delete", "lower", "names", "nextrange", "prevrange", "raise", "ranges", "remove" };
@@ -200,13 +206,15 @@ pub fn cmdTag(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!Valu
             }
             if (args.len == 2) return try optItem(a, tag, try findOpt(it, try it.str(args[1])));
             var k: usize = 1;
+            var layout = false;
             while (k < args.len) : (k += 2) {
                 const n = try it.str(args[k]);
                 const i = try findOpt(it, n);
                 if (k + 1 >= args.len) return it.fail("value for \"{s}\" missing", .{n});
                 try setOption(w, it, tag, i, try it.str(args[k + 1]));
+                if (tags_mod.isLayoutOpt(i)) layout = true;
             }
-            text.tagsChanged(w);
+            text.tagRangesChanged(w, tag, layout);
             return Value.empty;
         },
         4 => {
@@ -220,9 +228,10 @@ pub fn cmdTag(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!Valu
                 }
                 d.bindings.removeTag(name);
                 text.forgetTag(w, name);
+                text.tagRangesChanged(w, tag, false);
                 d.buf.tags.delete(gpa, tag);
             }
-            text.tagsChanged(w);
+            text.repaintView(w);
             return Value.empty;
         },
         5, 9 => {
@@ -233,7 +242,8 @@ pub fn cmdTag(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!Valu
             const ref = if (args.len == 2) try tagOrFail(w, it, args[1]) else null;
             if (ref == tag) return Value.empty;
             if (which == 5) d.buf.tags.lower(tag, ref) else d.buf.tags.raise(tag, ref);
-            text.tagsChanged(w);
+            // The order of two tags of colors changes only the paint.
+            if (tag.affectsLayout() or (ref != null and ref.?.affectsLayout())) text.tagsChanged(w) else text.repaintView(w);
             return Value.empty;
         },
         6 => {

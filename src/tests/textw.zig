@@ -550,3 +550,40 @@ test "text: the default font is monospace" {
     _ = try h.eval(".t configure -font {Helvetica 12}; update");
     try t.expectEqualStrings("1", try h.eval("expr {[lindex [.t bbox 1.0] 2] < [lindex [.t bbox 1.1] 2]}"));
 }
+
+test "textw: a tag of colors keeps the heights of the lines, so <Enter> sets current on the line under the pointer" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    // The lines above the window have tags of the layout, so their
+    // estimates differ from their heights. The <Enter> binding adds a
+    // tag of colors, as the widget demo of Tk does (ztk#350).
+    _ = try h.eval(
+        \\text .t -height 12 -width 40 -wrap word; pack .t
+        \\.t tag configure title -spacing1 20 -lmargin1 1c
+        \\.t tag configure demo -lmargin1 1c -lmargin2 1c -foreground blue
+        \\.t tag configure hot -foreground red -underline 1
+        \\for {set i 1} {$i <= 80} {incr i} {
+        \\    if {$i % 10 == 1} { .t insert end "Title $i\n" title } else { .t insert end "$i. [string repeat {Some demo text } 4]\n" demo }
+        \\}
+        \\.t tag bind demo <Enter> { set l [.t index {@%x,%y linestart}]; .t tag add hot "$l +1 chars" "$l lineend -1 chars" }
+        \\update
+        \\.t see {56.0 + 2 chars}; update
+        \\set ::box [.t bbox 56.2]; set ::view [.t yview]
+        \\lassign $::box cx cy cw ch
+        \\foreach row [ztk::tree .] { lassign $row path class x y; if {$path eq ".t"} { set wx $x; set wy $y } }
+        \\ztk::inject . motion [expr {$wx + $cx + $cw / 2}] [expr {$wy + $cy + $ch / 2}]
+        \\update
+    );
+    try expectEvals(&h, &.{
+        .{ ".t index current", "56.2" },
+        .{ ".t tag ranges hot", "56.1 56.63" },
+        // The view eases after `see`: the checks below come after it ends.
+        // They compare the y of the box and the view: the paint of a tag
+        // can change the width of a character.
+        .{ "after 500 {set ::done 1}; vwait ::done; update; set ::y [lindex [.t bbox 56.2] 1]; set ::view [.t yview]; .t tag add hot 50.0 60.0; update; expr {[lindex [.t bbox 56.2] 1] == $::y && [.t yview] eq $::view}", "1" },
+        .{ ".t tag remove hot 1.0 end; .t tag raise hot; .t tag delete hot; .t tag add sel 56.0 56.end; update; expr {[lindex [.t bbox 56.2] 1] == $::y && [.t yview] eq $::view}", "1" },
+        // A tag of a wider margin changes the height of its line.
+        .{ "set n [.t count -displaylines 56.0 57.0]; .t tag configure wide -lmargin1 150 -lmargin2 150; .t tag add wide 56.0 56.end; update; expr {[.t count -displaylines 56.0 57.0] > $n}", "1" },
+    });
+}

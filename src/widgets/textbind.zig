@@ -78,7 +78,8 @@ fn setSel(w: *Widget, a: Pos, z: Pos) void {
     const hi = if (z.lt(a)) a else z;
     if (lo.lt(hi)) tag.add(gpa, lo, hi) catch {};
     if (had or tag.ranges.items.len > 0) selectionChanged(w);
-    text.tagsChanged(w);
+    // A `sel` tag of colors changes no height.
+    if (tag.affectsLayout()) text.tagsChanged(w) else text.repaintView(w);
 }
 
 /// Queues `<<Selection>>` for a change of the selection.

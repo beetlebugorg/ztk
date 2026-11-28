@@ -62,6 +62,18 @@ pub const Opt = enum(u8) {
 
 pub const n_opts = option_names.len;
 
+/// The tag options that the layout of a line reads for its height: the
+/// font, the margins and the wrap, the spacing, the tabs, the offset, and
+/// the elide. The colors, the stipples, the relief, the lines, and
+/// `-justify` change only the paint of a line.
+const layout_opts = [_]Opt{ .elide, .font, .lmargin1, .lmargin2, .offset, .rmargin, .spacing1, .spacing2, .spacing3, .tabs, .tabstyle, .wrap };
+
+/// True when option `i` of `option_names` can change the height of a line.
+pub fn isLayoutOpt(i: usize) bool {
+    for (layout_opts) |o| if (@intFromEnum(o) == i) return true;
+    return false;
+}
+
 /// The value of one tag option for the paint and the layout.
 pub const Value = union(enum) {
     none,
@@ -78,6 +90,14 @@ pub const Tag = struct {
     /// The text of each option, or empty when the option is not set.
     text: [n_opts][]u8 = @splat(&.{}),
     value: [n_opts]Value = @splat(.none),
+
+    /// True when the tag sets an option that can change the height of a
+    /// line (`isLayoutOpt`). A tag with none of them changes only the
+    /// paint.
+    pub fn affectsLayout(t: *const Tag) bool {
+        for (layout_opts) |o| if (t.isSet(o)) return true;
+        return false;
+    }
 
     pub fn isSet(t: *const Tag, o: Opt) bool {
         return t.value[@intFromEnum(o)] != .none;
