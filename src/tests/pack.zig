@@ -150,3 +150,34 @@ test "pack and place: the window of . gets the size of the content" {
     _ = try h.eval("pack .b -side left -after .a; update");
     try t.expectEqualStrings("120 70", try h.eval("list [winfo width .] [winfo height .]"));
 }
+
+test "pack: a container with propagation off keeps its last requested size, as in wish" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval(
+        \\proc req {w} { return [winfo reqwidth $w]x[winfo reqheight $w] }
+        \\frame .f; pack .f
+        \\frame .f.a -width 120 -height 80; grid .f.a
+        \\update
+    );
+    // Each expected value is the output of wish 8.6.16.
+    const cases = [_][2][]const u8{
+        .{ "req .f", "120x80" },
+        .{ "grid propagate .f 0; update; list [req .f] [winfo width .f]x[winfo height .f]", "120x80 120x80" },
+        .{ ".f.a configure -width 300; update; req .f", "120x80" },
+        // A size of the frame is a request.
+        .{ ".f configure -width 50; update; req .f", "50x1" },
+        .{ ".f configure -width 0; update; req .f", "50x1" },
+        .{ "grid propagate .f 1; update; req .f", "300x80" },
+        // With no layout before the propagation goes off, the frame has no request.
+        .{ "frame .g; pack .g; frame .g.a -width 120 -height 80; pack .g.a; pack propagate .g 0; update; req .g", "1x1" },
+        .{ "frame .h; pack .h; frame .h.a -width 120 -height 80; pack .h.a; update; pack propagate .h 0; update; req .h", "120x80" },
+    };
+    for (cases) |c| {
+        t.expectEqualStrings(c[1], try h.eval(c[0])) catch |e| {
+            std.debug.print("script {s}\n", .{c[0]});
+            return e;
+        };
+    }
+}
