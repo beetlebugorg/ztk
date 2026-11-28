@@ -1032,19 +1032,31 @@ pub const App = struct {
         defer @import("textinput.zig").sync(app);
         var i: u8 = 0;
         while (i < 8) : (i += 1) {
-            const root = app.root orelse return;
-            var drew = app.frame(root) catch |e| blk: {
-                app.frameError(e);
-                break :blk false;
-            };
-            var k: usize = 0;
-            while (k < app.tops.items.len) : (k += 1) {
-                const t = app.tops.items[k];
-                if (app.frame(t) catch false) drew = true;
-            }
+            if (app.root == null) return;
+            const drew = app.frameAll();
             const worked = try app.pass();
             if (!drew and !worked) return;
         }
+        // The last pass can change widgets, for example with a `fileevent`
+        // handler that runs on each pass. A frame after it shows those
+        // changes, so `ztk::snapshot` gives the state of the widgets.
+        _ = app.frameAll();
+    }
+
+    /// Runs `frame` for the main window and for each toplevel. It returns
+    /// true when one of them drew.
+    fn frameAll(app: *App) bool {
+        const root = app.root orelse return false;
+        var drew = app.frame(root) catch |e| blk: {
+            app.frameError(e);
+            break :blk false;
+        };
+        var k: usize = 0;
+        while (k < app.tops.items.len) : (k += 1) {
+            const t = app.tops.items[k];
+            if (app.frame(t) catch false) drew = true;
+        }
+        return drew;
     }
 
     /// True when a wait can end: a timer, an idle entry, or a live backend exists.

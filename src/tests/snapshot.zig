@@ -32,6 +32,30 @@ test "snapshot: a PNG of a widget and of the window" {
     try t.expectEqualStrings("wrong # args: should be \"ztk::snapshot pathName\"", try h.evalError("ztk::snapshot"));
 }
 
+test "snapshot: the image shows the widgets after the last pass of the flush" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval("wm geometry . 200x100; frame .f -width 60 -height 40 -background red; place .f -x 10 -y 20; update");
+    // Each step changes the color and adds the next step, so the work
+    // lasts longer than the passes of one flush, as a `fileevent` of gitk does.
+    _ = try h.eval(
+        \\set ::n 0
+        \\proc step {} {
+        \\    incr ::n
+        \\    .f configure -background [expr {$::n % 2 ? "blue" : "red"}]
+        \\    if {$::n < 40} {after 0 step}
+        \\}
+        \\after 0 step
+        \\image create photo shot -data [ztk::snapshot .f]
+        \\set ::got [shot get 30 20]
+        \\set ::want [expr {[.f cget -background] eq {blue} ? {0 0 255} : {255 0 0}}]
+    );
+    try t.expectEqualStrings(try h.eval("set ::want"), try h.eval("set ::got"));
+    // The steps did not end in the flush, so the test checks a state in the middle.
+    try t.expect(!std.mem.eql(u8, try h.eval("set ::n"), "40"));
+}
+
 test "tree: the widgets with their geometry" {
     var h: Harness = undefined;
     try h.init();
