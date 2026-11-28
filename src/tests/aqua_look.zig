@@ -8,7 +8,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const t = std.testing;
 const Harness = @import("../testing.zig").Harness;
-const png = @import("../png.zig");
+const png = @import("../base/png.zig");
 
 fn look(dark: bool, path: []const u8) !void {
     if (comptime builtin.os.tag != .macos or !@import("build_options").appkit) return error.SkipZigTest;
