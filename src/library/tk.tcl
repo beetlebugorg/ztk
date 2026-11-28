@@ -261,7 +261,35 @@ proc ::ztk::priv::tk_busy {args} {
 }
 
 # `tk fontchooser`: the options are stored, and `show` and `hide` set
-# -visible and send <<TkFontchooserVisibility>>. ztk has no font dialog.
+# -visible and send <<TkFontchooserVisibility>>. With the font dialog of
+# a backend (`::ztk::priv::nativefont`), `show` runs the dialog to its
+# end, as the font dialog of Tk on Windows does. A chosen font goes in
+# -font and at the end of the words of -command, and the parent gets
+# <<TkFontchooserFontChanged>>. With no font dialog, the options are
+# only stored.
+proc ::ztk::priv::tk_fontshow {} {
+    variable fontchooser
+    set f $fontchooser(-font)
+    if {$f eq "" || [catch {font actual $f} a]} {set a [font actual TkDefaultFont]}
+    set size [dict get $a -size]
+    # A size below 0 is in pixels.
+    if {$size < 0} {set size [expr {round(-$size * 72.0 / [winfo fpixels . 1i])}]}
+    set parent $fontchooser(-parent)
+    set fontchooser(-visible) 1
+    catch {event generate $parent <<TkFontchooserVisibility>>}
+    set code [catch {::ztk::priv::nativefont $fontchooser(-title) [dict get $a -family] $size \
+        [expr {[dict get $a -weight] eq "bold"}] [expr {[dict get $a -slant] eq "italic"}] \
+        [dict get $a -underline] [dict get $a -overstrike] $parent} got opts]
+    set fontchooser(-visible) 0
+    catch {event generate $parent <<TkFontchooserVisibility>>}
+    if {$code} {return -options $opts $got}
+    if {$got eq ""} return
+    set fontchooser(-font) $got
+    if {$fontchooser(-command) ne ""} {uplevel #0 [linsert $fontchooser(-command) end $got]}
+    catch {event generate $parent <<TkFontchooserFontChanged>>}
+    return
+}
+
 proc ::ztk::priv::tk_fontchooser {{sub ""} args} {
     variable fontchooser
     switch -- $sub {
@@ -277,6 +305,9 @@ proc ::ztk::priv::tk_fontchooser {{sub ""} args} {
             return
         }
         show - hide {
+            if {$sub eq "show" && [info commands ::ztk::priv::nativefont] ne ""} {
+                return [::ztk::priv::tk_fontshow]
+            }
             set fontchooser(-visible) [expr {$sub eq "show"}]
             catch {event generate $fontchooser(-parent) <<TkFontchooserVisibility>>}
             return

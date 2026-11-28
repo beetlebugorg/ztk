@@ -231,6 +231,24 @@ pub const ColorDialog = struct {
     /// The color that the dialog shows first.
     initial: geom.Color = .{ .r = 128, .g = 128, .b = 128 },
 };
+/// The options of a native font dialog.
+pub const FontDialog = struct {
+    /// The window that owns the dialog, or null.
+    parent: ?*Window = null,
+    title: []const u8 = "",
+    /// The font that the dialog shows first.
+    initial: FontChoice = .{},
+};
+/// A font of a font dialog, with its size in points. The family of an
+/// answer is in memory of the allocator of the call.
+pub const FontChoice = struct {
+    family: []const u8 = "",
+    size: u16 = 10,
+    bold: bool = false,
+    italic: bool = false,
+    underline: bool = false,
+    overstrike: bool = false,
+};
 /// The answer of a file dialog, in memory of the allocator of the call.
 pub const FileDialogResult = struct {
     /// The paths in UTF-8 with `/` between the parts.
@@ -398,6 +416,9 @@ pub const Platform = struct {
         /// Runs a native color dialog to its end, as `tk_chooseColor`
         /// needs. Null: the dialog was canceled, or it could not show.
         colorDialog: ?*const fn (ptr: *anyopaque, gpa: std.mem.Allocator, opts: *const ColorDialog) ?geom.Color = null,
+        /// Runs a native font dialog to its end, as `tk fontchooser show`
+        /// needs. Null: the dialog was canceled, or it could not show.
+        fontDialog: ?*const fn (ptr: *anyopaque, gpa: std.mem.Allocator, opts: *const FontDialog) ?FontChoice = null,
         /// Runs a drag of files or text out of a window to its end, in the
         /// modal loop of the system, and gives the action of the target.
         dragStart: ?*const fn (ptr: *anyopaque, w: *Window, d: DragData) DragAction = null,
@@ -639,6 +660,13 @@ pub const Platform = struct {
     }
     pub fn colorDialog(p: Platform, gpa: std.mem.Allocator, opts: *const ColorDialog) ?geom.Color {
         const f = p.vtable.colorDialog orelse return null;
+        return f(p.ptr, gpa, opts);
+    }
+    pub fn hasFontDialog(p: Platform) bool {
+        return p.vtable.fontDialog != null;
+    }
+    pub fn fontDialog(p: Platform, gpa: std.mem.Allocator, opts: *const FontDialog) ?FontChoice {
+        const f = p.vtable.fontDialog orelse return null;
         return f(p.ptr, gpa, opts);
     }
     pub fn hasFileDialog(p: Platform) bool {

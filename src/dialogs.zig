@@ -9,7 +9,9 @@
 //! `tk_messageBox` checks its options, then calls the command, which
 //! runs the native box and gives the name of the button. A backend with
 //! `colorDialog` gets `::ztk::priv::nativecolor` for `tk_chooseColor`
-//! in the same way.
+//! in the same way. A backend with `fontDialog` gets
+//! `::ztk::priv::nativefont` for `tk fontchooser show`
+//! (`library/tk.tcl`).
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -24,6 +26,7 @@ pub fn register(app: *App) !void {
     const it = app.it;
     if (app.platform.hasMessageBox()) try it.register("ztk::priv::nativemessagebox", cmdNative);
     if (app.platform.hasColorDialog()) try it.register("ztk::priv::nativecolor", cmdColor);
+    if (app.platform.hasFontDialog()) try it.register("ztk::priv::nativefont", cmdFont);
     // The file dialogs of a backend stay: the script defines only the
     // commands that do not exist.
     var keep: [3]bool = undefined;
@@ -73,4 +76,34 @@ fn cmdColor(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Er
     if (opts.parent == null) opts.parent = app.window;
     const c = app.platform.colorDialog(app.gpa, &opts) orelse return Value.empty;
     return .{ .str = try std.fmt.allocPrint(it.alloc(), "#{x:0>2}{x:0>2}{x:0>2}", .{ c.r, c.g, c.b }) };
+}
+
+/// `::ztk::priv::nativefont title family size bold italic underline
+/// overstrike parent`: the chosen font as a font description (`family
+/// size ?style ...?`), or an empty string for a cancel. The size is in
+/// points.
+fn cmdFont(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
+    const app = App.of(it);
+    if (argv.len != 9) return it.wrongArgs("::ztk::priv::nativefont title family size bold italic underline overstrike parent");
+    var opts: plat.FontDialog = .{ .title = try it.str(argv[1]), .initial = .{
+        .family = try it.str(argv[2]),
+        .size = @intCast(std.math.clamp(try it.int(argv[3]), 1, 999)),
+        .bold = try it.int(argv[4]) != 0,
+        .italic = try it.int(argv[5]) != 0,
+        .underline = try it.int(argv[6]) != 0,
+        .overstrike = try it.int(argv[7]) != 0,
+    } };
+    if (app.find(try it.str(argv[8]))) |w| opts.parent = app.winOf(w.toplevel());
+    if (opts.parent == null) opts.parent = app.window;
+    const f = app.platform.fontDialog(app.gpa, &opts) orelse return Value.empty;
+    defer app.gpa.free(f.family);
+    const a = it.alloc();
+    var items: std.ArrayListUnmanaged(Value) = .empty;
+    try items.append(a, .{ .str = try a.dupe(u8, f.family) });
+    try items.append(a, .{ .int = f.size });
+    if (f.bold) try items.append(a, .{ .str = "bold" });
+    if (f.italic) try items.append(a, .{ .str = "italic" });
+    if (f.underline) try items.append(a, .{ .str = "underline" });
+    if (f.overstrike) try items.append(a, .{ .str = "overstrike" });
+    return ztcl.value.wrapList(a, try items.toOwnedSlice(a));
 }
