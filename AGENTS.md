@@ -106,6 +106,15 @@ Tool calls:
 - Edit with one script for each change. Build and test in the same call.
 - Use one worktree for each branch, so that tests of one branch run while you edit the next branch.
 
+`ztcl code` (the module `ztcl::code`, `docs/modules/code.md` of ztcl) has tools with short output. Build the runner in the ztcl tree with `zig build`, and use its `zig-out/bin/ztcl code` in place of `grep`, `cat`, `sed`, and a direct run of a long command:
+
+- Search and read: `ztcl code 'grep TEXT src -glob *.zig'`, `ztcl code def NAME`, `ztcl code outline FILE`, `ztcl code show FILE NAME` (the lines of one definition) or `ztcl code show FILE A-B`.
+- Edit: `ztcl code replace FILE OLD NEW`, `ztcl code edit FILE {OLD NEW OLD NEW}`, `ztcl code lines FILE A B TEXT`. Each change prints one line.
+- Run: `ztcl code run zig build test` gives the error lines and the tail, and keeps the full output in `.git/ztcl-code/run-N.log`. `ztcl code 'run -ask "QUESTION" {COMMAND}'` gives the answer of a cheaper model about the output.
+- Put several commands in one script: `ztcl code 'def NAME` + newline + `show FILE NAME'`.
+
+`ztcl code` has `exec`. Use it only on your own tree.
+
 Work:
 
 - Reproduce a bug with the smallest script before you read the code.
