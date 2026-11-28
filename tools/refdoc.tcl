@@ -415,6 +415,12 @@ proc refdoc::tclword {text} {
 # The groups of examples that run in one process: the command, then each
 # subcommand with the examples of its options. Each item is
 # {where kind dict}.
+# An example of an option of one release runs only in that release.
+proc refdoc::inherit {x o} {
+    if {[has $o tcl] && ![dict exists $x tcl]} { dict set x tcl [get $o tcl] }
+    return $x
+}
+
 proc refdoc::groups {e} {
     set out {}
     foreach t [list $e {*}[get $e subs]] {
@@ -424,13 +430,13 @@ proc refdoc::groups {e} {
         foreach x [get $t examples] { lappend items [list "$where example [incr n]" example $x] }
         foreach o [get $t options] {
             set n 0
-            foreach x [get $o examples] { lappend items [list "$where [get $o name] example [incr n]" example $x] }
+            foreach x [get $o examples] { lappend items [list "$where [get $o name] example [incr n]" example [inherit $x $o]] }
         }
         set n 0
         foreach x [get $t errors] { lappend items [list "$where error [incr n]" error $x] }
         foreach o [get $t options] {
             set n 0
-            foreach x [get $o errors] { lappend items [list "$where [get $o name] error [incr n]" error $x] }
+            foreach x [get $o errors] { lappend items [list "$where [get $o name] error [incr n]" error [inherit $x $o]] }
         }
         set tcl [get $t tcl [get $e tcl]]
         set flags [concat [get $e flags] [expr {$t eq $e ? {} : [get $t flags]}]]
@@ -1050,14 +1056,16 @@ proc refdoc::convert {runner name {remove 0}} {
     writefile $path "[join $out "\n"]\n"
     # Each text of the old entry must be in the new one.
     set id [loadfile $path]
-    variable N
-    set have {}
-    foreach k [array names N] { append have $N($k) "\n" }
+    set have [join [texts $id] "\n"]
     set lost {}
     dict for {k vals} $e {
         if {$k in {name file line area}} continue
         foreach val $vals {
-            if {$k in {sub opt err}} {
+            if {$k eq "opt"} {
+                # The flag and the placeholder of its value are two words.
+                lassign [split_sub $val] flag text
+                set parts [list {*}[split $flag] $text]
+            } elseif {$k in {sub err}} {
                 set parts [split_sub $val]
             } elseif {$k eq "ex"} {
                 regexp {^(.*?) =>(?: (.*))?$} $val -> c r
@@ -1091,6 +1099,21 @@ proc refdoc::convert {runner name {remove 0}} {
         puts "removed $name from [file tail $src]"
     }
     return 0
+}
+
+# Each text of a node and of the nodes in it, one item for each value.
+proc refdoc::texts {id} {
+    variable N
+    set out {}
+    dict for {k v} $N($id) {
+        switch -- $k {
+            subs - options - args { foreach c $v { lappend out {*}[texts $c] } }
+            examples - errors - choices { foreach x $v { lappend out {*}[dict values $x] } }
+            synopsis - release - difference - see - names - flags - values { lappend out {*}$v }
+            default { lappend out $v }
+        }
+    }
+    return $out
 }
 
 # The values of one key of a text entry, or an empty list.
