@@ -249,6 +249,8 @@ pub const App = struct {
     tops: std.ArrayListUnmanaged(*Widget) = .empty,
     /// The images of `image create photo`.
     images: @import("image.zig").Registry = .{},
+    /// The bitmaps of the `@file` names of canvas items.
+    file_bitmaps: @import("canvas/bitmaps.zig").Store = .{},
 
     pub fn init(gpa: std.mem.Allocator, it: *ztcl.Interp, opts: Options) !*App {
         const app = try create(gpa, it, opts);
@@ -427,6 +429,7 @@ pub const App = struct {
         anim.deinit(app);
         app.opt_anims.deinit(app.gpa);
         app.images.deinit(app.gpa);
+        app.file_bitmaps.deinit(app.gpa);
         app.fonts.deinit();
         app.atlas.deinit();
         app.wm.deinit(app.gpa);

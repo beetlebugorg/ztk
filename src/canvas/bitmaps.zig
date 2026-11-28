@@ -1,7 +1,13 @@
 //! The built-in bitmaps of Tk 8.6.16 (`tk/bitmaps/*.xbm`, under the Tk
 //! license): the bits of each row, low bit first, with rows padded to
 //! whole bytes. Made from the XBM files with a script.
+//!
+//! `Store` has the bitmaps of the `@file` names. The canvas reads the XBM
+//! file at the first use of a name and keeps the bits until the
+//! application ends, so a later change of the file has no effect.
 //! SPDX-License-Identifier: BSD-2-Clause
+
+const std = @import("std");
 
 pub const Bitmap = struct { name: []const u8, w: u32, h: u32, bits: []const u8 };
 
@@ -19,6 +25,38 @@ pub const list = [_]Bitmap{
 };
 
 pub fn find(name: []const u8) ?*const Bitmap {
-    for (&list) |*b| if (@import("std").mem.eql(u8, b.name, name)) return b;
+    for (&list) |*b| if (std.mem.eql(u8, b.name, name)) return b;
     return null;
 }
+
+/// The bitmaps of the `@file` names of one application. The name of an
+/// entry has the `@`.
+pub const Store = struct {
+    items: std.ArrayListUnmanaged(*Bitmap) = .empty,
+
+    pub fn find(s: *const Store, name: []const u8) ?*const Bitmap {
+        for (s.items.items) |b| if (std.mem.eql(u8, b.name, name)) return b;
+        return null;
+    }
+
+    /// Adds a bitmap with copies of the name and the bits.
+    pub fn add(s: *Store, gpa: std.mem.Allocator, name: []const u8, w: u32, h: u32, bits: []const u8) !void {
+        const b = try gpa.create(Bitmap);
+        errdefer gpa.destroy(b);
+        const n = try gpa.dupe(u8, name);
+        errdefer gpa.free(n);
+        const d = try gpa.dupe(u8, bits);
+        errdefer gpa.free(d);
+        b.* = .{ .name = n, .w = w, .h = h, .bits = d };
+        try s.items.append(gpa, b);
+    }
+
+    pub fn deinit(s: *Store, gpa: std.mem.Allocator) void {
+        for (s.items.items) |b| {
+            gpa.free(b.name);
+            gpa.free(b.bits);
+            gpa.destroy(b);
+        }
+        s.items.deinit(gpa);
+    }
+};

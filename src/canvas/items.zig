@@ -286,7 +286,8 @@ fn word(comptime E: type, text: []const u8, words: []const []const u8) ?E {
 pub const Names = struct {
     ctx: *anyopaque,
     image: *const fn (ctx: *anyopaque, name: []const u8) bool,
-    bitmap: *const fn (ctx: *anyopaque, name: []const u8) bool,
+    /// Gives an error message for a bad bitmap name.
+    bitmap: *const fn (ctx: *anyopaque, name: []const u8) ?[]const u8,
     window: *const fn (ctx: *anyopaque, name: []const u8) ?[]const u8,
 };
 
@@ -413,7 +414,7 @@ pub fn parse(a: *Attr, field: Field, text: []const u8, scaling: f64, names: Name
             }
         },
         .bitmap, .active_bitmap, .disabled_bitmap => {
-            if (text.len > 0 and !names.bitmap(names.ctx, text)) return std.fmt.bufPrint(buf, "bitmap \"{s}\" not defined", .{text}) catch "bad";
+            if (text.len > 0) if (names.bitmap(names.ctx, text)) |m| return m;
             switch (field) {
                 .bitmap => a.bitmap = text,
                 .active_bitmap => a.active_bitmap = text,
