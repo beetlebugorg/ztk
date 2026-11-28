@@ -8,9 +8,11 @@
 //! Each glyph of a cluster has the byte offset of the cluster start, so
 //! the caret stops only at cluster boundaries. A code point of width 0
 //! after the first one of a cluster does not move the pen: a combining
+//! mark goes where the anchors of the face put it (GPOS mark-to-base and
+//! mark-to-mark, `ttf.Face.markOffset`). With no anchors for the pair, a
 //! mark with an advance of 0 stays at the pen (fonts draw such marks to
-//! the left of the origin), a mark with an advance is centered on the
-//! base, and ZWJ and the variation selectors get no glyph. The layout has
+//! the left of the origin), and a mark with an advance is centered on
+//! the base. ZWJ and the variation selectors get no glyph. The layout has
 //! no ligatures and no right-to-left text.
 //! SPDX-License-Identifier: BSD-2-Clause
 
@@ -109,6 +111,9 @@ fn layout(font: *Font, text: []const u8, gpa: std.mem.Allocator, out: ?*std.Arra
         const at = std.math.cast(u32, i) orelse std.math.maxInt(u32);
         var base_x = pen;
         var base_adv: f32 = 0;
+        var base_gid: u16 = 0;
+        // The last mark of the cluster and its place, for a mark on a mark.
+        var last_mark: ?struct { gid: u16, x: f32, y: f32 } = null;
         var j = i;
         while (j < end) {
             const d = decode(text, j);
@@ -116,13 +121,30 @@ fn layout(font: *Font, text: []const u8, gpa: std.mem.Allocator, out: ?*std.Arra
             const adv = @as(f32, @floatFromInt(font.advance(gid))) * us;
             if (j > i and d.valid and seg.props(d.cp).width == 0) {
                 if (!invisible(d.cp)) {
-                    const x = if (adv == 0) pen else base_x + (base_adv - adv) / 2;
-                    if (out) |o| try o.append(gpa, .{ .id = gid, .x = x, .y = 0, .cluster = at });
+                    var x = if (adv == 0) pen else base_x + (base_adv - adv) / 2;
+                    var y: f32 = 0;
+                    // The anchors of the face place the mark: on the last
+                    // mark of the cluster, or on the base. The y of a
+                    // glyph goes down, and the y of the font goes up.
+                    if (font.system == null) {
+                        const on_mark = if (last_mark) |m| if (font.face.markOffset(m.gid, gid, true)) |off| .{ m, off } else null else null;
+                        if (on_mark) |r| {
+                            x = r[0].x + @as(f32, @floatFromInt(r[1][0])) * us;
+                            y = r[0].y - @as(f32, @floatFromInt(r[1][1])) * us;
+                        } else if (font.face.markOffset(base_gid, gid, false)) |off| {
+                            x = base_x + @as(f32, @floatFromInt(off[0])) * us;
+                            y = -@as(f32, @floatFromInt(off[1])) * us;
+                        }
+                    }
+                    last_mark = .{ .gid = gid, .x = x, .y = y };
+                    if (out) |o| try o.append(gpa, .{ .id = gid, .x = x, .y = y, .cluster = at });
                 }
             } else {
                 if (prev) |p| pen += @as(f32, @floatFromInt(font.kern(p, gid))) * us;
                 base_x = pen;
                 base_adv = adv;
+                base_gid = gid;
+                last_mark = null;
                 if (out) |o| try o.append(gpa, .{ .id = gid, .x = pen, .y = 0, .cluster = at });
                 pen += adv;
                 prev = gid;
