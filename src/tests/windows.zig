@@ -660,6 +660,53 @@ test "windows: a drag out gives the files and the text, and a cancel ends DoDrag
     try t.expectEqual(@import("../platform/platform.zig").DragAction.none, drag.runWith(&gpa, .{ .text = "x" }, &src));
 }
 
+test "windows: a file association writes its values under a key of the test, and the test deletes the key" {
+    if (!enabled()) return;
+    const assoc = @import("../platform/winassoc.zig");
+    const Reg = struct {
+        extern "advapi32" fn RegGetValueW(key: assoc.HKEY, sub: [*:0]const u16, name: ?[*:0]const u16, flags: u32, kind: ?*u32, data: ?*anyopaque, size: ?*u32) callconv(.winapi) i32;
+        extern "advapi32" fn RegDeleteTreeW(key: assoc.HKEY, sub: [*:0]const u16) callconv(.winapi) i32;
+        extern "kernel32" fn GetCurrentProcessId() callconv(.winapi) u32;
+
+        /// The text of a value, or null when the value does not exist.
+        fn text(a: std.mem.Allocator, base: []const u8, key: []const u8, name: []const u8) !?[]u8 {
+            const path = try std.unicode.utf8ToUtf16LeAllocZ(a, try std.fmt.allocPrint(a, "{s}\\{s}", .{ base, key }));
+            const wname = try std.unicode.utf8ToUtf16LeAllocZ(a, name);
+            var buf: [512]u16 = undefined;
+            var size: u32 = @sizeOf(@TypeOf(buf));
+            // RRF_RT_REG_SZ
+            if (RegGetValueW(assoc.current_user, path.ptr, wname.ptr, 2, null, &buf, &size) != 0) return null;
+            return try std.unicode.utf16LeToUtf8Alloc(a, std.mem.sliceTo(buf[0 .. size / 2], 0));
+        }
+    };
+    var arena: std.heap.ArenaAllocator = .init(t.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    // The real keys are under Software\Classes. The test writes under a
+    // key of its own process and deletes it, so the associations of the
+    // user do not change.
+    const base = try std.fmt.allocPrint(a, "Software\\ztk-test-assoc-{d}", .{Reg.GetCurrentProcessId()});
+    const wbase = try std.unicode.utf8ToUtf16LeAllocZ(a, base);
+    defer _ = Reg.RegDeleteTreeW(assoc.current_user, wbase.ptr);
+    const entries = try assoc.plan(a, .{ .ext = ".ztknote", .name = "Note file", .args = "--open" }, "C:\\Apps\\notes.exe");
+    try assoc.write(a, assoc.current_user, base, &entries);
+    for (entries) |e| try t.expectEqualStrings(e.data, (try Reg.text(a, base, e.key, e.name)).?);
+    try t.expectEqualStrings("\"C:\\Apps\\notes.exe\" --open \"%1\"", (try Reg.text(a, base, "ztk.notes.ztknote\\shell\\open\\command", "")).?);
+    // The removal takes the value of the extension and the key of the
+    // ProgID, and a second removal is no error.
+    try assoc.erase(a, assoc.current_user, base, &entries);
+    for (entries) |e| try t.expect((try Reg.text(a, base, e.key, e.name)) == null);
+    try assoc.erase(a, assoc.current_user, base, &entries);
+    // The key of the test is gone at the end.
+    try t.expectEqual(@as(i32, 0), Reg.RegDeleteTreeW(assoc.current_user, wbase.ptr));
+    try t.expect((try Reg.text(a, base, ".ztknote\\OpenWithProgids", "ztk.notes.ztknote")) == null);
+    var events: std.ArrayListUnmanaged(Event) = .empty;
+    defer events.deinit(t.allocator);
+    const o = try openHidden(&events);
+    defer o.b.deinit();
+    try t.expect(o.b.platform().vtable.winFileAssoc != null);
+}
+
 test "windows: a jump list of tasks builds, and the test drops it with no commit" {
     if (!enabled()) return;
     const jump = @import("../platform/winjump.zig");

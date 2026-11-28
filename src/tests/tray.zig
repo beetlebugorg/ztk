@@ -57,6 +57,54 @@ test "tray: a direct command of Windows gives ZTK WIN UNAVAILABLE on another bac
     try t.expectEqualStrings("ZTK WIN UNAVAILABLE", try h.eval("catch {ztk::win::backdrop .}; set ::errorCode"));
 }
 
+test "tray: the words of ztk::win::fileassoc parse, and the plan of the registry has four values" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    const winapi = @import("../winapi.zig");
+    const assoc = @import("../platform/winassoc.zig");
+    try t.expectEqualStrings("ztk::win::fileassoc is only on Windows", try h.evalError("ztk::win::fileassoc add .note"));
+    const v = try h.it.eval("list add .note -name {Note file} -args --open -icon C:/i.ico -iconindex 2");
+    const p = try winapi.parseAssoc(&h.it, try h.it.list(v));
+    try t.expect(!p.remove);
+    try t.expectEqualStrings(".note", p.assoc.ext);
+    try t.expectEqual(@as(i32, 2), p.assoc.icon_index);
+    const bad = [_][2][]const u8{
+        .{ "list add note", "bad extension \"note\": must be a dot and then letters, digits, \"+\", \"-\", or \"_\"" },
+        .{ "list add {.a\\b}", "bad extension \".a\\b\": must be a dot and then letters, digits, \"+\", \"-\", or \"_\"" },
+        .{ "list drop .note", "unknown subcommand \"drop\": must be add or remove" },
+        .{ "list add .note -bogus 1", "bad option \"-bogus\": must be -args, -icon, -iconindex, or -name" },
+        .{ "list remove .note -name x", "wrong # args: should be \"ztk::win::fileassoc remove extension\"" },
+    };
+    for (bad) |c| {
+        const words = try h.it.list(try h.it.eval(c[0]));
+        try t.expectError(error.TclError, winapi.parseAssoc(&h.it, words));
+        try t.expectEqualStrings(c[1], try h.it.str(h.it.result));
+    }
+
+    var arena: std.heap.ArenaAllocator = .init(t.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const exe = "C:\\Program Files\\My App\\my-app.exe";
+    try t.expectEqualStrings("ztk.myapp.note", try assoc.progId(a, exe, ".note"));
+    const e = try assoc.plan(a, p.assoc, exe);
+    try t.expectEqualStrings(".note\\OpenWithProgids", e[0].key);
+    try t.expectEqualStrings("ztk.myapp.note", e[0].name);
+    try t.expectEqualStrings("", e[0].data);
+    try t.expectEqualStrings("ztk.myapp.note", e[1].key);
+    try t.expectEqualStrings("Note file", e[1].data);
+    try t.expectEqualStrings("ztk.myapp.note\\DefaultIcon", e[2].key);
+    try t.expectEqualStrings("C:/i.ico,2", e[2].data);
+    try t.expectEqualStrings("ztk.myapp.note\\shell\\open\\command", e[3].key);
+    try t.expectEqualStrings("\"C:\\Program Files\\My App\\my-app.exe\" --open \"%1\"", e[3].data);
+    // The defaults: the name of the type, the icon of the program, and no
+    // arguments.
+    const d = try assoc.plan(a, .{ .ext = ".txt" }, exe);
+    try t.expectEqualStrings("txt file", d[1].data);
+    try t.expectEqualStrings("C:\\Program Files\\My App\\my-app.exe,0", d[2].data);
+    try t.expectEqualStrings("\"C:\\Program Files\\My App\\my-app.exe\" \"%1\"", d[3].data);
+}
+
 test "tray: the tasks of ztk::win::jumplist parse from dicts" {
     var h: Harness = undefined;
     try h.init();

@@ -14,5 +14,5 @@ ztk has the commands of Tk, and the commands below in the namespace `ztk::`. Eac
 | `ztk::dnd`, `tkdnd::drop_target` | Drags to other apps and drops from them. | [ztk::dnd](dnd.md) |
 | `ztk::tray`, `ztk::has` | A tray icon, and a test for each platform feature. | [ztk::tray](tray.md) |
 | `ztk::taskbar`, `ztk::recent`, `ztk::hotkey` | The taskbar or Dock button, the recent documents, and global shortcuts. | [ztk::taskbar](taskbar.md) |
-| `ztk::win::backdrop`, `ztk::win::jumplist`, `ztk::win::thumbbar` | APIs of Windows. | [ztk::win](win.md) |
+| `ztk::win::backdrop`, `ztk::win::fileassoc`, `ztk::win::jumplist`, `ztk::win::thumbbar` | APIs of Windows. | [ztk::win](win.md) |
 | `ztk::mac::dockmenu`, `ztk::mac::tabbing` | The menu of the Dock icon, and the window tabs of macOS. | [On macOS](../macos.md#direct-apis-of-macos) |

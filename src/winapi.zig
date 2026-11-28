@@ -3,6 +3,7 @@
 //! such entry, so a script can test them with `ztk::has win`.
 //!
 //!   ztk::win::backdrop window ?auto|none|mica|acrylic|tabbed?
+//!   ztk::win::fileassoc add|remove extension ?option value ...?   a file type of this program
 //!   ztk::win::jumplist ?task ...?     the tasks of the jump list; none removes it
 //!   ztk::win::thumbbar window ?button ...?   the buttons of the thumbnail of the taskbar
 //!
@@ -16,6 +17,13 @@
 //! `title` and `args`, and `description`, `icon`, and `iconindex` when it
 //! has them. A task starts this program with `args`. With no task the
 //! list of the app goes away.
+//!
+//! `fileassoc add` makes this program a handler of a file extension for
+//! the user: a double click of such a file in the shell can start the
+//! program with the path of the file as its last argument. The options
+//! are `-name` (the name of the file type), `-args` (arguments before the
+//! path), `-icon`, and `-iconindex`. `fileassoc remove` takes the handler
+//! back. The backend writes the registry of the user.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -77,6 +85,45 @@ pub fn parseTasks(it: *ztcl.Interp, items: []const Value) ztcl.Error![]plat.Jump
         if (t.title.len == 0) return it.fail("a task needs a title", .{});
     }
     return tasks;
+}
+
+/// The words of `ztk::win::fileassoc` after the command name: `add` or
+/// `remove`, the extension, and the options of `add`. The strings are in
+/// memory of the interpreter.
+pub fn parseAssoc(it: *ztcl.Interp, words: []const Value) ztcl.Error!struct { assoc: plat.FileAssoc, remove: bool } {
+    const usage = "ztk::win::fileassoc add|remove extension ?option value ...?";
+    if (words.len < 2) return it.wrongArgs(usage);
+    const sub = try it.str(words[0]);
+    const remove = std.mem.eql(u8, sub, "remove");
+    if (!remove and !std.mem.eql(u8, sub, "add")) return it.failCode("TCL LOOKUP SUBCOMMAND", "unknown subcommand \"{s}\": must be add or remove", .{sub});
+    var assoc: plat.FileAssoc = .{ .ext = try it.str(words[1]) };
+    if (!@import("platform/winassoc.zig").validExt(assoc.ext)) return it.fail("bad extension \"{s}\": must be a dot and then letters, digits, \"+\", \"-\", or \"_\"", .{assoc.ext});
+    const opts = words[2..];
+    if (remove and opts.len != 0) return it.wrongArgs("ztk::win::fileassoc remove extension");
+    if (opts.len % 2 != 0) return it.wrongArgs(usage);
+    var k: usize = 0;
+    while (k < opts.len) : (k += 2) {
+        const key = try it.str(opts[k]);
+        const val = opts[k + 1];
+        if (std.mem.eql(u8, key, "-name")) {
+            assoc.name = try it.str(val);
+        } else if (std.mem.eql(u8, key, "-args")) {
+            assoc.args = try it.str(val);
+        } else if (std.mem.eql(u8, key, "-icon")) {
+            assoc.icon = try it.str(val);
+        } else if (std.mem.eql(u8, key, "-iconindex")) {
+            assoc.icon_index = @intCast(std.math.clamp(try it.int(val), std.math.minInt(i32), std.math.maxInt(i32)));
+        } else return it.fail("bad option \"{s}\": must be -args, -icon, -iconindex, or -name", .{key});
+    }
+    return .{ .assoc = assoc, .remove = remove };
+}
+
+pub fn cmdFileAssoc(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
+    const app = App.of(it);
+    const f = app.platform.vtable.winFileAssoc orelse return unavailable(it, "ztk::win::fileassoc");
+    const p = try parseAssoc(it, argv[1..]);
+    if (!f(app.platform.ptr, p.assoc, p.remove)) return it.failCode("ZTK WIN FILEASSOC", "the registry refused the file association", .{});
+    return Value.empty;
 }
 
 pub fn cmdJumpList(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
