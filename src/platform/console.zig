@@ -403,6 +403,12 @@ test "console: restoreNow works from a panic handler, and SIGTERM and SIGINT res
     end_on_signal = false;
     defer end_on_signal = true;
     for ([_]linux.SIG{ .TERM, .INT, .HUP, .QUIT, .ABRT, .SEGV, .BUS, .FPE, .ILL, .USR1, .ALRM, .SYS }) |sig| {
+        // A signal that the parent ignores stays ignored, and the console
+        // gets no handler for it: a shell starts a background job with
+        // SIGINT and SIGQUIT ignored, and a test runner can ignore SIGHUP.
+        var cur: linux.Sigaction = undefined;
+        _ = linux.sigaction(sig, null, &cur);
+        if (cur.handler.handler == linux.SIG.IGN) continue;
         var f2: Fake = .{};
         const h2 = f2.host();
         var c2: Console = .{ .host = &h2 };
