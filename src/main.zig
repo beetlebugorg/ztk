@@ -416,7 +416,7 @@ pub fn main(init: std.process.Init) !void {
         win_be = ztk.windows.Win32.init(init.gpa, wopts) catch |e| fail(err, "ztk: cannot use the Win32 backend: {s}\n", .{@errorName(e)});
         platform = win_be.?.platform();
     } else {
-        fail(err, "ztk: this build has no Wayland backend. Use --headless.\n", .{});
+        fail(err, "{s}", .{ztk.noBackendText(@import("builtin").os.tag)});
     }
     defer if (head) |h| h.deinit();
     defer if (direct_be) |dbe| dbe.deinit();
