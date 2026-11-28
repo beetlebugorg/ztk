@@ -86,6 +86,33 @@ Each later task adds its commands to this table.
 12. Stop only your own processes, by PID. Do not open a window on the live desktop session, and do not create a display surface with the direct backend on the development machine, unless a task says so.
 13. Do not change the ztcl repository. A request to ztcl goes in the report of your task.
 
+## Token use
+
+Use as few tokens as the work permits. These rules apply to your thoughts, to the messages between agents and sessions, and to the tool calls. They do not apply to the text that a person reads: commits, PRs, issues, docs, and the report to the user follow WRITING.md.
+
+Thoughts and messages between agents:
+
+- Write in short form: symbols, issue numbers, paths, and key words. Write no full sentences, no greeting, and no summary of what the reader knows.
+- State a decision one time. Do not list the options that you do not use.
+- A message to an agent has the goal, the scope, the rules that differ from this file, and the form of the report. Point to a file or an issue. Do not copy its text.
+- An agent reports one line for each item: the issue, the PR, the state. It reports at the end, or when it cannot continue.
+
+Tool calls:
+
+- Put the commands that do not depend on each other in one call.
+- Limit each output: `grep -n` with a pattern, `sed -n A,Bp`, `head`, `tail`, `--json` with `-q`. Do not print a full file or a full log.
+- Read only the part of a file that the change needs. Do not read a file again after an edit.
+- Send a long build, test, or suite to the background with its output in a log file. Read only the last lines of the log.
+- Edit with one script for each change. Build and test in the same call.
+- Use one worktree for each branch, so that tests of one branch run while you edit the next branch.
+
+Work:
+
+- Reproduce a bug with the smallest script before you read the code.
+- For a difference from Tcl or Tk, generate many inputs, run them in the reference program (tclsh or wish) and in ztk, and diff the outputs. Fix until the diff is empty.
+- Do not start an agent for work of a few tool calls. Start an agent for a set of issues that does not depend on your work.
+- Tell the user only the result, the open decisions, and the failures.
+
 ## Commits and merges
 
 - Follow the commit rules in WRITING.md.
