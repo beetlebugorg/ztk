@@ -48,7 +48,7 @@ pub const specs = [_]Spec{
     .{ .name = "-bg", .type = .synonym, .target = "-background" },
     .{ .name = "-borderwidth", .db_name = "borderWidth", .db_class = "BorderWidth", .type = .pixels, .default = "1" },
     .{ .name = "-command", .db_name = "command", .db_class = "Command", .type = .script, .allow_empty = true },
-    .{ .name = "-cursor", .db_name = "cursor", .db_class = "Cursor", .type = .string, .allow_empty = true },
+    .{ .name = "-cursor", .db_name = "cursor", .db_class = "Cursor", .type = .cursor, .allow_empty = true },
     .{ .name = "-elementborderwidth", .db_name = "elementBorderWidth", .db_class = "BorderWidth", .type = .pixels, .default = "-1" },
     .{ .name = "-highlightbackground", .db_name = "highlightBackground", .db_class = "HighlightBackground", .type = .color, .default = "#d9d9d9" },
     .{ .name = "-highlightcolor", .db_name = "highlightColor", .db_class = "HighlightColor", .type = .color, .default = "#000000" },

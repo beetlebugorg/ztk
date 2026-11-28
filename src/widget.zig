@@ -399,12 +399,15 @@ fn own(it: *ztcl.Interp, v: ztcl.Value) ztcl.Error!ztcl.Value {
 
 /// The widget command: `.f option ?arg ...?`. The `ctx` of the command is a `Handle`.
 pub fn widgetCommand(it: *ztcl.Interp, argv: []const ztcl.Value, cmd: ?*ztcl.interp.Cmd) ztcl.Error!ztcl.Value {
-    const w = (try commandWidget(it, argv, cmd)) orelse return it.fail("invalid command name \"{s}\"", .{try it.str(argv[0])});
+    const w = (try commandWidget(it, argv, cmd)) orelse {
+        const name = try it.str(argv[0]);
+        return options.failCode(it, "TCL LOOKUP COMMAND", name, "invalid command name \"{s}\"", .{name});
+    };
     const app = w.app;
     app.enter();
     defer app.leave();
     if (argv.len < 2) {
-        return it.fail("wrong # args: should be \"{s} option ?arg ...?\"", .{w.path});
+        return options.failCode(it, "TCL WRONGARGS", null, "wrong # args: should be \"{s} option ?arg ...?\"", .{w.path});
     }
     const sub = try it.str(argv[1]);
     if (sub.len >= 2 and std.mem.startsWith(u8, "configure", sub)) {
@@ -412,7 +415,7 @@ pub fn widgetCommand(it: *ztcl.Interp, argv: []const ztcl.Value, cmd: ?*ztcl.int
         return own(it, try options.configure(w, it, argv[2..]));
     }
     if (sub.len >= 2 and std.mem.startsWith(u8, "cget", sub)) {
-        if (argv.len != 3) return it.fail("wrong # args: should be \"{s} cget option\"", .{w.path});
+        if (argv.len != 3) return options.failCode(it, "TCL WRONGARGS", null, "wrong # args: should be \"{s} cget option\"", .{w.path});
         return own(it, try options.cget(w, it, argv[2]));
     }
     if (w.class.subcommand) |f| {
@@ -424,14 +427,14 @@ pub fn widgetCommand(it: *ztcl.Interp, argv: []const ztcl.Value, cmd: ?*ztcl.int
             words[1] = .{ .str = full };
             if (std.mem.eql(u8, full, "configure")) return own(it, try options.configure(w, it, words[2..]));
             if (std.mem.eql(u8, full, "cget")) {
-                if (words.len != 3) return it.fail("wrong # args: should be \"{s} cget option\"", .{w.path});
+                if (words.len != 3) return options.failCode(it, "TCL WRONGARGS", null, "wrong # args: should be \"{s} cget option\"", .{w.path});
                 return own(it, try options.cget(w, it, words[2]));
             }
             if (try f(w, it, words)) |v| return own(it, v);
         };
     }
-    if (w.class.bad_option_list.len > 0) return it.fail("bad option \"{s}\": must be {s}", .{ sub, w.class.bad_option_list });
-    if (w.class.extra_subcommands.len == 0) return it.fail("bad option \"{s}\": must be cget or configure", .{sub});
+    if (w.class.bad_option_list.len > 0) return badSub(w, it, sub, w.class.bad_option_list);
+    if (w.class.extra_subcommands.len == 0) return badSub(w, it, sub, "cget or configure");
     var list: std.ArrayList(u8) = .empty;
     const a = it.alloc();
     try list.appendSlice(a, "cget, configure");
@@ -439,13 +442,44 @@ pub fn widgetCommand(it: *ztcl.Interp, argv: []const ztcl.Value, cmd: ?*ztcl.int
         try list.appendSlice(a, if (i + 1 == w.class.extra_subcommands.len) ", or " else ", ");
         try list.appendSlice(a, n);
     }
-    return it.fail("bad option \"{s}\": must be {s}", .{ sub, list.items });
+    return badSub(w, it, sub, list.items);
+}
+
+/// The error of an unknown subcommand, as in Tk: "ambiguous" when the
+/// word is empty or starts more than one name, and "bad" otherwise.
+fn badSub(w: *const Widget, it: *ztcl.Interp, sub: []const u8, names: []const u8) ztcl.Error {
+    const kind = if (try startsMany(w, it, sub)) "ambiguous" else "bad";
+    return options.failCode(it, "TCL LOOKUP INDEX option", sub, "{s} option \"{s}\": must be {s}", .{ kind, sub, names });
 }
 
 /// The full name of a subcommand of the class that starts with `sub`,
 /// when one name only starts with it, and the name differs from `sub`.
 fn expandSub(w: *const Widget, it: *ztcl.Interp, sub: []const u8) ztcl.Error!?[]const u8 {
     if (sub.len == 0) return null;
+    const names = try subNames(w, it);
+    var pick: ?[]const u8 = null;
+    for (names) |n| {
+        if (std.mem.eql(u8, n, sub)) return null;
+        if (std.mem.startsWith(u8, n, sub)) {
+            if (pick != null) return null;
+            pick = n;
+        }
+    }
+    return pick;
+}
+
+/// True when `sub` is empty or starts two names of subcommands or more.
+fn startsMany(w: *const Widget, it: *ztcl.Interp, sub: []const u8) ztcl.Error!bool {
+    if (sub.len == 0) return true;
+    var count: usize = 0;
+    for (try subNames(w, it)) |n| {
+        if (std.mem.startsWith(u8, n, sub)) count += 1;
+    }
+    return count > 1;
+}
+
+/// The names of the subcommands of the class.
+fn subNames(w: *const Widget, it: *ztcl.Interp) ztcl.Error![]const []const u8 {
     var names: std.ArrayList([]const u8) = .empty;
     const a = it.alloc();
     if (w.class.bad_option_list.len > 0) {
@@ -459,36 +493,28 @@ fn expandSub(w: *const Widget, it: *ztcl.Interp, sub: []const u8) ztcl.Error!?[]
         try names.append(a, "configure");
         for (w.class.extra_subcommands) |n| try names.append(a, n);
     }
-    var pick: ?[]const u8 = null;
-    for (names.items) |n| {
-        if (std.mem.eql(u8, n, sub)) return null;
-        if (std.mem.startsWith(u8, n, sub)) {
-            if (pick != null) return null;
-            pick = n;
-        }
-    }
-    return pick;
+    return names.items;
 }
 
 /// Makes a widget and its command. `path` must have an existing parent.
 pub fn create(app: *App, class: *const Class, path: []const u8) ztcl.Error!*Widget {
     const it = app.it;
-    if (path.len == 0 or path[0] != '.') return it.fail("bad window path name \"{s}\"", .{path});
+    if (path.len == 0 or path[0] != '.') return options.failCode(it, "TK VALUE WINDOW_PATH", null, "bad window path name \"{s}\"", .{path});
     // Tk makes ".x" from "..x": the parent is "." and the name is "x".
     if (path.len > 2 and path[1] == '.' and std.mem.indexOfScalarPos(u8, path, 2, '.') == null) {
         return create(app, class, path[1..]);
     }
     const dot = std.mem.lastIndexOfScalar(u8, path, '.').?;
     const leaf = path[dot + 1 ..];
-    if (path.len == 1) return it.fail("window name \"\" already exists in parent", .{});
+    if (path.len == 1) return options.failCode(it, "TK VALUE WINDOW EXISTS", null, "window name \"\" already exists in parent", .{});
     if (leaf.len == 0 or (dot > 0 and path[dot - 1] == '.')) {
         return it.fail("bad window path name \"{s}\"", .{path});
     }
     const parent_path = if (dot == 0) "." else path[0..dot];
-    const parent = app.lookup(parent_path) orelse return it.fail("bad window path name \"{s}\"", .{parent_path});
+    const parent = app.lookup(parent_path) orelse return options.failCode(it, "TK LOOKUP WINDOW", parent_path, "bad window path name \"{s}\"", .{parent_path});
     if (!parent.alive()) return it.fail("can't create window: parent has been destroyed", .{});
-    if (std.ascii.isUpper(leaf[0])) return it.fail("window name starts with an upper-case letter: \"{s}\"", .{leaf});
-    if (app.widgets.contains(path)) return it.fail("window name \"{s}\" already exists in parent", .{leaf});
+    if (std.ascii.isUpper(leaf[0])) return options.failCode(it, "TK VALUE WINDOW NOTCLASS", null, "window name starts with an upper-case letter: \"{s}\"", .{leaf});
+    if (app.widgets.contains(path)) return options.failCode(it, "TK VALUE WINDOW EXISTS", null, "window name \"{s}\" already exists in parent", .{leaf});
     return try makeNode(app, class, path, parent);
 }
 

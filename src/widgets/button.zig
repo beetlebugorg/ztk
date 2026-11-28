@@ -28,11 +28,11 @@ pub const specs = [_]Spec{
     .{ .name = "-background", .db_name = "background", .db_class = "Background", .type = .color, .default = "#d9d9d9", .from_style = true, .style_prop = .background },
     .{ .name = "-bd", .type = .synonym, .target = "-borderwidth" },
     .{ .name = "-bg", .type = .synonym, .target = "-background" },
-    .{ .name = "-bitmap", .db_name = "bitmap", .db_class = "Bitmap", .type = .string, .allow_empty = true },
+    .{ .name = "-bitmap", .db_name = "bitmap", .db_class = "Bitmap", .type = .bitmap, .allow_empty = true },
     .{ .name = "-borderwidth", .db_name = "borderWidth", .db_class = "BorderWidth", .type = .pixels, .default = "0", .from_style = true, .style_prop = .border_width },
     .{ .name = "-command", .db_name = "command", .db_class = "Command", .type = .script, .allow_empty = true },
     .{ .name = "-compound", .db_name = "compound", .db_class = "Compound", .type = .word, .default = "none", .words = &label.compound_words },
-    .{ .name = "-cursor", .db_name = "cursor", .db_class = "Cursor", .type = .string, .allow_empty = true },
+    .{ .name = "-cursor", .db_name = "cursor", .db_class = "Cursor", .type = .cursor, .allow_empty = true },
     .{ .name = "-default", .db_name = "default", .db_class = "Default", .type = .word, .default = "disabled", .words = &state_words },
     .{ .name = "-disabledforeground", .db_name = "disabledForeground", .db_class = "DisabledForeground", .type = .color, .default = "#a3a3a3" },
     .{ .name = "-fg", .type = .synonym, .target = "-foreground" },
@@ -44,7 +44,7 @@ pub const specs = [_]Spec{
     .{ .name = "-highlightthickness", .db_name = "highlightThickness", .db_class = "HighlightThickness", .type = .pixels, .default = "1" },
     .{ .name = "-image", .db_name = "image", .db_class = "Image", .type = .image, .allow_empty = true },
     .{ .name = "-justify", .db_name = "justify", .db_class = "Justify", .type = .justify, .default = "center" },
-    .{ .name = "-overrelief", .db_name = "overRelief", .db_class = "OverRelief", .type = .string, .allow_empty = true },
+    .{ .name = "-overrelief", .db_name = "overRelief", .db_class = "OverRelief", .type = .relief, .allow_empty = true },
     .{ .name = "-padx", .db_name = "padX", .db_class = "Pad", .type = .pixels, .default = "0" },
     .{ .name = "-pady", .db_name = "padY", .db_class = "Pad", .type = .pixels, .default = "0" },
     .{ .name = "-relief", .db_name = "relief", .db_class = "Relief", .type = .relief, .default = "flat", .from_style = true },
@@ -84,10 +84,16 @@ pub const class: widget.Class = .{
 fn subcommand(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!?Value {
     const sub = try it.str(argv[1]);
     if (std.mem.eql(u8, sub, "invoke")) {
-        if (argv.len != 2) return it.fail("wrong # args: should be \"{s} invoke\"", .{w.path});
+        if (argv.len != 2) return options.failCode(it, "TCL WRONGARGS", null, "wrong # args: should be \"{s} invoke\"", .{w.path});
         return try invoke(w, it);
     }
-    if (std.mem.eql(u8, sub, "flash")) return it.fail("flash is not supported in this stage", .{});
+    // Tk shows the active colors and the normal colors in turn a few
+    // times before it returns. ztk gives the result of Tk and shows no
+    // change.
+    if (std.mem.eql(u8, sub, "flash")) {
+        if (argv.len != 2) return options.failCode(it, "TCL WRONGARGS", null, "wrong # args: should be \"{s} flash\"", .{w.path});
+        return Value.empty;
+    }
     return null;
 }
 

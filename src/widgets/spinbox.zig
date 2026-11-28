@@ -42,7 +42,7 @@ pub const specs = [_]Spec{
     .{ .name = "-buttondownrelief", .db_name = "buttonDownRelief", .db_class = "Relief", .type = .relief, .default = "raised" },
     .{ .name = "-buttonuprelief", .db_name = "buttonUpRelief", .db_class = "Relief", .type = .relief, .default = "raised" },
     .{ .name = "-command", .db_name = "command", .db_class = "Command", .type = .script, .allow_empty = true },
-    .{ .name = "-cursor", .db_name = "cursor", .db_class = "Cursor", .type = .string, .default = "xterm" },
+    .{ .name = "-cursor", .db_name = "cursor", .db_class = "Cursor", .type = .cursor, .default = "xterm" },
     .{ .name = "-disabledbackground", .db_name = "disabledBackground", .db_class = "DisabledBackground", .type = .color, .default = "#d9d9d9" },
     .{ .name = "-disabledforeground", .db_name = "disabledForeground", .db_class = "DisabledForeground", .type = .color, .default = "#a3a3a3" },
     .{ .name = "-exportselection", .db_name = "exportSelection", .db_class = "ExportSelection", .type = .boolean, .default = "1" },
