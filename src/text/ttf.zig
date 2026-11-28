@@ -2,7 +2,8 @@
 //! head, hhea, maxp, hmtx, name, cmap (formats 4 and 12), loca, glyf
 //! (simple and composite glyphs), and the pair adjustment lookups of the
 //! `kern` feature in GPOS (formats 1 and 2, also inside extension
-//! lookups). All numbers in the file are big-endian. Each read checks
+//! lookups), and the mark-to-base and mark-to-mark lookups of GPOS
+//! (format 1, at most 16 subtables). All numbers in the file are big-endian. Each read checks
 //! its offset against the length of the data, so a bad or cut font
 //! gives `error.BadFont` and never a read outside the data. The limits
 //! are 16 384 points for one glyph, 64 kerning subtables, and 8 levels
@@ -281,6 +282,8 @@ pub const Face = struct {
     gpos: []const u8,
     kern: [max_kern]KernSub = undefined,
     kern_count: u8 = 0,
+    marks: [max_marks]MarkSub = undefined,
+    mark_count: u8 = 0,
     family_buf: [64]u8 = undefined,
     family_len: u8 = 0,
 
@@ -343,6 +346,10 @@ pub const Face = struct {
             f.findKern() catch {
                 // A bad GPOS table means no kerning, not a bad font.
                 f.kern_count = 0;
+            };
+            f.findMarks() catch {
+                // The marks then get the centered place.
+                f.mark_count = 0;
             };
         }
         if (try table(data, "name")) |n| f.readFamily(n) catch {
@@ -407,6 +414,89 @@ pub const Face = struct {
     pub fn advance(f: *const Face, glyph: u16) u16 {
         const i: usize = if (glyph < f.num_hmetrics) glyph else f.num_hmetrics - 1;
         return be16(f.hmtx, i * 4) catch 0;
+    }
+
+    // ---- GPOS mark attachment ----
+
+    /// The most mark subtables that a face keeps.
+    const max_marks = 16;
+
+    /// A mark-to-base subtable (lookup type 4) or a mark-to-mark
+    /// subtable (lookup type 6), by its offset in GPOS.
+    const MarkSub = struct { off: u32, to_mark: bool };
+
+    /// Collects the mark subtables of each lookup, also inside extension
+    /// lookups. Fonts use these lookup types only for the features `mark`
+    /// and `mkmk`, which apply to each script, so the walk reads no
+    /// script list and no feature list.
+    fn findMarks(f: *Face) Err!void {
+        const g = f.gpos;
+        const lookup_list: usize = try be16(g, 8);
+        const count = try be16(g, lookup_list);
+        var steps: u32 = 0;
+        var li: usize = 0;
+        while (li < count) : (li += 1) {
+            try countStep(&steps);
+            const lo: usize = lookup_list + try be16(g, lookup_list + 2 + li * 2);
+            const ltype = try be16(g, lo);
+            const nsub = try be16(g, lo + 4);
+            var k: usize = 0;
+            while (k < nsub) : (k += 1) {
+                try countStep(&steps);
+                var sub: usize = lo + try be16(g, lo + 6 + k * 2);
+                var t = ltype;
+                if (t == 9) {
+                    t = try be16(g, sub + 2);
+                    sub += try be32(g, sub + 4);
+                }
+                if (t != 4 and t != 6) continue;
+                if (try be16(g, sub) != 1) continue;
+                if (f.mark_count == max_marks) return;
+                f.marks[f.mark_count] = .{ .off = std.math.cast(u32, sub) orelse return error.BadFont, .to_mark = t == 6 };
+                f.mark_count += 1;
+            }
+        }
+    }
+
+    /// The x and y of an anchor table, in font units.
+    fn anchorAt(g: []const u8, off: usize) Err![2]i32 {
+        return .{ try be16s(g, off + 2), try be16s(g, off + 4) };
+    }
+
+    /// The offset of one subtable for the pair, or null. The two lookup
+    /// types have one layout: the coverage of the mark, the coverage of
+    /// the base, the count of mark classes, the array of the marks (a
+    /// class and an anchor each), and the array of the bases (one anchor
+    /// for each class).
+    fn markAdjust(g: []const u8, sub: usize, base: u16, mark: u16) Err!?[2]i32 {
+        const mi = (try coverageIndex(g, sub + try be16(g, sub + 2), mark)) orelse return null;
+        const bi = (try coverageIndex(g, sub + try be16(g, sub + 4), base)) orelse return null;
+        const classes: usize = try be16(g, sub + 6);
+        const mark_array: usize = sub + try be16(g, sub + 8);
+        const base_array: usize = sub + try be16(g, sub + 10);
+        if (mi >= try be16(g, mark_array) or bi >= try be16(g, base_array)) return error.BadFont;
+        const class: usize = try be16(g, mark_array + 2 + mi * 4);
+        if (class >= classes) return error.BadFont;
+        const mark_anchor = try anchorAt(g, mark_array + try be16(g, mark_array + 4 + mi * 4));
+        const base_off: usize = try be16(g, base_array + 2 + (bi * classes + class) * 2);
+        // A base with no anchor for this class.
+        if (base_off == 0) return null;
+        const base_anchor = try anchorAt(g, base_array + base_off);
+        return .{ base_anchor[0] - mark_anchor[0], base_anchor[1] - mark_anchor[1] };
+    }
+
+    /// The place of the origin of the glyph `mark` from the origin of the
+    /// glyph `base`, in font units with y up, from the anchors of GPOS:
+    /// the anchor of the mark goes on the anchor of the base. With
+    /// `to_mark`, `base` is a mark too (a mark on a mark). Null when the
+    /// face has no anchors for the pair.
+    pub fn markOffset(f: *const Face, base: u16, mark: u16, to_mark: bool) ?[2]i32 {
+        for (f.marks[0..f.mark_count]) |ms| {
+            if (ms.to_mark != to_mark) continue;
+            const r = markAdjust(f.gpos, ms.off, base, mark) catch continue;
+            if (r) |v| return v;
+        }
+        return null;
     }
 
     // ---- GPOS kerning ----

@@ -766,3 +766,36 @@ test "ttf fuzz: changed bytes in GPOS, cmap, loca, and glyf never trap" {
         if (f.outline(t.allocator, f.glyphIndex(0xe9))) |o| o.deinit(t.allocator) else |_| {}
     }
 }
+
+test "shape: the GPOS anchors of the face place a combining mark on its base" {
+    var h: testing_h.Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    const font = try h.app.fonts.get(.{ .size = 100 }, 1);
+    const gpa = std.testing.allocator;
+    const adv = struct {
+        fn of(f: *font_mod.Font, id: u16) f32 {
+            return @as(f32, @floatFromInt(f.advance(id))) * f.unitScale();
+        }
+    }.of;
+    // e and a combining acute: the mark is over the letter, at the height
+    // that the face draws it.
+    var low = try shape_mod.shape(gpa, font, "e\u{301}");
+    defer low.deinit(gpa);
+    try std.testing.expectEqual(@as(usize, 2), low.glyphs.len);
+    try std.testing.expect(low.glyphs[1].x > 0 and low.glyphs[1].x < adv(font, low.glyphs[0].id) / 2);
+    try std.testing.expectEqual(@as(f32, 0), low.glyphs[1].y);
+    try std.testing.expectEqual(low.end_x, adv(font, low.glyphs[0].id));
+    // E and the same mark: the anchor of the capital is higher.
+    var cap = try shape_mod.shape(gpa, font, "E\u{301}");
+    defer cap.deinit(gpa);
+    try std.testing.expectEqual(low.glyphs[1].id, cap.glyphs[1].id);
+    try std.testing.expect(cap.glyphs[1].y < -10);
+    // A second mark goes on the first mark.
+    var two = try shape_mod.shape(gpa, font, "e\u{301}\u{308}");
+    defer two.deinit(gpa);
+    try std.testing.expectEqual(@as(usize, 3), two.glyphs.len);
+    try std.testing.expect(two.glyphs[2].y < two.glyphs[1].y - 10);
+    // Each glyph of the cluster has the offset of the cluster start.
+    for (two.glyphs) |g| try std.testing.expectEqual(@as(u32, 0), g.cluster);
+}
