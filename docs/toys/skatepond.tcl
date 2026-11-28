@@ -122,7 +122,8 @@ pack .side.bag -fill x -pady {2 6}
 pack .side.hint -fill both -expand 1
 bind .side.bag <<ListboxSelect>> hint
 
-array set g {state title level 0 pick 0 unlocked 1 frames 0 moves 0 shake 0 dead 0}
+array set g {state title level 0 pick 0 unlocked 1 frames 0 moves 0 shake 0 dead 0 card 0}
+set cardseq 0
 array set stars {}
 array set sk {x 1 y 1 dx 0 dy 1 px 0 py 0 fx 0 fy 0 t 1 n 1 sx 1 sy 1 queue {}}
 set undo {}
@@ -266,7 +267,16 @@ proc start {n} {
     pond
     side
     say $name "Par $par"
-    after 1400 { if {$g(state) eq "play" && $g(moves) == 0} { say "" "" } }
+    set g(card) [incr ::cardseq]
+    after 900 [list cardOff $g(card)]
+}
+
+# Hides the level card: at the first action of the player, or after a
+# short time. The number makes sure an old timer does not hide the card
+# of a later level.
+proc cardOff {id} {
+    global g
+    if {$g(state) eq "play" && $g(card) == $id} { say "" ""; set g(card) 0 }
 }
 
 proc say {a b} {
@@ -310,6 +320,7 @@ proc hint {} {
 # an ease-out, so a long slide is fast and settles at the end.
 proc push {dir} {
     global sk grid g undo flakes bag
+    if {$g(card)} { cardOff $g(card) }
     lassign [dict get {up {0 -1} down {0 1} left {-1 0} right {1 0}} $dir] dx dy
     set sk(dx) $dx; set sk(dy) $dy
     set x $sk(x); set y $sk(y); set dist 0; set end stop
@@ -355,6 +366,7 @@ proc crossed {x y} {
 
 proc use {} {
     global sk bag grid g undo flakes
+    if {$g(card)} { cardOff $g(card) }
     set i [.side.bag curselection]
     if {$i eq "" || $sk(t) < 1} { sfx bump; return }
     set item [lindex $bag $i]
