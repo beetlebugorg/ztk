@@ -1,12 +1,12 @@
 .{
     .name = .ztk,
     .fingerprint = 0x371430b6d8c5f4a4,
-    .version = "1.0.0-beta.1",
+    .version = "1.0.0-beta.2",
     .minimum_zig_version = "0.17.0",
     .dependencies = .{
         .ztcl = .{
-            .url = "git+https://github.com/beetlebugorg/ztcl#0e9e8bfe512dd98ab8a328ddaf4080b21a606cf5",
-            .hash = "ztcl-1.0.0-beta.1-WhPN_qo9jQBASrcO6hCzsAlZIsc2fZE9jYLWa4jHLXPz",
+            .url = "git+https://github.com/beetlebugorg/ztcl#0d8a53bdfa8ede7062978cb840b7a2d20ba6c53f",
+            .hash = "ztcl-1.0.0-beta.2-WhPN_pl3jwBqlV0mUbfx-zuFwXFbCceSeGxStuTeVbfM",
         },
         .vulkan_headers = .{
             .url = "git+https://github.com/KhronosGroup/Vulkan-Headers?ref=v1.4.369#d277a0a3cda9c682708c93279f0c72cd6b0ae3f3",

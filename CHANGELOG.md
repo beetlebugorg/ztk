@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.0.0-beta.2 (2026-11-28)
+
+The second beta of ztk 1.0. It builds on ztcl v1.0.0-beta.2, and it is the first 1.0 beta with release archives and a Homebrew formula: the release of v1.0.0-beta.1 stopped in its test step.
+
+- ztk uses ztcl v1.0.0-beta.2: more of Tcl 9.1 in the 9.1 mode, and fixes of `regexp`, `format`, `binary decode`, and `try`. See the changelog of ztcl.
+- Adds `bind` for a sequence of events, such as `<Double-1>` after a key or `<a><b>`. The rules are those of wish 8.6.16.
+- Adds the `send` command for the application of the caller: the name of `tk appname` runs the script, and each other name gives `no application named`.
+- Adds `ztk::win::fileassoc`: the file associations of a program on Windows.
+- `tk fontchooser show` opens the font dialog of Windows.
+- A canvas bitmap item reads the XBM file of a name of the form `@file`.
+- A canvas image of a dense photo (2x or 3x) draws at its logical size.
+- The built-in text path places a combining mark by the GPOS anchors of the font.
+- Fixes `canvas raise` and `canvas lower`: the order of the items is the order of wish, and the commands take linear time. The tklib demo plotdemos13 now ends.
+- Fixes the errors of `button`: the error codes of Tk, and checks of four options.
+- Fixes the text widget: a tag of colors keeps the line heights of the text.
+- Fixes three Tk color names that differed from wish.
+- Fixes the tests of the release: the test binary stays below the address limit of the release workflow.
+
 ## v1.0.0-beta.1 (2026-11-28)
 
 The first beta of ztk 1.0. ztk adds native clients for Wayland and X11 with no C library, the native look of each platform, drag and drop, the tray, the taskbar, and the jump lists, `ztk bundle --target` for each platform from any host, the `ttk` widgets, the canvas, `ztk::debug` and `ztk --mcp` for agents, and the WebGPU renderer of the web build. ztk follows Tcl 9.1 by default (the breaking change below).
