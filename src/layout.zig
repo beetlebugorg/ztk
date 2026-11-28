@@ -122,7 +122,10 @@ fn measureNode(w: *Widget) void {
     const old = w.req;
     var size: geom.Size = .{};
     if (w.class.measure) |f| size = f(w);
-    setReq(w, size);
+    // As in Tk, a container with content, with propagation off, and with
+    // no size of its own makes no request. It keeps the requested size
+    // that it had when the propagation went off.
+    if (size.w > 0 or size.h > 0 or !hasContent(w) or propagates(w)) setReq(w, size);
     if (w.container_manager) |m| m.measure(w);
     if (w.req.w != old.w or w.req.h != old.h) {
         w.dirty.layout = true;

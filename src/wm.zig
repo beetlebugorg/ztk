@@ -100,6 +100,23 @@ fn parseGeometry(text: []const u8) ?geom.Size {
     return .{ .w = wd, .h = ht };
 }
 
+/// The grid of a toplevel: the base counts and the increments. The
+/// value of `wm grid` has priority, and then the grid of a text or a
+/// listbox with -setgrid 1. Null when the toplevel has no grid.
+fn gridOf(app: *App, it: *ztcl.Interp, top: *Widget) ztcl.Error!?[4]i32 {
+    var v: Value = .{ .str = app.wmOf(top).prop("grid") };
+    if (v.str.len == 0) {
+        const words = [_]Value{ .{ .str = "::ztk::priv::wmgrid" }, .{ .str = top.path } };
+        v = try it.eval(try it.str(try ztcl.value.newList(it.alloc(), &words)));
+    }
+    const parts = try it.list(v);
+    if (parts.len != 4) return null;
+    var g: [4]i32 = undefined;
+    for (parts, &g) |part, *slot| slot.* = std.fmt.parseInt(i32, try it.str(part), 10) catch return null;
+    if (g[2] <= 0 or g[3] <= 0) return null;
+    return g;
+}
+
 /// `wm option window ?arg ...?`
 pub fn cmdWm(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
     const app = App.of(it);
@@ -127,13 +144,27 @@ pub fn cmdWm(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.E
         return Value.empty;
     }
     if (eq(name, "geometry")) {
-        if (args.len == 0) return .{ .str = try std.fmt.allocPrint(a, "{d}x{d}+{d}+{d}", .{ w.geom.w, w.geom.h, st.pos.x, st.pos.y }) };
         if (args.len > 1) return it.fail("wrong # args: should be \"wm geometry window ?newGeometry?\"", .{});
+        // With a grid, the size is in grid units, as in Tk: the base
+        // count is the requested size of the toplevel, and one unit more
+        // is one increment more.
+        const grid = try gridOf(app, it, w);
+        if (grid != null) {
+            app.ensureStyle(w);
+            @import("layout.zig").measureNow(w);
+        }
+        if (args.len == 0) {
+            var size: geom.Size = .{ .w = w.geom.w, .h = w.geom.h };
+            if (grid) |g| size = .{ .w = g[0] + @divTrunc(size.w - w.req.w, g[2]), .h = g[1] + @divTrunc(size.h - w.req.h, g[3]) };
+            return .{ .str = try std.fmt.allocPrint(a, "{d}x{d}+{d}+{d}", .{ size.w, size.h, st.pos.x, st.pos.y }) };
+        }
         const t0 = try it.str(args[0]);
         // X11 geometry strings can start with "=".
         const t = if (t0.len > 0 and t0[0] == '=') t0[1..] else t0;
         if (t0.len == 0) {
             st.geometry = null;
+            // The next layout gives the window its requested size again.
+            st.last_req = .{ .w = 0, .h = 0 };
             w.invalidate(.{ .style = false, .measure = true, .layout = true, .paint = true });
             return Value.empty;
         }
@@ -148,7 +179,11 @@ pub fn cmdWm(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.E
         if (std.mem.indexOfAny(u8, t, "+-")) |k| if (parsePosition(t[k..])) |p| {
             st.pos = p;
         };
-        const size = parseGeometry(t) orelse return it.fail("bad geometry specifier \"{s}\"", .{t});
+        var size = parseGeometry(t) orelse return it.fail("bad geometry specifier \"{s}\"", .{t});
+        if (grid) |g| size = .{
+            .w = w.req.w +| (std.math.clamp(size.w, 0, app_mod.max_window) - g[0]) *| g[2],
+            .h = w.req.h +| (std.math.clamp(size.h, 0, app_mod.max_window) - g[1]) *| g[3],
+        };
         st.geometry = .{ .w = std.math.clamp(size.w, 1, app_mod.max_window), .h = std.math.clamp(size.h, 1, app_mod.max_window) };
         app.setTopSize(w, st.geometry.?);
         return Value.empty;
@@ -269,6 +304,17 @@ pub fn cmdWm(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.E
                 icon.* = .{ .width = p.width, .height = p.height, .pixels = p.pixels };
             }
             if (app.winOf(w)) |win| app.platform.setIcon(win, icons, default);
+        }
+        // Four empty values take the grid away, as in Tk.
+        if (eq(name, "grid") and words.len == 4) {
+            var empty = true;
+            for (words) |word| if ((try it.str(word)).len > 0) {
+                empty = false;
+            };
+            if (empty) {
+                try st.setProp(app.gpa, key, "");
+                return Value.empty;
+            }
         }
         try st.setProp(app.gpa, key, try it.str(try ztcl.value.newList(a, words)));
         return Value.empty;
