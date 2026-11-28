@@ -1,0 +1,39 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* The pages of the Tcl entries of the reference (tools/refdoc.tcl): a
+   breadcrumb, the name in code type, the summary as a lead, the synopsis,
+   the tables, a section for each option, and the examples as sessions of
+   the shell. ztcl and ztk have the same copy of this file, and it uses
+   the color tokens of site.css. */
+.ref-crumbs { font-size: 14px; color: var(--text-3); margin: 0 0 10px; }
+.ref-crumbs a { color: var(--text-2); }
+.prose h1 code, .prose h3 code { font-size: inherit; background: none; padding: 0; border-radius: 0; }
+.prose h1 code { font-weight: 650; letter-spacing: -.02em; }
+.ref-tag { display: inline-block; font: 600 11px/1.6 var(--sans); letter-spacing: .05em; text-transform: uppercase; color: var(--accent-strong); border: 1px solid currentColor; border-radius: 4px; padding: 0 6px; margin-left: 10px; vertical-align: middle; white-space: nowrap; }
+.ref-tag.ref-cap { color: var(--warn); }
+.prose .ref-lead { font-size: 18px; line-height: 1.55; color: var(--text-2); }
+.prose .ref-syn { font-size: 15px; }
+.prose .ref-syn var, .prose td var, .prose h3 var { font-style: normal; color: var(--tok-var); }
+.prose td > p { margin: 8px 0 0; }
+.prose td .table { margin: 10px 0 0; }
+.ref-opt { border-top: 1px solid var(--line); margin-top: 28px; }
+.ref-opt h3 { margin-top: 20px; scroll-margin-top: 76px; }
+.prose .ref-opt .ref-lead { font-size: 16px; }
+.ref-p { color: var(--text-3); user-select: none; }
+.ref-c { color: var(--tok-com); }
+.ref-err { color: var(--tok-num); }
+.ref-ec { color: var(--text-3); }
+.ref-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 20px; margin: 0 0 16px; }
+.ref-facts dt { font-weight: 600; }
+.ref-facts dd { margin: 0; }
+.ref-see { columns: 2; }
+@media (max-width: 640px) {
+  .prose h1 code { font-size: 28px; }
+  .ref-facts { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .ref-facts dd { margin-bottom: 8px; }
+  .ref-see { columns: 1; }
+}
+.ref-subs td:first-child code { white-space: nowrap; }
+/* A command of an example on a page with a shell: a click runs it. */
+.prose .ref-ex .ref-run { cursor: pointer; border-radius: 4px; }
+.prose .ref-ex .ref-run:hover, .prose .ref-ex .ref-run:focus-visible { background: var(--accent-soft); outline: none; }
+.prose .ref-opts td code, .prose .ref-subs td code, .prose .ref-args td var { overflow-wrap: normal; white-space: nowrap; }

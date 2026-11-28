@@ -18,6 +18,8 @@ pack .card.go .card.off -side left -padx 4 -pady 8
 ```
 
 
+The [reference of button](../reference/button.tcl) has each option and each widget command of `button`, with examples.
+
 <!-- more: The details of button -->
 
 - `button` has `invoke`, `flash`, `-command`, `-state`, and `-default`. A button is a `Button` in CSS.

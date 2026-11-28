@@ -11,6 +11,7 @@ on:
       - "SECURITY.md"
       - "docs/**"
       - "tools/build-docs.py"
+      - "tools/refdoc.tcl"
       - "tools/docs-requirements.txt"
       - ".github/workflows/docs.yml"
       - "src/**"
@@ -40,7 +41,8 @@ jobs:
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
         with:
           version: "0.17.0"
-      - run: zig build wasm -Dbackends=headless -Dvulkan=false
+      # tools/refdoc.tcl renders the reference pages on the ztk program.
+      - run: zig build install wasm -Dbackends=headless -Dvulkan=false
       - run: python tools/build-docs.py site --live zig-out/web
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
