@@ -32,7 +32,7 @@ pub const specs = [_]Spec{
     .{ .name = "-bg", .type = .synonym, .target = "-background" },
     .{ .name = "-colormap", .db_name = "colormap", .db_class = "Colormap", .type = .string, .allow_empty = true, .create_only = true },
     .{ .name = "-container", .db_name = "container", .db_class = "Container", .type = .boolean, .default = "0", .create_only = true },
-    .{ .name = "-cursor", .db_name = "cursor", .db_class = "Cursor", .type = .string, .allow_empty = true },
+    .{ .name = "-cursor", .db_name = "cursor", .db_class = "Cursor", .type = .cursor, .allow_empty = true },
     .{ .name = "-height", .db_name = "height", .db_class = "Height", .type = .pixels, .default = "0" },
     .{ .name = "-highlightbackground", .db_name = "highlightBackground", .db_class = "HighlightBackground", .type = .color, .default = "#d9d9d9" },
     .{ .name = "-highlightcolor", .db_name = "highlightColor", .db_class = "HighlightColor", .type = .color, .default = "#000000" },

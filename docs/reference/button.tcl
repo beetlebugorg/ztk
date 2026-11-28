@@ -17,9 +17,8 @@ command button {
         An option needs its full name or a short form of its own, such as `-bg` for `-background`: `-tex` is an unknown option, in ztk and in Tk 8.6.16.
     }
     returns {PATHNAME.}
-    difference {Each error has `-errorcode NONE` in ztk, where Tk 8.6.16 gives a code such as `TK LOOKUP OPTION` or `TCL LOOKUP INDEX` ([issue 327](https://github.com/beetlebugorg/ztk/issues/327)).}
-    difference {Tk 8.6.16 checks the values of `-cursor`, `-bitmap`, `-overrelief`, and `-font`, and ztk stores each value with no check ([issue 328](https://github.com/beetlebugorg/ztk/issues/328)).}
-    difference {`flash` is an error in ztk, and in Tk 8.6.16 it flashes the button ([issue 329](https://github.com/beetlebugorg/ztk/issues/329)).}
+    difference {`flash` gives an empty result and shows no change in ztk. In Tk 8.6.16 it shows the active and the normal colors in turn before it returns.}
+    difference {The size in a `-font` description can have a fraction, such as `{Helvetica 12.5}`. Tk 8.6.16 needs an integer.}
     see {label checkbutton radiobutton ttk::button {button invoke} {button configure}}
     example {
         button .save -text Save -command {set ::saved 1}
@@ -27,12 +26,12 @@ command button {
         set saved
     } 1
     example {winfo class [button .go -text Go]} Button
-    error {button .x -text a -foo b} {unknown option "-foo"} NONE
+    error {button .x -text a -foo b} {unknown option "-foo"} {TK LOOKUP OPTION -foo}
     error {
         button .twice
         button .twice
-    } {window name "twice" already exists in parent} NONE
-    error {button .no.b} {bad window path name ".no"} NONE -note {The parent .no does not exist.}
+    } {window name "twice" already exists in parent} {TK VALUE WINDOW EXISTS}
+    error {button .no.b} {bad window path name ".no"} {TK LOOKUP WINDOW .no} -note {The parent .no does not exist.}
     error {button} {wrong # args: should be "button pathName ?-option value ...?"} {TCL WRONGARGS}
     option -activebackground {
         value COLOR
@@ -48,7 +47,7 @@ command button {
             button .ab -activebackground #ff0000
             .ab cget -activebackground
         } {#ff0000}
-        error {button .ab2 -activebackground nocolor} {unknown color name "nocolor"} NONE
+        error {button .ab2 -activebackground nocolor} {unknown color name "nocolor"} {TK LOOKUP COLOR nocolor}
     }
     option -activeforeground {
         value COLOR
@@ -64,7 +63,7 @@ command button {
             button .af -activeforeground white
             .af cget -activeforeground
         } white
-        error {button .af2 -activeforeground nocolor} {unknown color name "nocolor"} NONE
+        error {button .af2 -activeforeground nocolor} {unknown color name "nocolor"} {TK LOOKUP COLOR nocolor}
     }
     option -anchor {
         value ANCHOR
@@ -81,7 +80,7 @@ command button {
             button .an -text Go -anchor w
             .an cget -anchor
         } w
-        error {button .an2 -anchor middle} {bad anchor "middle": must be n, ne, e, se, s, sw, w, nw, or center} NONE
+        error {button .an2 -anchor middle} {bad anchor "middle": must be n, ne, e, se, s, sw, w, nw, or center} {TCL LOOKUP INDEX anchor middle}
     }
     option -background {
         value COLOR
@@ -101,7 +100,7 @@ command button {
             button .bg3
             lindex [.bg3 configure -background] 3
         } {#d9d9d9} -note {The default of the option database.}
-        error {button .bg2 -background nocolor} {unknown color name "nocolor"} NONE
+        error {button .bg2 -background nocolor} {unknown color name "nocolor"} {TK LOOKUP COLOR nocolor}
     }
     option -bitmap {
         value BITMAP
@@ -111,9 +110,9 @@ command button {
         dbclass Bitmap
         summary {A bitmap name of Tk to show in place of the text.}
         description {
-            The name of a bitmap of Tk, such as `error` or `info`. ztk stores the value for `cget` and does not check the name.
+            The name of a built-in bitmap of Tk: `error`, `gray12`, `gray25`, `gray50`, `gray75`, `hourglass`, `info`, `questhead`, `question`, or `warning`. A value that starts with `@` names a file. ztk stores the value for `cget` and shows no bitmap.
         }
-        noerrors {ztk stores each value of the option with no check.}
+        error {button .bm2 -bitmap nobitmap} {bitmap "nobitmap" not defined} {TK LOOKUP BITMAP nobitmap}
         example {
             button .bm -bitmap error
             .bm cget -bitmap
@@ -138,7 +137,7 @@ command button {
             button .bd -bd 3
             .bd cget -borderwidth
         } 3
-        error {button .bw2 -borderwidth x} {bad screen distance "x"} NONE
+        error {button .bw2 -borderwidth x} {bad screen distance "x"} {TK VALUE PIXELS}
     }
     option -command {
         value SCRIPT
@@ -183,7 +182,7 @@ command button {
             button .cl -image pic -text Save -compound left
             expr {[winfo reqwidth .cl] > [winfo reqwidth .ci]}
         } 1
-        error {button .co -compound sideways} {bad compound "sideways": must be bottom, center, left, none, right, or top} NONE
+        error {button .co -compound sideways} {bad compound "sideways": must be bottom, center, left, none, right, or top} {TCL LOOKUP INDEX compound sideways}
     }
     option -cursor {
         value CURSOR
@@ -193,9 +192,9 @@ command button {
         dbclass Cursor
         summary {The shape of the pointer over the button.}
         description {
-            A cursor name of Tk, such as `hand2`. An empty value uses the cursor of the parent. ztk stores each name with no check.
+            A cursor name of Tk, such as `hand2`, as the first word of a list. The names are the names of the cursor font of X and the names of Tk on Windows, such as `size_we`, in any case. A value that starts with `@` names a file. An empty value uses the cursor of the parent.
         }
-        noerrors {ztk stores each value of the option with no check.}
+        error {button .cu2 -cursor nocursor} {bad cursor spec "nocursor"} {TK VALUE CURSOR}
         example {
             button .cu -cursor hand2
             .cu cget -cursor
@@ -221,7 +220,7 @@ command button {
             button .de3 -text OK -default active
             expr {[winfo reqwidth .de2] == [winfo reqwidth .de3]}
         } 1
-        error {button .de4 -default maybe} {bad default "maybe": must be active, disabled, or normal} NONE
+        error {button .de4 -default maybe} {bad default "maybe": must be active, disabled, or normal} {TCL LOOKUP INDEX default maybe}
     }
     option -disabledforeground {
         value COLOR
@@ -235,7 +234,7 @@ command button {
             button .df -disabledforeground gray50
             .df cget -disabledforeground
         } gray50
-        error {button .df2 -disabledforeground nocolor} {unknown color name "nocolor"} NONE
+        error {button .df2 -disabledforeground nocolor} {unknown color name "nocolor"} {TK LOOKUP COLOR nocolor}
     }
     option -font {
         value FONT
@@ -245,9 +244,12 @@ command button {
         dbclass Font
         summary {The font of the text.}
         description {
-            A font name, such as `TkDefaultFont`, or a font description, such as `{Helvetica 12 bold}`. A larger font makes a larger button. ztk does not check the description: a font that does not exist falls back to a font of the system.
+            A font name, such as `TkDefaultFont`, or a font description, such as `{Helvetica 12 bold}` or `{-family Helvetica -size 12}`. A larger font makes a larger button. A family that does not exist falls back to a font of the system.
         }
-        noerrors {ztk stores each value of the option with no check.}
+        error {button .fo4 -font {Helvetica 12 weird}} {unknown font style "weird"} {TK LOOKUP FONT_STYLE weird}
+        error {button .fo5 -font {Helvetica big}} {expected integer but got "big"} {TCL VALUE NUMBER}
+        error {button .fo6 -font {-family Helvetica -weight heavy}} {bad -weight value "heavy": must be normal, or bold} {TK LOOKUP -weight heavy}
+        error {button .fo7 -font {}} {font "" doesn't exist} {TK LOOKUP FONT {}}
         example {
             button .fo -text Save
             button .fo2 -text Save -font {Helvetica 24}
@@ -270,7 +272,7 @@ command button {
             button .fg -fg #123456
             .fg cget -foreground
         } {#123456}
-        error {button .fg2 -foreground nocolor} {unknown color name "nocolor"} NONE
+        error {button .fg2 -foreground nocolor} {unknown color name "nocolor"} {TK LOOKUP COLOR nocolor}
     }
     option -height {
         value LINES
@@ -287,7 +289,7 @@ command button {
             button .he3 -text Save -height 3
             expr {[winfo reqheight .he3] > 2 * [winfo reqheight .he]}
         } 1
-        error {button .he2 -height x} {expected integer but got "x"} NONE
+        error {button .he2 -height x} {expected integer but got "x"} {TCL VALUE NUMBER}
     }
     option -highlightbackground {
         value COLOR
@@ -301,7 +303,7 @@ command button {
             button .hb -highlightbackground white
             .hb cget -highlightbackground
         } white
-        error {button .hb2 -highlightbackground nocolor} {unknown color name "nocolor"} NONE
+        error {button .hb2 -highlightbackground nocolor} {unknown color name "nocolor"} {TK LOOKUP COLOR nocolor}
     }
     option -highlightcolor {
         value COLOR
@@ -315,7 +317,7 @@ command button {
             button .hc -highlightcolor blue
             .hc cget -highlightcolor
         } blue
-        error {button .hc2 -highlightcolor nocolor} {unknown color name "nocolor"} NONE
+        error {button .hc2 -highlightcolor nocolor} {unknown color name "nocolor"} {TK LOOKUP COLOR nocolor}
     }
     option -highlightthickness {
         value DISTANCE
@@ -332,7 +334,7 @@ command button {
             button .ht5 -text Save -highlightthickness 5
             expr {[winfo reqwidth .ht5] == [winfo reqwidth .ht]}
         } 1
-        error {button .ht2 -highlightthickness x} {bad screen distance "x"} NONE
+        error {button .ht2 -highlightthickness x} {bad screen distance "x"} {TK VALUE PIXELS}
     }
     option -image {
         value IMAGE
@@ -350,7 +352,7 @@ command button {
             button .im2 -image icon
             expr {[winfo reqwidth .im] == [winfo reqwidth .im2]}
         } 1 -note {The text does not show, so the two buttons have the same width.}
-        error {button .im3 -image noimage} {image "noimage" doesn't exist} NONE
+        error {button .im3 -image noimage} {image "noimage" doesn't exist} {TK LOOKUP IMAGE noimage}
     }
     option -justify {
         value SIDE
@@ -367,7 +369,7 @@ command button {
             button .ju -text "one\ntwo" -justify left
             .ju cget -justify
         } left
-        error {button .ju2 -justify middle} {bad justification "middle": must be left, right, or center} NONE
+        error {button .ju2 -justify middle} {bad justification "middle": must be left, right, or center} {TCL LOOKUP INDEX justification middle}
     }
     option -overrelief {
         value RELIEF
@@ -377,9 +379,9 @@ command button {
         dbclass OverRelief
         summary {The relief under the pointer, in the look of Tk on X11.}
         description {
-            The relief of the button while the pointer is over it. An empty value keeps `-relief`. The modern theme stores the value with no effect, and ztk stores each value with no check.
+            The relief of the button while the pointer is over it. An empty value keeps `-relief`. The modern theme stores the value with no effect.
         }
-        noerrors {ztk stores each value of the option with no check.}
+        error {button .or2 -overrelief bumpy} {bad relief "bumpy": must be flat, groove, raised, ridge, solid, or sunken} {TCL LOOKUP INDEX relief bumpy}
         example {
             button .or -overrelief raised
             .or cget -overrelief
@@ -400,7 +402,7 @@ command button {
             button .px20 -text Save -padx 20
             expr {[winfo reqwidth .px20] > [winfo reqwidth .px]}
         } 1
-        error {button .px2 -padx x} {bad screen distance "x"} NONE
+        error {button .px2 -padx x} {bad screen distance "x"} {TK VALUE PIXELS}
     }
     option -pady {
         value DISTANCE
@@ -417,7 +419,7 @@ command button {
             button .py10 -text Save -pady 10
             expr {[winfo reqheight .py10] > [winfo reqheight .py]}
         } 1
-        error {button .py2 -pady x} {bad screen distance "x"} NONE
+        error {button .py2 -pady x} {bad screen distance "x"} {TK VALUE PIXELS}
     }
     option -relief {
         value RELIEF
@@ -434,7 +436,7 @@ command button {
             button .re -text Go -relief groove
             .re cget -relief
         } groove
-        error {button .re2 -relief bumpy} {bad relief "bumpy": must be flat, groove, raised, ridge, solid, or sunken} NONE
+        error {button .re2 -relief bumpy} {bad relief "bumpy": must be flat, groove, raised, ridge, solid, or sunken} {TCL LOOKUP INDEX relief bumpy}
     }
     option -repeatdelay {
         value MS
@@ -450,7 +452,7 @@ command button {
             button .rd -repeatdelay 400
             .rd cget -repeatdelay
         } 400
-        error {button .rd2 -repeatdelay x} {expected integer but got "x"} NONE
+        error {button .rd2 -repeatdelay x} {expected integer but got "x"} {TCL VALUE NUMBER}
     }
     option -repeatinterval {
         value MS
@@ -466,7 +468,7 @@ command button {
             button .ri -repeatinterval 100
             .ri cget -repeatinterval
         } 100
-        error {button .ri2 -repeatinterval x} {expected integer but got "x"} NONE
+        error {button .ri2 -repeatinterval x} {expected integer but got "x"} {TCL VALUE NUMBER}
     }
     option -state {
         value STATE
@@ -490,7 +492,7 @@ command button {
             .st configure -state normal
             .st invoke
         } 1
-        error {button .st2 -state busy} {bad state "busy": must be active, disabled, or normal} NONE
+        error {button .st2 -state busy} {bad state "busy": must be active, disabled, or normal} {TCL LOOKUP INDEX state busy}
     }
     option -takefocus {
         value VALUE
@@ -561,7 +563,7 @@ command button {
             button .un -text Save -underline 0
             .un cget -underline
         } 0
-        error {button .un2 -underline x} {expected integer but got "x"} NONE
+        error {button .un2 -underline x} {expected integer but got "x"} {TCL VALUE NUMBER}
     }
     option -width {
         value CHARS
@@ -578,7 +580,7 @@ command button {
             button .wi10 -text Hi -width 10
             expr {[winfo reqwidth .wi10] > [winfo reqwidth .wi]}
         } 1
-        error {button .wi2 -width x} {expected integer but got "x"} NONE
+        error {button .wi2 -width x} {expected integer but got "x"} {TCL VALUE NUMBER}
     }
     option -wraplength {
         value DISTANCE
@@ -595,7 +597,7 @@ command button {
             button .wr60 -text "one two three four five six" -wraplength 60
             expr {[winfo reqheight .wr60] > [winfo reqheight .wr] && [winfo reqwidth .wr60] < [winfo reqwidth .wr]}
         } 1
-        error {button .wr2 -wraplength x} {bad screen distance "x"} NONE
+        error {button .wr2 -wraplength x} {bad screen distance "x"} {TK VALUE PIXELS}
     }
 
     subcommand invoke {
@@ -614,22 +616,22 @@ command button {
             button .iv2 -command {list a b} -state disabled
             .iv2 invoke
         } {}
-        error {button .iv3; .iv3 invoke x} {wrong # args: should be ".iv3 invoke"} NONE
+        error {button .iv3; .iv3 invoke x} {wrong # args: should be ".iv3 invoke"} {TCL WRONGARGS}
     }
 
     subcommand flash {
         synopsis {PATHNAME flash}
-        summary {Flashes the button between its active and normal colors: not in ztk yet.}
+        summary {Flashes the button between its active and normal colors.}
         description {
-            In Tk, `flash` shows the button a few times in its active and its normal colors. In ztk the command is an error.
+            In Tk, `flash` shows the button a few times in its active and its normal colors and then returns. In ztk the command shows no change. It runs no script.
         }
-        returns {An error in ztk.}
+        returns {An empty string.}
         see {{button invoke}}
         example {
             button .fl
-            catch {.fl flash}
-        } 1
-        error {button .fl2; .fl2 flash} {flash is not supported in this stage} NONE
+            .fl flash
+        } {}
+        error {button .fl2; .fl2 flash now} {wrong # args: should be ".fl2 flash"} {TCL WRONGARGS}
     }
 
     subcommand cget {
@@ -648,8 +650,8 @@ command button {
             button .cg2 -fg red
             .cg2 cget -fg
         } red
-        error {button .cg3; .cg3 cget -tex} {unknown option "-tex"} NONE
-        error {button .cg4; .cg4 cget} {wrong # args: should be ".cg4 cget option"} NONE
+        error {button .cg3; .cg3 cget -tex} {unknown option "-tex"} {TK LOOKUP OPTION -tex}
+        error {button .cg4; .cg4 cget} {wrong # args: should be ".cg4 cget option"} {TCL WRONGARGS}
     }
 
     subcommand configure {
@@ -677,7 +679,7 @@ command button {
             button .cf3
             llength [.cf3 configure]
         } 35
-        error {button .cf4; .cf4 configure -text a -width} {value for "-width" missing} NONE
-        error {button .cf5; .cf5 configure -bogus 1} {unknown option "-bogus"} NONE
+        error {button .cf4; .cf4 configure -text a -width} {value for "-width" missing} {TK VALUE_MISSING}
+        error {button .cf5; .cf5 configure -bogus 1} {unknown option "-bogus"} {TK LOOKUP OPTION -bogus}
     }
 }

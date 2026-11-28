@@ -54,7 +54,7 @@ pub const specs = [_]Spec{
     .{ .name = "-bg", .type = .synonym, .target = "-background" },
     .{ .name = "-blockcursor", .db_name = "blockCursor", .db_class = "BlockCursor", .type = .boolean, .default = "0" },
     .{ .name = "-borderwidth", .db_name = "borderWidth", .db_class = "BorderWidth", .type = .pixels, .default = "1", .from_style = true, .style_prop = .border_width },
-    .{ .name = "-cursor", .db_name = "cursor", .db_class = "Cursor", .type = .string, .default = "xterm", .allow_empty = true },
+    .{ .name = "-cursor", .db_name = "cursor", .db_class = "Cursor", .type = .cursor, .default = "xterm", .allow_empty = true },
     .{ .name = "-endline", .type = .int, .allow_empty = true },
     .{ .name = "-exportselection", .db_name = "exportSelection", .db_class = "ExportSelection", .type = .boolean, .default = "1" },
     .{ .name = "-fg", .type = .synonym, .target = "-foreground" },

@@ -46,7 +46,7 @@ pub const specs = [_]Spec{
     .{ .name = "-bd", .type = .synonym, .target = "-borderwidth" },
     .{ .name = "-bg", .type = .synonym, .target = "-background" },
     .{ .name = "-borderwidth", .db_name = "borderWidth", .db_class = "BorderWidth", .type = .pixels, .default = "1", .from_style = true, .style_prop = .border_width },
-    .{ .name = "-cursor", .db_name = "cursor", .db_class = "Cursor", .type = .string, .default = "arrow" },
+    .{ .name = "-cursor", .db_name = "cursor", .db_class = "Cursor", .type = .cursor, .default = "arrow" },
     .{ .name = "-disabledforeground", .db_name = "disabledForeground", .db_class = "DisabledForeground", .type = .color, .default = "#a3a3a3" },
     .{ .name = "-fg", .type = .synonym, .target = "-foreground" },
     .{ .name = "-font", .db_name = "font", .db_class = "Font", .type = .font, .default = "TkMenuFont" },

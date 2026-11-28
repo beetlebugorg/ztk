@@ -14,6 +14,7 @@ const ztcl = @import("ztcl");
 const App = @import("app.zig").App;
 const font_mod = @import("text/font.zig");
 const paint = @import("paint.zig");
+const options = @import("options.zig");
 const Value = ztcl.Value;
 const FontDesc = font_mod.FontDesc;
 
@@ -105,24 +106,100 @@ fn parseOptions(app: *App, text: []const u8) ?Attrs {
 
 const option_names = "-family, -size, -weight, -slant, -underline, or -overstrike";
 
+const attr_names = [_][]const u8{ "-family", "-size", "-weight", "-slant", "-underline", "-overstrike" };
+
 fn setAttr(app: *App, a: *Attrs, name: []const u8, v: Value) ztcl.Error!void {
     const it = app.it;
     const s = try it.str(v);
+    try checkAttr(it, name, s);
     if (eq(name, "-family")) {
         a.family = app.named_fonts.keep(app.gpa, s) catch return it.memError();
     } else if (eq(name, "-size")) {
-        const n = std.fmt.parseFloat(f64, std.mem.trim(u8, s, " ")) catch return it.fail("expected integer but got \"{s}\"", .{s});
-        if (!std.math.isFinite(n) or @abs(n) > 10000) return it.fail("expected integer but got \"{s}\"", .{s});
-        a.size = n;
+        a.size = sizeOf(s).?;
     } else if (eq(name, "-weight")) {
-        if (eq(s, "bold")) a.bold = true else if (eq(s, "normal")) a.bold = false else return it.fail("bad -weight value \"{s}\": must be normal, or bold", .{s});
+        a.bold = eq(s, "bold");
     } else if (eq(name, "-slant")) {
-        if (eq(s, "italic")) a.italic = true else if (eq(s, "roman")) a.italic = false else return it.fail("bad -slant value \"{s}\": must be roman, or italic", .{s});
+        a.italic = eq(s, "italic");
     } else if (eq(name, "-underline")) {
-        a.underline = @import("options.zig").parseBool(s) orelse return it.fail("expected boolean value but got \"{s}\"", .{s});
+        a.underline = options.parseBool(s).?;
     } else if (eq(name, "-overstrike")) {
-        a.overstrike = @import("options.zig").parseBool(s) orelse return it.fail("expected boolean value but got \"{s}\"", .{s});
-    } else return it.fail("bad option \"{s}\": must be {s}", .{ name, option_names });
+        a.overstrike = options.parseBool(s).?;
+    }
+}
+
+/// The size of a font in Tk units, or null for a bad size. A fraction is
+/// allowed, as before in ztk, where Tk 8.6 needs an integer.
+fn sizeOf(s: []const u8) ?f64 {
+    const t = std.mem.trim(u8, s, " \t\n");
+    const n = std.fmt.parseFloat(f64, t) catch blk: {
+        const i = std.fmt.parseInt(i64, t, 0) catch return null;
+        break :blk @as(f64, @floatFromInt(i));
+    };
+    if (!std.math.isFinite(n) or @abs(n) > 10000) return null;
+    return n;
+}
+
+/// Checks one attribute of a font, with the message and the code of `wish`.
+fn checkAttr(it: *ztcl.Interp, name: []const u8, s: []const u8) ztcl.Error!void {
+    if (eq(name, "-family")) return;
+    if (eq(name, "-size")) {
+        if (sizeOf(s) == null) return options.failCode(it, "TCL VALUE NUMBER", null, "expected integer but got \"{s}\"", .{s});
+    } else if (eq(name, "-weight")) {
+        if (!eq(s, "bold") and !eq(s, "normal")) return options.failCode(it, "TK LOOKUP -weight", s, "bad -weight value \"{s}\": must be normal, or bold", .{s});
+    } else if (eq(name, "-slant")) {
+        if (!eq(s, "italic") and !eq(s, "roman")) return options.failCode(it, "TK LOOKUP -slant", s, "bad -slant value \"{s}\": must be roman, or italic", .{s});
+    } else if (eq(name, "-underline") or eq(name, "-overstrike")) {
+        if (options.parseBool(s) == null) return options.failCode(it, "TCL VALUE NUMBER", null, "expected boolean value but got \"{s}\"", .{s});
+    } else return badAttr(it, name);
+}
+
+fn badAttr(it: *ztcl.Interp, name: []const u8) ztcl.Error {
+    return options.failCode(it, "TCL LOOKUP INDEX option", name, "bad option \"{s}\": must be {s}", .{ name, option_names });
+}
+
+const font_styles = [_][]const u8{ "normal", "bold", "roman", "italic", "underline", "overstrike" };
+
+fn failFont(it: *ztcl.Interp, text: []const u8) ztcl.Error {
+    return options.failCode(it, "TK LOOKUP FONT", text, "font \"{s}\" doesn't exist", .{text});
+}
+
+/// Checks the value of a `-font` option, with the messages and the codes
+/// of `wish`: a named font, a list of `-option value` pairs, a name of X
+/// (one word with three dashes or more), or a list of a family, a size,
+/// and styles.
+pub fn check(app: *App, text: []const u8) ztcl.Error!void {
+    const it = app.it;
+    if (app.named_fonts.fonts.contains(text)) return;
+    const words = it.list(.{ .str = text }) catch |e| {
+        if (e != error.TclError) return e;
+        return failFont(it, text);
+    };
+    if (words.len == 0) return failFont(it, text);
+    if (text[0] == '-') {
+        if (words.len == 1 and std.mem.count(u8, text, "-") >= 3) return;
+        var i: usize = 0;
+        while (i < words.len) : (i += 2) {
+            const name = try it.str(words[i]);
+            for (attr_names) |n| {
+                if (eq(n, name)) break;
+            } else return badAttr(it, name);
+            if (i + 1 >= words.len) return options.failCode(it, "TK FONT NO_ATTRIBUTE", null, "value for \"{s}\" option missing", .{name});
+            try checkAttr(it, name, try it.str(words[i + 1]));
+        }
+        return;
+    }
+    if (words.len >= 2) {
+        const s = try it.str(words[1]);
+        if (sizeOf(s) == null) return options.failCode(it, "TCL VALUE NUMBER", null, "expected integer but got \"{s}\"", .{s});
+    }
+    if (words.len > 2) for (words[2..]) |wv| {
+        for (try it.list(wv)) |sv| {
+            const s = try it.str(sv);
+            for (font_styles) |f| {
+                if (eq(f, s)) break;
+            } else return options.failCode(it, "TK LOOKUP FONT_STYLE", s, "unknown font style \"{s}\"", .{s});
+        }
+    };
 }
 
 /// The font of the root, for a font value with no widget.

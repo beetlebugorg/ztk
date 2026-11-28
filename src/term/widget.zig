@@ -78,7 +78,7 @@ pub const specs = [_]Spec{
     .{ .name = "-bg", .type = .synonym, .target = "-background" },
     .{ .name = "-borderwidth", .db_name = "borderWidth", .db_class = "BorderWidth", .type = .pixels, .default = "0", .from_style = true, .style_prop = .border_width },
     .{ .name = "-command", .db_name = "command", .db_class = "Command", .type = .string, .allow_empty = true },
-    .{ .name = "-cursor", .db_name = "cursor", .db_class = "Cursor", .type = .string, .default = "xterm", .allow_empty = true },
+    .{ .name = "-cursor", .db_name = "cursor", .db_class = "Cursor", .type = .cursor, .default = "xterm", .allow_empty = true },
     .{ .name = "-cwd", .db_name = "cwd", .db_class = "Cwd", .type = .string, .allow_empty = true },
     .{ .name = "-exitcommand", .db_name = "exitCommand", .db_class = "Command", .type = .script, .allow_empty = true },
     .{ .name = "-fg", .type = .synonym, .target = "-foreground" },

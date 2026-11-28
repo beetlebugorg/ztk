@@ -36,6 +36,11 @@ pub const Type = enum {
     double,
     /// The name of an image of `image create`, as the first word of a list.
     image,
+    /// A cursor of Tk: a name of the cursor font of X or of Windows as the
+    /// first word of a list, or `@` and a file.
+    cursor,
+    /// A bitmap of Tk: one of the built-in names, or `@` and a file.
+    bitmap,
 };
 
 pub const Spec = struct {
@@ -220,52 +225,68 @@ pub fn parseValue(w: *const Widget, it: *ztcl.Interp, spec: Spec, text: []const 
     norm.* = text;
     if (text.len == 0 and spec.allow_empty and spec.type != .synonym) return .{ .text = text };
     switch (spec.type) {
-        .string, .font, .variable, .script => return .{ .text = text },
+        .string, .variable, .script => return .{ .text = text },
+        .font => {
+            try @import("fontcmd.zig").check(w.app, text);
+            return .{ .text = text };
+        },
+        .cursor => {
+            try checkCursor(it, text);
+            return .{ .text = text };
+        },
+        .bitmap => {
+            if (matchExact(text, &bitmap_names) == null and !std.mem.startsWith(u8, text, "@"))
+                return failCode(it, "TK LOOKUP BITMAP", text, "bitmap \"{s}\" not defined", .{text});
+            return .{ .text = text };
+        },
         .synonym => return .none,
         .int => {
             const v = std.fmt.parseInt(i64, std.mem.trim(u8, text, " "), 0) catch
-                return it.fail("expected integer but got \"{s}\"", .{text});
+                return failCode(it, "TCL VALUE NUMBER", null, "expected integer but got \"{s}\"", .{text});
             return .{ .int = v };
         },
         .pixels => {
-            const v = parsePixels(text, w.app.scaling) orelse return it.fail("bad screen distance \"{s}\"", .{text});
+            const v = parsePixels(text, w.app.scaling) orelse return failCode(it, "TK VALUE PIXELS", null, "bad screen distance \"{s}\"", .{text});
             norm.* = try std.fmt.allocPrint(it.alloc(), "{d}", .{v});
             return .{ .pixels = v };
         },
         .color => {
             if (text.len == 0 and spec.allow_empty) return .{ .text = text };
             if (geom.Color.parseTk(text)) |c| return .{ .color = c };
-            if (text.len > 0 and text[0] == '#') return it.fail("invalid color name \"{s}\"", .{text});
-            return it.fail("unknown color name \"{s}\"", .{text});
+            if (text.len > 0 and text[0] == '#') return failCode(it, "TK VALUE COLOR", null, "invalid color name \"{s}\"", .{text});
+            return failCode(it, "TK LOOKUP COLOR", text, "unknown color name \"{s}\"", .{text});
         },
         .boolean => {
-            const b = parseBool(text) orelse return it.fail("expected boolean value but got \"{s}\"", .{text});
+            const b = parseBool(text) orelse return failCode(it, "TCL VALUE NUMBER", null, "expected boolean value but got \"{s}\"", .{text});
             return .{ .boolean = b };
         },
         .anchor => {
             const i = anchorIndex(text) orelse
-                return it.fail("{s} anchor \"{s}\": must be n, ne, e, se, s, sw, w, nw, or center", .{ badWord(text, &.{ "n", "ne", "e", "se", "s", "sw", "w", "nw", "center" }), text });
+                return failCode(it, "TCL LOOKUP INDEX anchor", text, "{s} anchor \"{s}\": must be n, ne, e, se, s, sw, w, nw, or center", .{ badWord(text, &.{ "n", "ne", "e", "se", "s", "sw", "w", "nw", "center" }), text });
             return .{ .anchor = @enumFromInt(i) };
         },
         .relief => {
             const i = matchWord(text, &relief_words) orelse
-                return it.fail("{s} relief \"{s}\": must be flat, groove, raised, ridge, solid, or sunken", .{ badWord(text, &relief_words), text });
+                return failCode(it, "TCL LOOKUP INDEX relief", text, "{s} relief \"{s}\": must be flat, groove, raised, ridge, solid, or sunken", .{ badWord(text, &relief_words), text });
             return .{ .relief = @enumFromInt(i) };
         },
         .justify => {
             const i = matchWord(text, &justify_words) orelse
-                return it.fail("{s} justification \"{s}\": must be left, right, or center", .{ badWord(text, &justify_words), text });
+                return failCode(it, "TCL LOOKUP INDEX justification", text, "{s} justification \"{s}\": must be left, right, or center", .{ badWord(text, &justify_words), text });
             return .{ .justify = @enumFromInt(if (i == 1) 2 else if (i == 2) 1 else i) };
         },
         .word => {
-            const i = matchWord(text, spec.words) orelse
-                return it.fail("{s} {s} \"{s}\": must be {s}", .{ badWord(text, spec.words), if (spec.word_name.len > 0) spec.word_name else spec.name[1..], text, try joinWords(it, spec.words) });
+            const i = matchWord(text, spec.words) orelse {
+                const what = if (spec.word_name.len > 0) spec.word_name else spec.name[1..];
+                const code = try std.fmt.allocPrint(it.alloc(), "TCL LOOKUP INDEX {s}", .{what});
+                return failCode(it, code, text, "{s} {s} \"{s}\": must be {s}", .{ badWord(text, spec.words), what, text, try joinWords(it, spec.words) });
+            };
             return .{ .word = @intCast(i) };
         },
         .double => {
             const v = std.fmt.parseFloat(f64, std.mem.trim(u8, text, " ")) catch
-                return it.fail("expected floating-point number but got \"{s}\"", .{text});
-            if (std.math.isNan(v) or std.math.isInf(v)) return it.fail("expected floating-point number but got \"{s}\"", .{text});
+                return failCode(it, "TCL VALUE NUMBER", null, "expected floating-point number but got \"{s}\"", .{text});
+            if (std.math.isNan(v) or std.math.isInf(v)) return failCode(it, "TCL VALUE NUMBER", null, "expected floating-point number but got \"{s}\"", .{text});
             // A `ttk` widget keeps the text of a double as the script gave it.
             if (!w.class.ttk) norm.* = try formatDouble(it.alloc(), v);
             return .{ .double = v };
@@ -273,15 +294,66 @@ pub fn parseValue(w: *const Widget, it: *ztcl.Interp, spec: Spec, text: []const 
         .image => {
             const first = std.mem.trim(u8, text, " ");
             const end = std.mem.indexOfScalar(u8, first, ' ') orelse first.len;
-            if (w.app.images.find(first[0..end]) == null) return it.fail("image \"{s}\" doesn't exist", .{first[0..end]});
+            if (w.app.images.find(first[0..end]) == null) return failCode(it, "TK LOOKUP IMAGE", first[0..end], "image \"{s}\" doesn't exist", .{first[0..end]});
             return .{ .text = text };
         },
         .state => {
             const i = matchWord(text, spec.words) orelse
-                return it.fail("{s} state \"{s}\": must be {s}", .{ badWord(text, spec.words), text, try joinWords(it, spec.words) });
+                return failCode(it, "TCL LOOKUP INDEX state", text, "{s} state \"{s}\": must be {s}", .{ badWord(text, spec.words), text, try joinWords(it, spec.words) });
             return .{ .word = @intCast(i) };
         },
     }
+}
+
+/// An error with the message and the `-errorcode` of `wish`. The code
+/// is the words of `code`, then `word` as one more list element when it
+/// is not null, as Tk adds the bad value.
+pub fn failCode(it: *ztcl.Interp, code: []const u8, word: ?[]const u8, comptime fmt: []const u8, args: anytype) ztcl.Error {
+    const last = word orelse return it.failCode(code, fmt, args);
+    const a = it.alloc();
+    var out: std.ArrayList(u8) = .empty;
+    try out.appendSlice(a, code);
+    try out.append(a, ' ');
+    try ztcl.value.appendElement(a, &out, last, false);
+    return it.failCode(out.items, fmt, args);
+}
+
+/// The built-in bitmaps of Tk.
+const bitmap_names = [_][]const u8{ "error", "gray75", "gray50", "gray25", "gray12", "hourglass", "info", "questhead", "question", "warning" };
+
+/// The cursors of Tk: the cursor font of X, then the names of Windows.
+const cursor_names = [_][]const u8{
+    "X_cursor",           "arrow",               "based_arrow_down", "based_arrow_up", "boat",              "bogosity",
+    "bottom_left_corner", "bottom_right_corner", "bottom_side",      "bottom_tee",     "box_spiral",        "center_ptr",
+    "circle",             "clock",               "coffee_mug",       "cross",          "cross_reverse",     "crosshair",
+    "diamond_cross",      "dot",                 "dotbox",           "double_arrow",   "draft_large",       "draft_small",
+    "draped_box",         "exchange",            "fleur",            "gobbler",        "gumby",             "hand1",
+    "hand2",              "heart",               "icon",             "iron_cross",     "left_ptr",          "left_side",
+    "left_tee",           "leftbutton",          "ll_angle",         "lr_angle",       "man",               "middlebutton",
+    "mouse",              "pencil",              "pirate",           "plus",           "question_arrow",    "right_ptr",
+    "right_side",         "right_tee",           "rightbutton",      "rtl_logo",       "sailboat",          "sb_down_arrow",
+    "sb_h_double_arrow",  "sb_left_arrow",       "sb_right_arrow",   "sb_up_arrow",    "sb_v_double_arrow", "shuttle",
+    "sizing",             "spider",              "spraycan",         "star",           "target",            "tcross",
+    "top_left_arrow",     "top_left_corner",     "top_right_corner", "top_side",       "top_tee",           "trek",
+    "ul_angle",           "umbrella",            "ur_angle",         "watch",          "xterm",             "none",
+    "ibeam",              "no",                  "size",             "size_ne_sw",     "size_ns",           "size_nw_se",
+    "size_we",            "starting",            "uparrow",          "wait",
+};
+
+/// Checks a `-cursor` value as Tk on Windows does: the first word of the
+/// list is a cursor name in any case, or `@` and a file. Tk on Windows
+/// checks no color after the name.
+fn checkCursor(it: *ztcl.Interp, text: []const u8) ztcl.Error!void {
+    const words = it.list(.{ .str = text }) catch |e| {
+        if (e != error.TclError) return e;
+        return failCode(it, "TK VALUE CURSOR", null, "bad cursor spec \"{s}\"", .{text});
+    };
+    if (words.len > 0) {
+        const name = try it.str(words[0]);
+        if (std.mem.startsWith(u8, name, "@")) return;
+        for (cursor_names) |n| if (std.ascii.eqlIgnoreCase(n, name)) return;
+    }
+    return failCode(it, "TK VALUE CURSOR", null, "bad cursor spec \"{s}\"", .{text});
 }
 
 fn matchExact(text: []const u8, words: []const []const u8) ?usize {
@@ -304,7 +376,7 @@ pub fn find(it: *ztcl.Interp, specs: []const Spec, name: []const u8) ztcl.Error!
         }
     }
     if (found) |f| if (!ambiguous) return f;
-    return it.fail("unknown option \"{s}\"", .{name});
+    return failCode(it, "TK LOOKUP OPTION", name, "unknown option \"{s}\"", .{name});
 }
 
 /// The index that a synonym points to. A real option returns itself.
@@ -441,7 +513,7 @@ pub fn applyEx(w: *Widget, it: *ztcl.Interp, pairs: []const ztcl.Value, creating
     while (k < pairs.len) : (k += 2) {
         const name = try it.str(pairs[k]);
         const i = try resolve(it, specs, try find(it, specs, name));
-        if (k + 1 >= pairs.len) return it.fail("value for \"{s}\" missing", .{name});
+        if (k + 1 >= pairs.len) return failCode(it, "TK VALUE_MISSING", null, "value for \"{s}\" missing", .{name});
         if (specs[i].create_only and !creating) {
             if (w.class.ttk) return it.fail("attempt to change read-only option", .{});
             return it.fail("can't modify {s} option after widget is created", .{specs[i].name});
