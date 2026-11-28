@@ -66,10 +66,14 @@ proc app::box {w} {
     return {}
 }
 
-# Clicks a point of a toplevel with button 1 (or another button).
+# Clicks a point of a toplevel with button 1 (or another button). An
+# update after each event runs its bindings and its frame, as the time
+# between the events of a person does.
 proc app::clickAt {top x y {button 1}} {
     ztk::inject $top motion $x $y
+    update
     ztk::inject $top press $button $x $y
+    update
     ztk::inject $top release $button $x $y
     settle
 }
@@ -97,14 +101,23 @@ proc app::click {w {dx ""} {dy ""}} {
     clickAt [winfo toplevel $w] [expr {$x + $dx}] [expr {$y + $dy}]
 }
 
-# Clicks a character of a text widget.
+# Clicks a character of a text widget. The pointer goes to the
+# character first, and the box of the character is read again: an
+# <Enter> binding of a tag can change the layout of the text, and the
+# lines above the window can get their real heights then, so the
+# character moves (ztk#252).
 proc app::clickText {w index} {
-    $w see $index
-    update
-    lassign [$w bbox $index] cx cy cw ch
-    if {$cx eq ""} {
-        check 0 "click $w at $index: the index is not visible"
-        return
+    foreach round {1 2} {
+        $w see $index
+        update
+        lassign [$w bbox $index] cx cy cw ch
+        if {$cx eq ""} {
+            check 0 "click $w at $index: the index is not visible"
+            return
+        }
+        lassign [box $w] x y
+        ztk::inject [winfo toplevel $w] motion [expr {$x + $cx + $cw / 2}] [expr {$y + $cy + $ch / 2}]
+        update
     }
     click $w [expr {$cx + $cw / 2}] [expr {$cy + $ch / 2}]
 }

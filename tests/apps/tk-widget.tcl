@@ -29,7 +29,7 @@ foreach tag [.t tag names] {
 app::check [expr {[llength $names] >= 60}] "the list has [llength $names] demos"
 # The demos with a known gap, and the issue of each. A known demo reports
 # "known:" in place of a check, so the run shows a regression only.
-set known {textpeer 249 dialog1 250 items 251 hscale 252 vscale 252}
+set known {textpeer 249 dialog1 250 items 251}
 app::answerDialogs
 foreach name $names {
     chan puts stdout "demo: $name"
