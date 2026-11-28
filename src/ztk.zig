@@ -101,6 +101,8 @@ test {
     _ = @import("textinput.zig");
     _ = @import("peres.zig");
     _ = @import("tests/peres.zig");
+    _ = @import("pesign.zig");
+    _ = @import("tests/pesign.zig");
     _ = @import("tests/tree.zig");
     _ = @import("tests/options.zig");
     _ = @import("tests/loop.zig");

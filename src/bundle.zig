@@ -33,6 +33,7 @@ const Capability = ztcl.interp.Capability;
 const TclVersion = ztcl.interp.TclVersion;
 const appbin = @import("appbin.zig");
 const machosign = @import("machosign.zig");
+const pesign = @import("pesign.zig");
 
 pub const usage =
     \\usage: ztk bundle -o Name.app [--target T] [options] main.tcl [file or folder ...]
@@ -58,6 +59,10 @@ pub const usage =
     \\                    with the JIT entitlement, from codesign on macOS)
     \\  --console          a Windows program with a console window (default: the GUI
     \\                    subsystem, with the console of the terminal that starts it)
+    \\  --sign-cert FILE   sign a Windows program (Authenticode): a PEM file with the
+    \\                    certificate of the signer first, then the rest of its chain
+    \\  --sign-key FILE    the private key of that certificate: a PEM file with no
+    \\                    password, with a P-256, P-384, or RSA key
     \\
 ;
 
@@ -345,6 +350,8 @@ pub fn run(io: Io, a: std.mem.Allocator, env: *const std.process.Environ.Map, ar
     var tcl: TclVersion = TclVersion.host_default;
     var menu_bar_only = false;
     var runner: ?[]const u8 = null;
+    var sign_cert: ?[]const u8 = null;
+    var sign_key: ?[]const u8 = null;
     var target: ?[]const u8 = null;
     var sign = true;
     var console = false;
@@ -355,7 +362,7 @@ pub fn run(io: Io, a: std.mem.Allocator, env: *const std.process.Environ.Map, ar
         const arg: []const u8 = args[i];
         const value: ?[]const u8 = if (i + 1 < args.len) args[i + 1] else null;
         if (try strip.parse(a, args, &i)) continue;
-        const slot: ?*?[]const u8 = if (std.mem.eql(u8, arg, "-o")) &output else if (std.mem.eql(u8, arg, "--target")) &target else if (std.mem.eql(u8, arg, "--name")) &name else if (std.mem.eql(u8, arg, "--id")) &id else if (std.mem.eql(u8, arg, "--icon")) &icon else if (std.mem.eql(u8, arg, "--runner")) &runner else null;
+        const slot: ?*?[]const u8 = if (std.mem.eql(u8, arg, "-o")) &output else if (std.mem.eql(u8, arg, "--target")) &target else if (std.mem.eql(u8, arg, "--name")) &name else if (std.mem.eql(u8, arg, "--id")) &id else if (std.mem.eql(u8, arg, "--icon")) &icon else if (std.mem.eql(u8, arg, "--runner")) &runner else if (std.mem.eql(u8, arg, "--sign-cert")) &sign_cert else if (std.mem.eql(u8, arg, "--sign-key")) &sign_key else null;
         if (slot) |s| {
             s.* = value orelse return usageError(err, "ztk bundle: {s} needs a value\n", .{arg});
             i += 1;
@@ -386,7 +393,9 @@ pub fn run(io: Io, a: std.mem.Allocator, env: *const std.process.Environ.Map, ar
     if (!is_app) {
         const tg = target orelse ztcl.buildnative.hostTarget();
         if (desktop and !std.mem.endsWith(u8, tg, "-linux")) return usageError(err, "ztk bundle: --desktop is for a Linux target, and the target is {s}\n", .{tg});
-        const win: WinOpts = .{ .name = name, .version = version, .icon = icon, .console = console };
+        if ((sign_cert == null) != (sign_key == null)) return usageError(err, "ztk bundle: --sign-cert and --sign-key go together\n", .{});
+        if (sign_cert != null and !std.mem.endsWith(u8, tg, "-windows")) return usageError(err, "ztk bundle: --sign-cert is for a Windows target, and the target is {s}\n", .{tg});
+        const win: WinOpts = .{ .name = name, .version = version, .icon = icon, .console = console, .sign_cert = sign_cert, .sign_key = sign_key };
         if (strip.on) {
             if ((strip.check or strip.profile) and !std.mem.eql(u8, tg, ztcl.buildnative.hostTarget()))
                 return usageError(err, "ztk bundle: --check and --profile run the program, so they need the target of this computer\n", .{});
@@ -649,7 +658,7 @@ fn windowsProgram(io: Io, a: std.mem.Allocator, runtime: []const u8, out_path: [
     return out;
 }
 /// The resources of a Windows program of `single`.
-const WinOpts = struct { name: ?[]const u8, version: []const u8, icon: ?[]const u8, console: bool };
+const WinOpts = struct { name: ?[]const u8, version: []const u8, icon: ?[]const u8, console: bool, sign_cert: ?[]const u8 = null, sign_key: ?[]const u8 = null };
 
 fn single(io: Io, a: std.mem.Allocator, err: *Io.Writer, out_path: []const u8, target: []const u8, runner: ?[]const u8, allow: []const u8, tcl: TclVersion, paths: []const []const u8, win: WinOpts) !u8 {
     return singleFiles(io, a, err, out_path, target, runner, allow, tcl, try collect(io, a, paths), win);
@@ -675,10 +684,25 @@ fn singleFiles(io: Io, a: std.mem.Allocator, err: *Io.Writer, out_path: []const 
         try err.print("ztk bundle: the resources of {s}: {s}\n", .{ out_path, @errorName(e) });
         return 1;
     } else runtime;
-    const bin = appbin.buildFor(a, program, files, allow, null, std.fs.path.basename(out_path), tcl) catch |e| {
+    const unsigned = appbin.buildFor(a, program, files, allow, null, std.fs.path.basename(out_path), tcl) catch |e| {
         try err.print("ztk bundle: {s}: {s}\n", .{ rt_path, appbin.describe(e) });
         return 1;
     };
+    // The signature comes last: it covers the app in its slot.
+    const bin = if (win.sign_cert) |cert_path| signed: {
+        const cert = cwd.readFileAlloc(io, cert_path, a, .limited(1 << 20)) catch |e| {
+            try err.print("ztk bundle: {s}: {s}\n", .{ cert_path, @errorName(e) });
+            return 1;
+        };
+        const key = cwd.readFileAlloc(io, win.sign_key.?, a, .limited(1 << 20)) catch |e| {
+            try err.print("ztk bundle: {s}: {s}\n", .{ win.sign_key.?, @errorName(e) });
+            return 1;
+        };
+        break :signed pesign.sign(a, unsigned, cert, key) catch |e| {
+            try err.print("ztk bundle: the signature of {s}: {s}\n", .{ out_path, pesign.describe(e) });
+            return 1;
+        };
+    } else unsigned;
     try cwd.writeFile(io, .{ .sub_path = out_path, .data = bin, .flags = .{ .permissions = exe_permissions } });
     try err.print("{s}: {d} bytes ({s} runtime: {d} bytes)\n", .{ out_path, bin.len, target, runtime.len });
     return 0;
