@@ -43,6 +43,7 @@ const usage =
     \\  --windowingsystem NAME   the result of tk windowingsystem: x11, win32, aqua, or ztk
     \\  --allow a,b              more capabilities of ztcl, with the names of the ztcl runner (file and channels are on)
     \\  --root DIR               the folder of the file commands (default: the folder of the script)
+    \\  --tcl 8.6|9.1            the Tcl and Tk release that the script follows (default 9.1, or ZTCL_TCL)
     \\  --version
     \\
 ;
@@ -194,6 +195,9 @@ pub fn main(init: std.process.Init) !void {
         rest = args[1..];
     }
     var force_cpu = false;
+    // The Tcl release of the script: --tcl, else ZTCL_TCL, else 9.1, as
+    // in the ztcl runner. A bundled app gives its own (`appbin.mount`).
+    var tcl_release: ?ztcl.interp.TclVersion = null;
     var i: usize = 1;
     while (in_bundle == null and own_app == null and i < args.len) : (i += 1) {
         const a: []const u8 = args[i];
@@ -232,8 +236,12 @@ pub fn main(init: std.process.Init) !void {
             direct_on = true;
         } else if (std.mem.eql(u8, a, "--direct-unsafe-test-device")) {
             direct_opts.unsafe_test_device = true;
+        } else if (std.mem.eql(u8, a, "--tcl")) {
+            i += 1;
+            if (i >= args.len) fail(err, "ztk: {s} needs a value\n", .{a});
+            tcl_release = ztcl.interp.TclVersion.parse(args[i]) orelse fail(err, "ztk: --tcl needs 8.6 or 9.1\n", .{});
         } else if (std.mem.eql(u8, a, "--version")) {
-            try out.writeAll("ztk 0.0.0\n");
+            try out.print("ztk {s}\n", .{ztk.version});
             return;
         } else if (std.mem.eql(u8, a, "--fb") or std.mem.eql(u8, a, "--rotate") or std.mem.eql(u8, a, "--touch-debounce") or std.mem.eql(u8, a, "--output") or std.mem.eql(u8, a, "--tty")) {
             i += 1;
@@ -285,6 +293,12 @@ pub fn main(init: std.process.Init) !void {
     var it: ztcl.Interp = undefined;
     try it.init(init.gpa);
     defer it.deinit();
+    const env_release = if (init.environ_map.get("ZTCL_TCL")) |v|
+        ztcl.interp.TclVersion.parse(v) orelse fail(err, "ztk: ZTCL_TCL needs 8.6 or 9.1\n", .{})
+    else
+        null;
+    const bundle_release: ?ztcl.interp.TclVersion = if (in_bundle) |b| b.tcl else null;
+    try it.setTclVersion(bundle_release orelse tcl_release orelse env_release orelse ztcl.interp.TclVersion.host_default);
     if (own_app) |bytes| {
         const app = ztk.appbin.mount(&it, arena, bytes) catch |e| fail(err, "ztk: the app in this program: {s}\n", .{@errorName(e)});
         script = app.main;

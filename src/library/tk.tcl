@@ -1,12 +1,22 @@
 # The names that a Tk script expects at the start: the package Tk, the
 # variables tk_version and tk_patchLevel, and the small commands of the
 # Tk library that a well-known app calls. src/cmds.zig evaluates this
-# file after the commands of ztk. ztk follows Tk 8.6.16.
+# file after the commands of ztk. The Tk release follows the Tcl
+# release of the interp: Tk 9.1.0 with Tcl 9.1 (the default of the ztk
+# program), and Tk 8.6.16 with Tcl 8.6 (ztk --tcl 8.6). Tk 9 also gives
+# the package under the name tk.
 # SPDX-License-Identifier: BSD-2-Clause
 
-set ::tk_version 8.6
-set ::tk_patchLevel 8.6.16
-package provide Tk 8.6.16
+if {[string match 9.* [info tclversion]]} {
+    set ::tk_version 9.1
+    set ::tk_patchLevel 9.1.0
+    package provide Tk 9.1.0
+    package provide tk 9.1.0
+} else {
+    set ::tk_version 8.6
+    set ::tk_patchLevel 8.6.16
+    package provide Tk 8.6.16
+}
 
 namespace eval ::tk {}
 

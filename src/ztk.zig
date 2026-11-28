@@ -1,6 +1,8 @@
 //! The root of the ztk module. It names the parts of the toolkit.
 //! SPDX-License-Identifier: BSD-2-Clause
 
+/// The version of ztk, from build.zig.zon.
+pub const version: []const u8 = @import("build_options").version;
 pub const geom = @import("base/geom.zig");
 pub const app = @import("app.zig");
 pub const options = @import("options.zig");
@@ -59,7 +61,6 @@ pub const dispatch = @import("dispatch.zig");
 pub const focus = @import("focus.zig");
 pub const testing = @import("testing.zig");
 pub const App = app.App;
-pub const version = "0.0.0";
 
 test {
     _ = num;

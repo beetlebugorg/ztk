@@ -1,6 +1,12 @@
 # Differences from Tk
 
-ztk follows Tk 8.6.16, with some commands of Tk 8.7 and 9. A script that runs in `wish` 8.6 runs in ztk when it uses the widgets and the commands that ztk has. This page lists what a script can see that differs, what is in progress, and what ztk leaves out on purpose. It was checked against ztk `main` on 2026-11-27. The full list, with each option and each test, is [the limits file](dev/stage2-limits.md).
+ztk follows the widgets of Tk 8.6.16, with some commands of Tk 8.7 and 9. A script that runs in `wish` 8.6 runs in ztk when it uses the widgets and the commands that ztk has, also on Tcl 9.1 when the script has no difference of the language (below). This page lists what a script can see that differs, what is in progress, and what ztk leaves out on purpose. It was checked against ztk `main` on 2026-11-27. The full list, with each option and each test, is [the limits file](dev/stage2-limits.md).
+
+## Tcl and Tk releases
+
+The `ztk` program, a program of `ztk bundle`, and the web build run a script on Tcl 9.1 by default, as the `ztcl` runner does, and report Tk 9.1.0 (`tk_version` 9.1, `package require Tk` 9.1.0, also as the package `tk`). Run a script of Tcl and Tk 8.6 with `ztk --tcl 8.6`, `ZTCL_TCL=8.6`, or `ztk bundle --tcl 8.6`: it then reports Tcl 8.6 and Tk 8.6.16. A bundled app keeps the release of its build. libztk, the drop-in libtk8.6, stays at 8.6.
+
+The release changes the language: an integer with a leading zero is decimal, a bad byte in an encoding is an error, and the other changes of [Tcl 9.1 and Tcl 8.6](https://github.com/beetlebugorg/ztcl/blob/main/docs/tcl91.md). The widgets of ztk are the same in both releases: the widget changes of Tk 9.0 and 9.1, such as `ttk::toggleswitch`, the screen reader support, and right-to-left text, are not in ztk yet.
 
 ## Platforms
 

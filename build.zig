@@ -86,6 +86,7 @@ fn addZtk(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin
     opts.addOption([]const u8, "drop", cfg.drop);
     opts.addOption(bool, "wayland", wayland_on);
     opts.addOption(bool, "appkit", appkit_on);
+    opts.addOption([]const u8, "version", @import("build.zig.zon").version);
 
     const mod_opts: std.Build.Module.CreateOptions = .{
         .root_source_file = b.path("src/ztk.zig"),
@@ -273,6 +274,7 @@ pub fn build(b: *std.Build) void {
         wasm_opts.addOption(bool, "vulkan", false);
         wasm_opts.addOption(bool, "wayland", false);
         wasm_opts.addOption([]const u8, "drop", drop.ztk);
+        wasm_opts.addOption([]const u8, "version", @import("build.zig.zon").version);
         const wasm_ztcl = b.dependency("ztcl", .{ .target = wasm_target, .optimize = .fast, .drop = drop.ztcl }).module("ztcl");
         const wasm_mod = b.createModule(.{
             .root_source_file = b.path("src/web.zig"),

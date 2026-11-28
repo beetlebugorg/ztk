@@ -55,6 +55,8 @@ export fn ztk_free(ptr: [*]u8, len: usize) void {
 /// Makes the App with a window of `w` by `h` logical pixels at a scale.
 export fn ztk_init(w: i32, h: i32, scale: f32, dark: bool, reduce_motion: bool) bool {
     it.init(gpa) catch return false;
+    // Tcl and Tk 9.1, as in the ztk program and the wasm builds of ztcl.
+    it.setTclVersion(ztcl.interp.TclVersion.host_default) catch return false;
     it.output = .{ .ctx = null, .write = write };
     head = Headless.init(gpa) catch return false;
     head.skip_draw = true;

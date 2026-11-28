@@ -30,6 +30,7 @@ const peres = @import("peres.zig");
 const Image = @import("render/renderer.zig").Image;
 const ztcl = @import("ztcl");
 const Capability = ztcl.interp.Capability;
+const TclVersion = ztcl.interp.TclVersion;
 const appbin = @import("appbin.zig");
 const machosign = @import("machosign.zig");
 
@@ -47,6 +48,7 @@ pub const usage =
     \\  --icon FILE.png    the icon, square, 1024 pixels or less (a Windows program: a
     \\                    .ico, or a .png of 256 pixels or less)
     \\  --allow CAPS       the capabilities of the app, as for ztk --allow
+    \\  --tcl 8.6|9.1      the Tcl and Tk release of the app (default: 9.1)
     \\  --menu-bar-only    no Dock icon (LSUIElement), for an app with a tray
     \\  --runner FILE      the ztk program to copy (default: this program, or for one
     \\                    program file of another target lib/ztk/runtime/T/ next to it)
@@ -71,6 +73,7 @@ pub const Start = struct {
     main: []const u8,
     root: []const u8,
     allow: u32,
+    tcl: TclVersion,
 };
 
 /// The start of the bundle that has this program, or null when the
@@ -87,16 +90,19 @@ pub fn start(io: Io, arena: std.mem.Allocator) ?Start {
         .main = std.fs.path.join(arena, &.{ root, conf.main }) catch return null,
         .root = root,
         .allow = conf.allow,
+        .tcl = conf.tcl,
     };
 }
 
-const Conf = struct { main: []const u8, allow: u32 };
+const Conf = struct { main: []const u8, allow: u32, tcl: TclVersion = TclVersion.host_default };
 
-/// Reads `main=` and `allow=` lines. Null without a main script, with an
-/// unknown capability, or with a main path that leaves the folder.
+/// Reads `main=`, `allow=`, and `tcl=` lines. Null without a main script,
+/// with an unknown capability or release, or with a main path that leaves
+/// the folder.
 fn parseConf(text: []const u8) ?Conf {
     var main: ?[]const u8 = null;
     var allow: u32 = 0;
+    var tcl: TclVersion = TclVersion.host_default;
     var lines = std.mem.tokenizeAny(u8, text, "\r\n");
     while (lines.next()) |line| {
         const eq = std.mem.indexOfScalar(u8, line, '=') orelse continue;
@@ -104,10 +110,11 @@ fn parseConf(text: []const u8) ?Conf {
         const value = line[eq + 1 ..];
         if (std.mem.eql(u8, key, "main")) main = value;
         if (std.mem.eql(u8, key, "allow") and value.len > 0) allow = Capability.parse(value) orelse return null;
+        if (std.mem.eql(u8, key, "tcl")) tcl = TclVersion.parse(value) orelse return null;
     }
     const m = main orelse return null;
     if (!safeRelative(m)) return null;
-    return .{ .main = m, .allow = allow };
+    return .{ .main = m, .allow = allow, .tcl = tcl };
 }
 
 /// A relative path with no `..` part.
@@ -335,6 +342,7 @@ pub fn run(io: Io, a: std.mem.Allocator, env: *const std.process.Environ.Map, ar
     var version: []const u8 = "1.0";
     var icon: ?[]const u8 = null;
     var allow: []const u8 = "file,channels";
+    var tcl: TclVersion = TclVersion.host_default;
     var menu_bar_only = false;
     var runner: ?[]const u8 = null;
     var target: ?[]const u8 = null;
@@ -354,6 +362,10 @@ pub fn run(io: Io, a: std.mem.Allocator, env: *const std.process.Environ.Map, ar
         } else if (std.mem.eql(u8, arg, "--version") or std.mem.eql(u8, arg, "--allow")) {
             const v = value orelse return usageError(err, "ztk bundle: {s} needs a value\n", .{arg});
             if (arg[2] == 'v') version = v else allow = v;
+            i += 1;
+        } else if (std.mem.eql(u8, arg, "--tcl")) {
+            const v = value orelse return usageError(err, "ztk bundle: {s} needs a value\n", .{arg});
+            tcl = TclVersion.parse(v) orelse return usageError(err, "ztk bundle: --tcl needs 8.6 or 9.1\n", .{});
             i += 1;
         } else if (std.mem.eql(u8, arg, "--menu-bar-only")) {
             menu_bar_only = true;
@@ -378,11 +390,11 @@ pub fn run(io: Io, a: std.mem.Allocator, env: *const std.process.Environ.Map, ar
         if (strip.on) {
             if ((strip.check or strip.profile) and !std.mem.eql(u8, tg, ztcl.buildnative.hostTarget()))
                 return usageError(err, "ztk bundle: --check and --profile run the program, so they need the target of this computer\n", .{});
-            runner = try stripRuntime(io, a, env, &strip, tg, runner, allow, files.items, win, err) orelse return 1;
+            runner = try stripRuntime(io, a, env, &strip, tg, runner, allow, tcl, files.items, win, err) orelse return 1;
         } else if (strip.check or strip.profile or strip.keep.items.len > 0 or strip.drop.items.len > 0 or strip.trust) {
             return usageError(err, "ztk bundle: --keep, --drop-module, --trust-scan, --check, and --profile need --strip\n", .{});
         }
-        const status = try single(io, a, err, out_path, tg, runner, allow, files.items, win);
+        const status = try single(io, a, err, out_path, tg, runner, allow, tcl, files.items, win);
         if (status != 0 or !desktop) return status;
         return desktopFiles(io, a, err, out_path, name, icon);
     }
@@ -434,7 +446,7 @@ pub fn run(io: Io, a: std.mem.Allocator, env: *const std.process.Environ.Map, ar
     for (files.items[1..], names[1..]) |f, n| {
         try copyTree(io, a, f, app, try std.fs.path.join(a, &.{ "Contents/Resources/app", n }));
     }
-    const conf = try std.fmt.allocPrint(a, "main={s}\nallow={s}\n", .{ main_name, allow });
+    const conf = try std.fmt.allocPrint(a, "main={s}\nallow={s}\ntcl={s}\n", .{ main_name, allow, tcl.version() });
     try app.writeFile(io, .{ .sub_path = "Contents/Resources/ztk.conf", .data = conf });
 
     if (icon_set) |set| try app.writeFile(io, .{ .sub_path = "Contents/Resources/AppIcon.icns", .data = set });
@@ -553,6 +565,7 @@ const TestCtx = struct {
     target: []const u8,
     runner: ?[]const u8,
     allow: []const u8,
+    tcl: TclVersion,
     win: WinOpts,
     err: *Io.Writer,
 
@@ -562,7 +575,7 @@ const TestCtx = struct {
         for (entries) |e| if (e.kind == .script) try files.append(c.a, .{ .name = e.name, .data = e.data });
         for (entries) |e| if (e.kind != .script) try files.append(c.a, .{ .name = e.name, .data = e.data });
         var discard: Io.Writer.Allocating = .init(c.a);
-        const code = try singleFiles(c.io, c.a, &discard.writer, path, c.target, runtime orelse c.runner, c.allow, files.items, c.win);
+        const code = try singleFiles(c.io, c.a, &discard.writer, path, c.target, runtime orelse c.runner, c.allow, c.tcl, files.items, c.win);
         if (code != 0) try c.err.writeAll(discard.written());
         return code == 0;
     }
@@ -570,7 +583,7 @@ const TestCtx = struct {
 
 /// Builds the stripped ztk program of `target` (`docs/strip.md`) and
 /// gives its path, or null after a message.
-fn stripRuntime(io: Io, a: std.mem.Allocator, env: *const std.process.Environ.Map, strip: *ztcl.stripbuild.Flags, target: []const u8, runner: ?[]const u8, allow: []const u8, paths: []const []const u8, win: WinOpts, err: *Io.Writer) !?[]const u8 {
+fn stripRuntime(io: Io, a: std.mem.Allocator, env: *const std.process.Environ.Map, strip: *ztcl.stripbuild.Flags, target: []const u8, runner: ?[]const u8, allow: []const u8, tcl: TclVersion, paths: []const []const u8, win: WinOpts, err: *Io.Writer) !?[]const u8 {
     const files = try collect(io, a, paths);
     var entries: std.ArrayList(ztcl.wasmbundle.Entry) = .empty;
     for (files, 0..) |f, k| try entries.append(a, .{ .kind = if (k == 0) .script else .file, .name = f.name, .data = f.data });
@@ -580,7 +593,7 @@ fn stripRuntime(io: Io, a: std.mem.Allocator, env: *const std.process.Environ.Ma
         if (std.mem.endsWith(u8, tg.file, ".exe")) file = "ztk.exe";
     };
     const full = try runtimePath(io, a, target, file, runner);
-    const ctx: TestCtx = .{ .io = io, .a = a, .target = target, .runner = runner, .allow = allow, .win = win, .err = err };
+    const ctx: TestCtx = .{ .io = io, .a = a, .target = target, .runner = runner, .allow = allow, .tcl = tcl, .win = win, .err = err };
     const r = try ztcl.stripbuild.run(strip_tool, io, a, env, strip, .{ .target = target, .wasm = false, .allow = allow, .jit = true, .full_runtime = full }, entries.items, ctx, TestCtx.build, err) orelse return null;
     return r.runtime;
 }
@@ -638,11 +651,11 @@ fn windowsProgram(io: Io, a: std.mem.Allocator, runtime: []const u8, out_path: [
 /// The resources of a Windows program of `single`.
 const WinOpts = struct { name: ?[]const u8, version: []const u8, icon: ?[]const u8, console: bool };
 
-fn single(io: Io, a: std.mem.Allocator, err: *Io.Writer, out_path: []const u8, target: []const u8, runner: ?[]const u8, allow: []const u8, paths: []const []const u8, win: WinOpts) !u8 {
-    return singleFiles(io, a, err, out_path, target, runner, allow, try collect(io, a, paths), win);
+fn single(io: Io, a: std.mem.Allocator, err: *Io.Writer, out_path: []const u8, target: []const u8, runner: ?[]const u8, allow: []const u8, tcl: TclVersion, paths: []const []const u8, win: WinOpts) !u8 {
+    return singleFiles(io, a, err, out_path, target, runner, allow, tcl, try collect(io, a, paths), win);
 }
 
-fn singleFiles(io: Io, a: std.mem.Allocator, err: *Io.Writer, out_path: []const u8, target: []const u8, runner: ?[]const u8, allow: []const u8, files: []const appbin.File, win: WinOpts) !u8 {
+fn singleFiles(io: Io, a: std.mem.Allocator, err: *Io.Writer, out_path: []const u8, target: []const u8, runner: ?[]const u8, allow: []const u8, tcl: TclVersion, files: []const appbin.File, win: WinOpts) !u8 {
     const bn = ztcl.buildnative;
     var file: ?[]const u8 = null;
     for (bn.targets) |tg| if (std.mem.eql(u8, tg.name, target)) {
@@ -662,7 +675,7 @@ fn singleFiles(io: Io, a: std.mem.Allocator, err: *Io.Writer, out_path: []const 
         try err.print("ztk bundle: the resources of {s}: {s}\n", .{ out_path, @errorName(e) });
         return 1;
     } else runtime;
-    const bin = appbin.build(a, program, files, allow, null, std.fs.path.basename(out_path)) catch |e| {
+    const bin = appbin.buildFor(a, program, files, allow, null, std.fs.path.basename(out_path), tcl) catch |e| {
         try err.print("ztk bundle: {s}: {s}\n", .{ rt_path, appbin.describe(e) });
         return 1;
     };
@@ -732,6 +745,10 @@ test "bundle: the conf file gives the main script and the capabilities" {
     try t.expect(parseConf("main=/etc/x.tcl\n") == null);
     try t.expect(parseConf("main=a.tcl\nallow=root\n") == null);
     try t.expectEqual(@as(u32, 0), parseConf("main=a.tcl\r\n").?.allow);
+    // The Tcl release: 9.1 by default, or the one of a tcl= line.
+    try t.expectEqual(TclVersion.v9_1, parseConf("main=a.tcl\n").?.tcl);
+    try t.expectEqual(TclVersion.v8_6, parseConf("main=a.tcl\ntcl=8.6\n").?.tcl);
+    try t.expect(parseConf("main=a.tcl\ntcl=7.0\n") == null);
 }
 
 test "bundle: Info.plist has the keys of the app" {
