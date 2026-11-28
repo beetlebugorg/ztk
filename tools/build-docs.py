@@ -21,21 +21,42 @@ paragraph of the same shot just before the marker goes into the figure.
 A marker can have `title: TEXT;` before `shot:`, for the overview grid.
 The line `<!-- widget-grid -->` in docs/widgets/README.md becomes a grid
 with a card for each widget snippet of the widget pages.
+
+A widget in the Tcl format of the reference (docs/reference/NAME.tcl,
+tools/refdoc.tcl, the same file as in ztcl) gets static HTML pages: one
+at reference/NAME/ with its option table, and one for each widget
+command at reference/NAME/SUB/. `refdoc.tcl pages` renders them on the
+ztk program of zig-out/bin, so build ztk first. A link of a Markdown page
+to docs/reference/NAME.tcl goes to the page of the widget. The build
+writes sitemap.xml with each page, and then checks each page of the
+output: a title, a meta description, one h1, a canonical link to its
+own URL, and a line in the sitemap.
 """
 
 import html
 import json
+import os
 import posixpath
 import re
 import shutil
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from markdown_it import MarkdownIt
 
+
 ROOT = Path(__file__).resolve().parent.parent
 REPO = "https://github.com/beetlebugorg/ztk"
 SITE = "https://beetlebug.org/ztk/"
+
+# The pages of commands that a TOML entry of the reference links to with
+# `cmd:NAME`, for a command with no entry.
+COMMAND_PAGES = {
+    "label": "widgets/basic/", "frame": "widgets/basic/", "checkbutton": "widgets/toggles/",
+    "radiobutton": "widgets/toggles/", "ttk::button": "widgets/ttk/", "bind": "widgets/basic/",
+}
 
 # Source file, page folder, sidebar group, sidebar title. Plans, task
 # lists, and reports are in docs/dev/ and are not part of the site.
@@ -308,6 +329,10 @@ class Build:
             return href
         path, _, frag = href.partition("#")
         target = posixpath.normpath(posixpath.join(posixpath.dirname(src), path))
+        ref = re.fullmatch(r"docs/reference/([A-Za-z0-9_-]+)\.tcl", target)
+        if ref and ref.group(1) != "_settings" and (ROOT / target).exists():
+            # A widget of the reference (refdoc.tcl): its page.
+            PAGE_OF[target] = f"reference/{ref.group(1)}/"
         if target in PAGE_OF:
             other = PAGE_OF[target]
             if frag:
@@ -435,7 +460,9 @@ class Build:
 
     def nav(self, page):
         out, group = [], None
-        active = next(section for _, other, section, _ in PAGES if other == page)
+        # A page of the reference (refdoc.tcl) is in the group of widgets/.
+        home = "widgets/" if page.startswith("reference/") else page
+        active = next(section for _, other, section, _ in PAGES if other == home)
         for _, other, section, label in PAGES:
             if section != group:
                 if group in FOLDED:
@@ -468,29 +495,30 @@ class Build:
             out.append(f'<a class="next" href="{rel(page, other)}"><span>Next</span>{html.escape(label)}</a>')
         return f'<nav class="pager" aria-label="Pages">{"".join(out)}</nav>'
 
-    def document(self, page, title, body):
+    def document(self, page, title, body, meta=None):
         root = rel(page, "")
-        name = f"{html.escape(title)} · ztk"
+        meta = meta or {}
+        name = f"{html.escape(title)} · {'Tk widget · ' if meta.get('head') else ''}ztk"
         script = f'\n<script type="module" src="{root}assets/live.js"></script>' if 'class="live-demo' in body else ""
         if 'class="showcase' in body:
             script += f'\n<script type="module" src="{root}assets/showcase.js"></script>'
         if 'data-name="toy-' in body:
             script += f'\n<script type="module" src="{root}assets/toys.js"></script>'
 
-        desc = "A Tk replacement in Zig, on the ztcl interpreter, with a GPU renderer and CSS styles."
+        desc = html.escape(meta.get("description") or "A Tk replacement in Zig, on the ztcl interpreter, with a GPU renderer and CSS styles.", quote=True)
         return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{name}</title><meta name="description" content="{desc}">
 <link rel="canonical" href="{SITE}{page}">
 <link rel="icon" href="{root}assets/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="{root}assets/site.css">{script}</head>
+<link rel="stylesheet" href="{root}assets/site.css">{f'<link rel="stylesheet" href="{root}assets/reference.css">' if meta.get("head") else ""}{script}{meta.get("head", "")}</head>
 <body><a class="skip" href="#content">Skip to the content</a>
 <header class="top"><div class="wrap"><a class="logo" href="{root}"><span class="glyph" aria-hidden="true">tk</span>ztk</a>
 <nav class="toplinks" aria-label="Site"><a href="{root}overview/" aria-current="page">Docs</a><a href="{root}widgets/">Widgets</a><a href="{root}toys/">Toys</a><a class="sib" href="https://beetlebug.org/ztcl/">ztcl</a><a href="{REPO}">GitHub</a></nav></div></header>
 <div class="docs"><input class="toc-toggle" type="checkbox" id="toc"><label class="toc-button" for="toc">Contents</label>
 <aside class="sidebar"><nav aria-label="Documentation">{self.nav(page)}</nav></aside>
-<main class="prose" id="content">{body}{self.pager(page)}</main></div>
+<main class="prose" id="content">{body}{self.pager(page) if any(p == page for _, p, _, _ in PAGES) else ""}</main></div>
 <footer class="foot docs-foot"><div class="wrap"><span>ztk · BSD-2-Clause</span><span class="right"><a href="{root}">Home</a><a href="https://beetlebug.org/ztcl/">ztcl</a><a href="{REPO}">Source on GitHub</a></span></div></footer>
 </body></html>
 """
@@ -548,8 +576,93 @@ class Build:
         (out / "llms-full.txt").write_text("".join(full), encoding="utf-8")
         shutil.copy(SITE_DIR / "api.json", out / "api.json")
 
+    def ref_link(self, target, page):
+        """The href of a link target of a Tcl entry (refdoc.tcl pages)."""
+        if re.match(r"^[a-z][a-z0-9+.-]*:", target) and not target.startswith("cmd:"):
+            return target
+        path, _, frag = target.partition("#")
+        if path.startswith("cmd:"):
+            name = path[4:]
+            other = self.ref_pages.get(name) or COMMAND_PAGES.get(name) or COMMAND_PAGES.get(name.split()[0])
+            if other is None:
+                raise SystemExit(f"{page}: a link to a command with no page: {name}")
+        else:
+            other = path
+            if other not in PAGE_OF.values() and other not in self.anchors:
+                raise SystemExit(f"{page}: a link to a missing page: {target}")
+        if frag:
+            self.links.append((page, other, frag))
+        return rel(page, other) + (f"#{frag}" if frag else "")
+
+    @staticmethod
+    def sitemap(out, pages):
+        """sitemap.xml: the URL of each page."""
+        urls = "".join(f"<url><loc>{html.escape(SITE + p)}</loc></url>\n" for p in pages)
+        (out / "sitemap.xml").write_text('<?xml version="1.0" encoding="UTF-8"?>\n'
+                                         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+                                         f"{urls}</urlset>\n", encoding="utf-8")
+
+    @staticmethod
+    def check_pages(out):
+        """Checks each page of the output folder for search engines: a
+        title, a meta description, one h1, a canonical link to its own
+        URL, and a line in sitemap.xml. A redirect page has none of them
+        and is not in the sitemap. The pages of play/ are the web build."""
+        listed = set(re.findall(r"<loc>([^<]+)</loc>", (out / "sitemap.xml").read_text(encoding="utf-8")))
+        bad, count = [], 0
+        for path in sorted(out.rglob("index.html")):
+            folder = path.parent.relative_to(out).as_posix()
+            if folder == "play" or folder.startswith("play/"):
+                continue
+            text = path.read_text(encoding="utf-8")
+            url = SITE + ("" if folder == "." else folder + "/")
+            if 'http-equiv="refresh"' in text:
+                if url in listed:
+                    bad.append(f"{url}: a redirect in the sitemap")
+                continue
+            count += 1
+            title = re.search(r"<title>([^<]+)</title>", text)
+            desc = re.search(r'<meta name="description" content="([^"]+)"', text)
+            canon = re.search(r'<link rel="canonical" href="([^"]+)"', text)
+            h1 = len(re.findall(r"<h1[ >]", text))
+            for ok, what in ((title, "no title"), (desc, "no meta description"), (h1 == 1, f"{h1} h1 elements"),
+                             (canon and html.unescape(canon.group(1)) == url, "no canonical link to its URL"), (url in listed, "not in sitemap.xml")):
+                if not ok:
+                    bad.append(f"{url}: {what}")
+        if bad:
+            raise SystemExit("the pages for search engines:\n" + "\n".join(bad))
+        return count
+
+    @staticmethod
+    def refdoc_pages():
+        """The pages of the Tcl entries of the reference: the JSON of
+        `refdoc.tcl pages`, which runs on the ztk program of zig-out/bin."""
+        exe = next((ROOT / "zig-out" / "bin" / n for n in ("ztk", "ztk.exe") if (ROOT / "zig-out" / "bin" / n).exists()), None)
+        if exe is None:
+            raise SystemExit("zig-out/bin/ztk is missing: run `zig build` first")
+        fd, path = tempfile.mkstemp(suffix=".json")
+        os.close(fd)
+        try:
+            r = subprocess.run([str(exe), "--headless", "--allow", "interp,exec", str(ROOT / "tools" / "refdoc.tcl"), "pages", path],
+                               capture_output=True, timeout=600, cwd=ROOT)
+            if r.returncode != 0:
+                raise SystemExit(f"tools/refdoc.tcl pages: {r.stdout.decode('utf-8', 'replace')}{r.stderr.decode('utf-8', 'replace')}")
+            return json.loads(Path(path).read_text(encoding="utf-8"))
+        finally:
+            os.unlink(path)
+
     def run(self, out):
         rendered = [(page, *self.render(src, page)) for src, page, _, _ in PAGES]
+        # The pages of the Tcl entries of the reference (tools/refdoc.tcl),
+        # with each refdoc: link resolved.
+        pages = self.refdoc_pages()
+        self.ref_pages = {p["title"]: p["page"] for p in pages}
+        meta = {}
+        for p in pages:
+            body = re.sub(r'href="refdoc:([^"]*)"', lambda m, at=p["page"]: f'href="{html.escape(self.ref_link(html.unescape(m.group(1)), at))}"', p["body"])
+            self.anchors[p["page"]] = set(re.findall(r'id="([^"]+)"', body))
+            meta[p["page"]] = {"description": p["description"], "head": p["head"]}
+            rendered.append((p["page"], p["title"], body))
         for src, page, anchor in self.links:
             if anchor not in self.anchors.get(page, set()):
                 raise SystemExit(f"{src}: link to a missing anchor: {page}#{anchor}")
@@ -576,10 +689,10 @@ class Build:
         for page, title, body in rendered:
             folder = out / page
             folder.mkdir(parents=True, exist_ok=True)
-            (folder / "index.html").write_text(self.document(page, title, body), encoding="utf-8")
+            (folder / "index.html").write_text(self.document(page, title, body, meta.get(page)), encoding="utf-8")
         (out / "index.html").write_text(landing, encoding="utf-8")
         (out / "assets").mkdir()
-        for name in ("site.css", "favicon.svg", "live.js", "replay.js", "stage.js", "toys.js", "toysound.js", "showcase.js"):
+        for name in ("site.css", "reference.css", "favicon.svg", "live.js", "replay.js", "stage.js", "toys.js", "toysound.js", "showcase.js"):
             shutil.copy(SITE_DIR / name, out / "assets" / name)
         # The screenshots of the examples (tools/shots.sh).
         shutil.copytree(SITE_DIR / "shots", out / "assets" / "shots")
@@ -603,7 +716,9 @@ class Build:
                 encoding="utf-8")
         self.agents(out)
         (out / ".nojekyll").write_text("", encoding="utf-8")
-        print(f"wrote {len(rendered) + 1} pages to {out}")
+        self.sitemap(out, [""] + [p for p, _, _ in rendered])
+        checked = self.check_pages(out)
+        print(f"wrote {len(rendered) + 1} pages to {out}, and checked {checked} pages and sitemap.xml")
 
 
 if __name__ == "__main__":

@@ -99,6 +99,11 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install -r tools/docs-requirements.txt
+      # tools/refdoc.tcl renders the reference pages on the ztk program.
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+      - run: zig build -Dbackends=headless -Dvulkan=false
       - run: python tools/build-docs.py site
 
   test:
@@ -149,6 +154,16 @@ jobs:
           if [ "$RUNNER_OS" = Linux ]; then ulimit -v 6000000; fi
           printf 'puts [expr {6 * 7}]\n' > "$RUNNER_TEMP/t.tcl"
           test "$(zig build run -- --headless "$RUNNER_TEMP/t.tcl" | tr -d '\r')" = 42
+      - name: Check the widget reference
+        # tools/refdoc.tcl and docs/site/reference.css are copies of ztcl:
+        # check-shared.sh compares them with tools/shared.sha256, and with
+        # --remote with the files of ztcl at the commit of that file.
+        if: hashFiles('build.zig') != '' && runner.os == 'Linux'
+        run: |
+          zig-out/bin/ztk --headless --allow interp,exec tools/refdoc.tcl lint
+          zig-out/bin/ztk --headless --allow interp,exec tools/refdoc.tcl selftest
+          zig-out/bin/ztk --headless --allow interp,exec tools/refdoc.tcl check zig-out/bin/ztk
+          sh tools/check-shared.sh --remote
       - name: Run a bundled app headless
         if: hashFiles('build.zig') != '' && runner.os == 'Linux'
         run: sh tests/bundle-headless.sh
