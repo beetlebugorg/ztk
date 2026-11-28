@@ -257,6 +257,23 @@ pub fn tagsChanged(w: *Widget) void {
     repaint(w);
 }
 
+/// The tag `tag` changed on the lines from `first` to `last`. Only a tag
+/// with an option of the layout changes their heights: the other lines
+/// keep their heights, and a tag of colors keeps each height, so the
+/// lines in the window stay where they are.
+pub fn tagLinesChanged(w: *Widget, tag: *const tags_mod.Tag, first: u32, last: u32) void {
+    if (tag.affectsLayout() and last >= first) textview.noteEdit(w, first, last - first + 1, last - first + 1);
+    repaint(w);
+}
+
+/// `tagLinesChanged` for each range of `tag`. With `force`, the lines get
+/// estimates also for a tag of no option of the layout, for a change of
+/// such an option.
+pub fn tagRangesChanged(w: *Widget, tag: *const tags_mod.Tag, force: bool) void {
+    if (force or tag.affectsLayout()) for (tag.ranges.items) |r| textview.noteEdit(w, r.a.line, r.z.line - r.a.line + 1, r.z.line - r.a.line + 1);
+    repaint(w);
+}
+
 pub fn repaintView(w: *Widget) void {
     repaint(w);
 }
