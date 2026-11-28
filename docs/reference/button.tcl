@@ -14,9 +14,12 @@ command button {
 
         The theme draws the border and the padding, so `-borderwidth`, `-padx`, and `-pady` default to 0, and a value of the script overrides the theme. Some options for the look of Tk on X11 are stored with no effect in the modern theme, such as `-highlightthickness`, `-activebackground`, and `-overrelief`. [Differences from Tk](differences/) lists them, and the theme `classic` has the look of Tk on X11.
 
-        Each option has a short form: a unique prefix of its name, such as `-te` for `-text`, works in the call and in `configure` and `cget` in Tk. In ztk the full name is needed: `-tex` is an unknown option.
+        An option needs its full name or a short form of its own, such as `-bg` for `-background`: `-tex` is an unknown option, in ztk and in Tk 8.6.16.
     }
     returns {PATHNAME.}
+    difference {Each error has `-errorcode NONE` in ztk, where Tk 8.6.16 gives a code such as `TK LOOKUP OPTION` or `TCL LOOKUP INDEX` ([issue 327](https://github.com/beetlebugorg/ztk/issues/327)).}
+    difference {Tk 8.6.16 checks the values of `-cursor`, `-bitmap`, `-overrelief`, and `-font`, and ztk stores each value with no check ([issue 328](https://github.com/beetlebugorg/ztk/issues/328)).}
+    difference {`flash` is an error in ztk, and in Tk 8.6.16 it flashes the button ([issue 329](https://github.com/beetlebugorg/ztk/issues/329)).}
     see {label checkbutton radiobutton ttk::button {button invoke} {button configure}}
     example {
         button .save -text Save -command {set ::saved 1}
