@@ -1,7 +1,10 @@
 //! The color names of Tk 8.6, with their values, from the table of the
 //! colors manual page of Tk 8.6.16 (doc/colors.n). A name has the case of
 //! the table in lower case, so a lookup in lower case is a binary search.
-//! tools/fetch-apps.sh downloads the Tk release that has the page.
+//! tools/fetch-apps.sh downloads the Tk release that has the page. The
+//! page spells two names wrong: "agua" and "crymson". `winfo rgb` of
+//! wish 8.6.16 accepts "aqua" and "crimson", so the table has those names.
+//! tools/oracle-colors.tcl compares each name with wish.
 //! SPDX-License-Identifier: BSD-2-Clause
 
 const std = @import("std");
@@ -9,7 +12,6 @@ const std = @import("std");
 const Entry = struct { []const u8, [3]u8 };
 
 pub const table = [_]Entry{
-    .{ "agua", .{ 0, 255, 255 } },
     .{ "alice blue", .{ 240, 248, 255 } },
     .{ "aliceblue", .{ 240, 248, 255 } },
     .{ "antique white", .{ 250, 235, 215 } },
@@ -18,6 +20,7 @@ pub const table = [_]Entry{
     .{ "antiquewhite2", .{ 238, 223, 204 } },
     .{ "antiquewhite3", .{ 205, 192, 176 } },
     .{ "antiquewhite4", .{ 139, 131, 120 } },
+    .{ "aqua", .{ 0, 255, 255 } },
     .{ "aquamarine", .{ 127, 255, 212 } },
     .{ "aquamarine1", .{ 127, 255, 212 } },
     .{ "aquamarine2", .{ 118, 238, 198 } },
@@ -82,7 +85,7 @@ pub const table = [_]Entry{
     .{ "cornsilk2", .{ 238, 232, 205 } },
     .{ "cornsilk3", .{ 205, 200, 177 } },
     .{ "cornsilk4", .{ 139, 136, 120 } },
-    .{ "crymson", .{ 220, 20, 60 } },
+    .{ "crimson", .{ 220, 20, 60 } },
     .{ "cyan", .{ 0, 255, 255 } },
     .{ "cyan1", .{ 0, 255, 255 } },
     .{ "cyan2", .{ 0, 238, 238 } },
@@ -618,7 +621,7 @@ pub const table = [_]Entry{
     .{ "palevioletred", .{ 219, 112, 147 } },
     .{ "palevioletred1", .{ 255, 130, 171 } },
     .{ "palevioletred2", .{ 238, 121, 159 } },
-    .{ "palevioletred3", .{ 205, 104, 127 } },
+    .{ "palevioletred3", .{ 205, 104, 137 } },
     .{ "palevioletred4", .{ 139, 71, 93 } },
     .{ "papaya whip", .{ 255, 239, 213 } },
     .{ "papayawhip", .{ 255, 239, 213 } },
@@ -794,4 +797,10 @@ test "color names of Tk" {
     try std.testing.expectEqual([3]u8{ 127, 127, 127 }, find("grey50").?);
     try std.testing.expectEqual([3]u8{ 240, 248, 255 }, find("alice blue").?);
     try std.testing.expect(find("nocolor") == null);
+    // The manual page has "agua" and "crymson". wish accepts only "aqua" and "crimson".
+    try std.testing.expectEqual([3]u8{ 0, 255, 255 }, find("Aqua").?);
+    try std.testing.expectEqual([3]u8{ 220, 20, 60 }, find("crimson").?);
+    try std.testing.expect(find("agua") == null and find("crymson") == null);
+    // `winfo rgb . PaleVioletRed3` of wish 8.6.16 is 52685 26728 35209.
+    try std.testing.expectEqual([3]u8{ 205, 104, 137 }, find("PaleVioletRed3").?);
 }
