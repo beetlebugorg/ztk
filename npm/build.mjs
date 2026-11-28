@@ -31,8 +31,8 @@ function tagVersion() {
 }
 
 const version = (arg("--version") ?? tagVersion() ?? pkg.version).replace(/^v/, "");
-if (!/^\d+\.\d+\.\d+(-alpha|-beta)?$/.test(version)) {
-  console.error(`error: the version "${version}" is not X.Y.Z, X.Y.Z-alpha, or X.Y.Z-beta`);
+if (!/^\d+\.\d+\.\d+(-(alpha|beta|rc)(\.\d+)?)?$/.test(version)) {
+  console.error(`error: the version "${version}" is not X.Y.Z, X.Y.Z-alpha[.N], X.Y.Z-beta[.N], or X.Y.Z-rc.N`);
   process.exit(1);
 }
 pkg.version = version;
