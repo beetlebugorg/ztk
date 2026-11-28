@@ -25,6 +25,18 @@ pub const appkit_enabled = @import("build_options").appkit;
 pub const objc = if (appkit_enabled) @import("sys/objc.zig") else struct {};
 pub const metal = if (appkit_enabled) @import("render/metal.zig") else @import("render/metal_off.zig");
 pub const appkit = if (appkit_enabled) @import("platform/appkit.zig") else struct {};
+/// The error of the `ztk` program when the build has no display backend
+/// for the system `os`, such as a macOS build with `-Dbackends=headless`.
+pub fn noBackendText(comptime os: @import("std").Target.Os.Tag) []const u8 {
+    return "ztk: this build has no display backend for " ++ @tagName(os) ++ ". Use --headless.\n";
+}
+
+test "the error of a build with no display backend names the system" {
+    const t = @import("std").testing;
+    try t.expectEqualStrings("ztk: this build has no display backend for macos. Use --headless.\n", noBackendText(.macos));
+    try t.expectEqualStrings("ztk: this build has no display backend for freebsd. Use --headless.\n", noBackendText(.freebsd));
+}
+
 pub const bundle = @import("bundle.zig");
 pub const elfload = @import("sys/elf/loader.zig");
 pub const appbin = @import("appbin.zig");
