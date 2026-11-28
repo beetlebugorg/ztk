@@ -295,3 +295,14 @@ test "entry-show" {
     defer h.deinit();
     try shot(&h, "entry-show");
 }
+
+test "entry: an empty -cursor is good for an entry, a spinbox, and a menu, as in wish" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    try t.expectEqualStrings(".e {}", try h.eval("list [entry .e -cursor {}] [.e cget -cursor]"));
+    try t.expectEqualStrings(".s {}", try h.eval("list [spinbox .s -cursor {}] [.s cget -cursor]"));
+    try t.expectEqualStrings(".m {}", try h.eval("list [menu .m -cursor {}] [.m cget -cursor]"));
+    try t.expectEqualStrings("xterm", try h.eval("entry .e2; .e2 cget -cursor"));
+    try t.expectEqualStrings("bad cursor spec \"nocursor\"", try h.evalError("entry .e3 -cursor nocursor"));
+}
