@@ -106,7 +106,7 @@ ztk adds these commands and options. [The ztk:: commands](commands/README.md) li
 - `ztk::tooltip`, `ztk::limit`, and `ztk::clock` ([ztk::limit](commands/limit.md)).
 - `ztk::snapshot`, `ztk::tree`, and `ztk::inject` for tests and agents ([For agents](agents.md)), and `ztk::debug` with the Inspect panel and its Probe tab on the site ([Debugging](debugging.md)).
 - The platform commands: `ztk::dnd`, `ztk::tray`, `ztk::taskbar`, `ztk::recent`, `ztk::hotkey`, `ztk::win::*`, and `ztk::mac::*`.
-- `image create photo -density 2`: a photo made for a screen of scale 2. A widget lays it out at its logical size and renders its pixels 1:1 on such a screen.
+- `image create photo -density 2`: a photo made for a screen of scale 2. A widget lays it out at its logical size and renders its pixels 1:1 on such a screen. An image item of a canvas has the same size and the same pixels.
 - `wm iconphoto` sets the window icon on each desktop platform, and the Dock icon on macOS.
 - The style classes `switch`, `segmented`, and `search`, `-placeholder` on entries, undo in entries, and fractional wheel steps.
 - Text widgets move, delete, and wrap by grapheme cluster (UAX #29), where Tk 8.6 steps by character. The text index unit `graphemes` is a ztk addition.
