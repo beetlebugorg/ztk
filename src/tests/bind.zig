@@ -42,7 +42,14 @@ test "bind-pattern: equal forms and modifiers" {
     try t.expect((try bind.parsePattern(it, "<<Foo>>")).type == .virtual);
     try t.expectEqualStrings("bad event type or keysym \"Foo\"", try h.evalError("bind .f <Foo-1> x"));
     try t.expectEqualStrings("bad button number \"9\"", try h.evalError("bind .f <Button-9> x"));
-    try t.expectEqualStrings("event sequences are not supported in this stage", try h.evalError("bind .f <Control-x><Control-s> x"));
+    const seq = try bind.parsePattern(it, "<Control-x><Control-s>");
+    try t.expectEqual(@as(usize, 1), seq.prefix.len);
+    try t.expect(seq.prefix[0].mods.control and seq.mods.control);
+    try t.expectEqual(@as(usize, 2), (try bind.parsePattern(it, "abc")).prefix.len);
+    try t.expectEqualStrings("virtual events may not be composed", try h.evalError("bind .f <<A>><1> x"));
+    try t.expectEqualStrings("virtual events may not be composed", try h.evalError("bind .f <1><<A>> x"));
+    try t.expectEqualStrings("bad event type or keysym \"Foo\"", try h.evalError("bind .f <1><Foo> x"));
+    try t.expectEqualStrings("missing \">\" in binding", try h.evalError("bind .f <1><2 x"));
     try t.expectEqualStrings("no event type or button # or keysym", try h.evalError("bind .f <> x"));
     try t.expectEqualStrings("extra characters after detail in binding", try h.evalError("bind .f <1-2> x"));
 }
@@ -320,4 +327,70 @@ test "dispatch: a motion event with no binding allocates nothing" {
         dispatch.handle(app, .{ .motion = .{ .window = win, .x = @floatFromInt(f.geom.x + 2 + @as(i32, @intCast(i % 10))), .y = @floatFromInt(f.geom.y + 2), .mods = .{}, .time_ms = 0 } });
     }
     try t.expectEqual(before, counting.allocs);
+}
+
+test "bind: a sequence of events matches the history, as in wish" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval(
+        \\frame .f -width 50 -height 50; pack .f
+        \\label .g -text a; pack .g
+        \\update
+        \\set log {}
+        \\proc ev {args} { event generate .f {*}$args }
+        \\proc show {} { global log; set r $log; set log {}; return $r }
+        \\bind .f <Control-x><Control-s> {lappend log xs}
+        \\bind .f <Control-s> {lappend log s}
+        \\bind .f abc {lappend log abc}
+        \\bind .f ab {lappend log ab}
+        \\bind .f <1><2> {lappend log b12}
+        \\bind .f a<Return> {lappend log aret}
+    );
+    // Each expected value is the output of wish 8.6.16.
+    const cases = [_][2][]const u8{
+        .{ "lsort [bind .f]", "<Button-1><Button-2> <Control-Key-s> <Control-Key-x><Control-Key-s> a<Key-Return> ab abc" },
+        .{ "bind .f <Control-x><Control-s>", "lappend log xs" },
+        .{ "bind .f abc", "lappend log abc" },
+        // The longer sequence runs, and the binding of the last event does not.
+        .{ "ev <Control-x>; ev <Control-s>; show", "xs" },
+        .{ "ev <Control-s>; show", "s" },
+        // A key release, the press of a modifier key, and an event of another type are skipped.
+        .{ "ev <Control-x>; ev <KeyRelease-x> -state 4; ev <Key-Control_L>; ev <Control-s>; show", "xs" },
+        .{ "ev <Control-x>; ev <Motion>; ev <Enter>; ev <Control-s>; show", "xs" },
+        .{ "ev <Control-x>; event generate .f <<Foo>>; ev <Control-s>; show", "xs" },
+        // Another key, a button, and an event of another widget end the sequence.
+        .{ "ev <Control-x>; ev <Key-q>; ev <Control-s>; show", "s" },
+        .{ "ev <Control-x>; ev <1>; ev <Control-s>; show", "s" },
+        .{ "ev <Control-x>; event generate .g <Key-z>; ev <Control-s>; show", "s" },
+        .{ "ev <Control-x>; event generate .g <Motion>; ev <Control-s>; show", "s" },
+        .{ "ev <Control-x>; event generate .g <Configure>; ev <Control-s>; show", "s" },
+        .{ "ev x; ev <Control-s>; show", "s" },
+        .{ "ev a; ev b; ev c; show", "ab abc" },
+        .{ "ev a; ev b; ev b; ev c; show", "ab" },
+        // A sequence does not match when the event before it fits its first pattern.
+        .{ "ev a; ev a; ev b; ev c; show", "" },
+        .{ "ev q; ev a; ev a; ev b; show", "" },
+        .{ "ev <1>; ev <1>; ev <2>; show", "" },
+        .{ "ev a; ev b; ev a; ev b; show", "ab ab" },
+        .{ "ev b; ev b; ev a; ev b; ev c; show", "ab abc" },
+        .{ "ev <1>; ev <ButtonRelease-1>; ev <2>; show", "b12" },
+        .{ "ev <1>; ev a; ev <2>; show", "" },
+        .{ "ev a; ev <Return>; show", "aret" },
+        // A sequence is more specific than a pattern with more modifiers.
+        .{ "bind .f <Control-b> {lappend log ctlb}; ev a; ev b -state 4; show", "ab" },
+        .{ "bind .f <Control-x><Control-s> {}; lsort [bind .f]", "<Button-1><Button-2> <Control-Key-b> <Control-Key-s> a<Key-Return> ab abc" },
+        .{ "ev <Control-x>; ev <Control-s>; show", "s" },
+        // `event add` keeps a sequence, and the sequence runs no binding.
+        .{ "event add <<Save>> <Control-x><Control-s>; event info <<Save>>", "<Control-Key-x><Control-Key-s>" },
+        .{ "bind .f <Control-s> {}; bind .f <<Save>> {lappend log save}; ev <Control-x>; ev <Control-s>; show", "" },
+    };
+    for (cases) |c| {
+        t.expectEqualStrings(c[1], try h.eval(c[0])) catch |e| {
+            std.debug.print("script {s}\n", .{c[0]});
+            return e;
+        };
+    }
+    try t.expectEqualStrings("only one event specification allowed", try h.evalError("event generate .f <1><2>"));
+    try t.expectEqualStrings("only one event specification allowed", try h.evalError("event generate .f ab"));
 }
