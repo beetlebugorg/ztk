@@ -186,12 +186,27 @@ fn initAtEveryFailure(mode: @import("../render/thread.zig").Mode, root: ?[]const
     }
 }
 
+// Each form of `App.init` has its own test and its own watchdog. One
+// test with the three forms ran for 19 seconds alone on an Apple M1 and
+// went past 60 seconds in a full run of `zig build test`.
 test "r3 init: App.init frees all at each allocation failure" {
     var dog: Watchdog = undefined;
     try dog.start(60_000);
     defer dog.stop();
     const n = try initAtEveryFailure(.inline_draw, "style-root");
     try t.expect(n > 10);
+}
+
+test "r3 init: App.init with no style root frees all at each allocation failure" {
+    var dog: Watchdog = undefined;
+    try dog.start(60_000);
+    defer dog.stop();
     _ = try initAtEveryFailure(.inline_draw, null);
+}
+
+test "r3 init: App.init with a render thread frees all at each allocation failure" {
+    var dog: Watchdog = undefined;
+    try dog.start(60_000);
+    defer dog.stop();
     _ = try initAtEveryFailure(.threaded, "style-root");
 }
