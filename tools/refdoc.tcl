@@ -460,8 +460,13 @@ proc refdoc::run {runner flags release items {setup {}}} {
     # an example that makes files, also with `--root .`, makes them there.
     variable root
     variable runs
+    # On Windows a program that an example started, such as a shell of
+    # ztcl::pty, can hold its folder for a moment after the runner ends,
+    # so a folder that cannot be deleted stays, and the run uses the next one.
     set dir [file join $root zig-out refdoc-run [incr runs]]
-    file delete -force $dir
+    while {[catch {file delete -force $dir}]} {
+        set dir [file join $root zig-out refdoc-run [incr runs]]
+    }
     file mkdir $dir
     set path [file join $dir examples.tcl]
     writefile $path $script
@@ -472,7 +477,7 @@ proc refdoc::run {runner flags release items {setup {}}} {
         catch {exec -ignorestderr -- $runner {*}$args} out
     } finally {
         cd $here
-        file delete -force $dir
+        catch {file delete -force $dir}
     }
     set got {}
     foreach chunk [lrange [split $out "\x1d"] 1 end] {
