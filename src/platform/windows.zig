@@ -229,6 +229,7 @@ pub const Win32 = struct {
         .dropTypes = vDropTypes,
         .fileDialog = vFileDialog,
         .colorDialog = vColorDialog,
+        .fontDialog = vFontDialog,
         .messageBox = vMessageBox,
         .setWindowState = vSetWindowState,
         .reducedMotion = vReducedMotion,
@@ -701,6 +702,12 @@ pub const Win32 = struct {
         const b = self(ptr);
         const owner: ?w32.HWND = if (opts.parent) |p| (if (b.recOf(p)) |r| r.hwnd else null) else null;
         return winbox.chooseColor(gpa, opts, owner);
+    }
+
+    fn vFontDialog(ptr: *anyopaque, gpa: std.mem.Allocator, opts: *const plat.FontDialog) ?plat.FontChoice {
+        const b = self(ptr);
+        const owner: ?w32.HWND = if (opts.parent) |p| (if (b.recOf(p)) |r| r.hwnd else null) else null;
+        return winbox.chooseFont(gpa, opts, owner);
     }
 
     fn vMessageBox(ptr: *anyopaque, opts: *const plat.MessageBox) ?plat.MessageBox.Button {

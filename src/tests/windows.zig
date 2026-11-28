@@ -771,6 +771,30 @@ test "windows: the color dialog and the message box of Windows get their options
     try t.expectEqual(@as(u8, 0x10), back.r);
     try t.expectEqual(@as(u8, 0x30), back.b);
 
+    // The font dialog: 12 points are 16 pixels at 96 pixels in one inch.
+    var lf: box.LOGFONTW = .{};
+    const fc = box.fontConfig(&.{ .title = "Pick", .initial = .{ .family = "Segoe UI", .size = 12, .bold = true, .overstrike = true } }, null, title, &lf, 96);
+    try t.expectEqual(@as(u32, 104), fc.lStructSize);
+    try t.expectEqual(@as(usize, 92), @sizeOf(box.LOGFONTW));
+    try t.expect(fc.lpLogFont == &lf and fc.lpfnHook != null);
+    try t.expectEqual(box.cf.screen_fonts | box.cf.init_to_logfont | box.cf.effects | box.cf.enable_hook, fc.Flags);
+    try t.expectEqual(@as(i32, -16), lf.lfHeight);
+    try t.expectEqual(@as(i32, 700), lf.lfWeight);
+    try t.expectEqual(@as(u8, 0), lf.lfItalic);
+    try t.expectEqual(@as(u8, 1), lf.lfStrikeOut);
+    try t.expectEqualSlices(u16, std.unicode.utf8ToUtf16LeStringLiteral("Segoe UI"), std.mem.sliceTo(&lf.lfFaceName, 0));
+    // The answer: 105 tenths of a point are 11 points.
+    lf.lfItalic = 1;
+    lf.lfWeight = 400;
+    const font = try box.fontOf(t.allocator, &lf, 105);
+    defer t.allocator.free(font.family);
+    try t.expectEqualStrings("Segoe UI", font.family);
+    try t.expectEqual(@as(u16, 11), font.size);
+    try t.expect(!font.bold and font.italic and !font.underline and font.overstrike);
+    // A family of more than 31 units stays empty.
+    _ = box.fontConfig(&.{ .initial = .{ .family = "A family name that has more than 31 units" } }, null, title, &lf, 96);
+    try t.expectEqual(@as(u16, 0), lf.lfFaceName[0]);
+
     // yesnocancel with the default no: the second button, and modal to the
     // thread with no owner.
     const q: plat_.MessageBox = .{ .buttons = .yesnocancel, .icon = .question, .default = .no, .message = "Save?", .detail = "It changed." };

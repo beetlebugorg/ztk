@@ -35,7 +35,7 @@ Each platform has a native backend of its own, with no toolkit library between z
 | Tk in a child interpreter (`load {} Tk child`) | Not in ztk. One app has one Tk. | |
 | `selection` with other apps | The selection works inside the app only. The clipboard is the clipboard of the system on Windows, macOS, and Wayland, and local to the app on X11 and the web. | |
 | `tk busy` | Keeps the busy mark of a window and does not block its input. | |
-| `tk fontchooser` | Keeps its options and shows no dialog. | |
+| `tk fontchooser` | On Windows, `show` runs the font dialog of the system to its end, then sets `-font`, calls `-command` with the font, and sends `<<TkFontchooserFontChanged>>`. On the other platforms it keeps its options and shows no dialog. | [#57](https://github.com/beetlebugorg/ztk/issues/57) |
 | Bold monospace text | ztk has the regular face of JetBrains Mono only, so `{TkFixedFont 9 bold}` renders in the regular weight. | [#300](https://github.com/beetlebugorg/ztk/issues/300) |
 
 ## In progress

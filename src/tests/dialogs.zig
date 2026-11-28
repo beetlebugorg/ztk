@@ -94,6 +94,31 @@ test "dialogs: tk_chooseColor gives a native color dialog its options" {
     });
 }
 
+test "dialogs: tk fontchooser show gives a native font dialog its options and takes its font" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    try expectEvals(&h, &.{
+        // With no font dialog, the options are only stored.
+        .{ "tk fontchooser show; tk fontchooser configure -visible", "1" },
+        .{ "tk fontchooser hide; tk fontchooser configure -visible", "0" },
+        // A stand-in for the command of a backend with fontDialog. It
+        // keeps its words and the value of -visible during the dialog.
+        .{ "proc ::ztk::priv::nativefont {args} {set ::words $args; set ::during [tk fontchooser configure -visible]; return {{Segoe UI} 14 bold overstrike}}; set ::log {}", "" },
+        .{ "bind . <<TkFontchooserVisibility>> {lappend ::log vis}; bind . <<TkFontchooserFontChanged>> {lappend ::log font}", "" },
+        .{ "tk fontchooser configure -title Pick -font {Helvetica 12 bold italic underline} -command {lappend ::log got}; tk fontchooser show", "" },
+        .{ "lrange $::words 2 end", "12 1 1 1 0 ." },
+        .{ "list [lindex $::words 0] $::during [tk fontchooser configure -visible]", "Pick 1 0" },
+        .{ "update; set ::log", "vis vis got {{Segoe UI} 14 bold overstrike} font" },
+        .{ "tk fontchooser configure -font", "{Segoe UI} 14 bold overstrike" },
+        // A cancel changes no font and calls no command.
+        .{ "proc ::ztk::priv::nativefont {args} {return {}}; set ::log {}; tk fontchooser show; update; list $::log [tk fontchooser configure -font]", "{vis vis} {{Segoe UI} 14 bold overstrike}" },
+        // An empty -font gives the default font of the app.
+        .{ "proc ::ztk::priv::nativefont {args} {set ::words $args; return {}}; tk fontchooser configure -font {}; tk fontchooser show; expr {[lindex $::words 1] eq [font actual TkDefaultFont -family]}", "1" },
+        .{ "rename ::ztk::priv::nativefont {}", "" },
+    });
+}
+
 test "dialogs: the file dialogs list a folder and give paths" {
     var h: Harness = undefined;
     try h.init();

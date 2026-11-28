@@ -1,13 +1,18 @@
-//! The color dialog and the message box of the Win32 backend:
-//! `ChooseColorW` of comdlg32 for `tk_chooseColor`, and `MessageBoxW` for
+//! The color dialog, the font dialog, and the message box of the Win32
+//! backend: `ChooseColorW` of comdlg32 for `tk_chooseColor`,
+//! `ChooseFontW` for `tk fontchooser show`, and `MessageBoxW` for
 //! `tk_messageBox`. Each runs modal on the UI thread with the owner
-//! window. `colorConfig` and `boxFlags` map the options of ztk onto the
-//! structures of Windows, and the tests check them without a dialog on
-//! the screen.
+//! window. `colorConfig`, `fontConfig`, and `boxFlags` map the options of
+//! ztk onto the structures of Windows, and the tests check them without a
+//! dialog on the screen.
 //!
 //! `ChooseColorW` has no title in its structure, so a hook sets the
 //! title of the dialog in `WM_INITDIALOG`. The 16 custom colors stay for
-//! the life of the process, as in other Windows programs. `MessageBoxW`
+//! the life of the process, as in other Windows programs. `ChooseFontW`
+//! gets its title from a hook of the same kind. Its `LOGFONTW` has the
+//! height of the first font in pixels of the screen, as a negative number
+//! for the height of the characters. The answer has the size in tenths
+//! of a point. `MessageBoxW`
 //! is in each Windows process, with no manifest: the message and the
 //! detail go in its text with an empty line between them.
 //!
@@ -90,6 +95,117 @@ pub fn chooseColor(gpa: std.mem.Allocator, opts: *const plat.ColorDialog, owner:
     var c = colorConfig(opts, owner, title.ptr);
     if (ChooseColorW(&c) == 0) return null;
     return colorOf(c.rgbResult);
+}
+
+pub const LOGFONTW = extern struct {
+    lfHeight: i32 = 0,
+    lfWidth: i32 = 0,
+    lfEscapement: i32 = 0,
+    lfOrientation: i32 = 0,
+    lfWeight: i32 = 0,
+    lfItalic: u8 = 0,
+    lfUnderline: u8 = 0,
+    lfStrikeOut: u8 = 0,
+    /// DEFAULT_CHARSET.
+    lfCharSet: u8 = 1,
+    lfOutPrecision: u8 = 0,
+    lfClipPrecision: u8 = 0,
+    lfQuality: u8 = 0,
+    lfPitchAndFamily: u8 = 0,
+    lfFaceName: [32]u16 = @splat(0),
+};
+
+pub const CHOOSEFONTW = extern struct {
+    lStructSize: u32 = @sizeOf(CHOOSEFONTW),
+    hwndOwner: ?w32.HWND = null,
+    hDC: ?*anyopaque = null,
+    lpLogFont: *LOGFONTW,
+    iPointSize: i32 = 0,
+    Flags: u32 = 0,
+    rgbColors: u32 = 0,
+    lCustData: isize = 0,
+    lpfnHook: ?*const fn (?w32.HWND, u32, usize, isize) callconv(.winapi) usize = null,
+    lpTemplateName: ?[*:0]const u16 = null,
+    hInstance: ?*anyopaque = null,
+    lpszStyle: ?[*:0]u16 = null,
+    nFontType: u16 = 0,
+    missing_alignment: u16 = 0,
+    nSizeMin: i32 = 0,
+    nSizeMax: i32 = 0,
+};
+
+pub const cf = struct {
+    pub const screen_fonts: u32 = 0x1;
+    pub const enable_hook: u32 = 0x8;
+    pub const init_to_logfont: u32 = 0x40;
+    pub const effects: u32 = 0x100;
+};
+
+extern "comdlg32" fn ChooseFontW(c: *CHOOSEFONTW) callconv(.winapi) i32;
+extern "user32" fn GetDpiForSystem() callconv(.winapi) u32;
+
+/// The structures of `ChooseFontW` for the options: the first font in
+/// `lf`, the screen fonts, the underline and strikeout boxes, and the
+/// hook of the title. `dpi` is the count of pixels of the screen in one
+/// inch, for the height of the first font. A family of more than 31
+/// UTF-16 units stays empty, and the dialog then shows its default. The
+/// title and `lf` stay in memory of the caller.
+pub fn fontConfig(opts: *const plat.FontDialog, owner: ?w32.HWND, title: [*:0]const u16, lf: *LOGFONTW, dpi: u32) CHOOSEFONTW {
+    const f = opts.initial;
+    lf.* = .{
+        .lfHeight = -@as(i32, @intCast((@as(u32, f.size) * dpi + 36) / 72)),
+        .lfWeight = if (f.bold) 700 else 400,
+        .lfItalic = @intFromBool(f.italic),
+        .lfUnderline = @intFromBool(f.underline),
+        .lfStrikeOut = @intFromBool(f.overstrike),
+    };
+    if (std.unicode.calcUtf16LeLen(f.family)) |n| {
+        if (n < lf.lfFaceName.len) _ = std.unicode.utf8ToUtf16Le(&lf.lfFaceName, f.family) catch 0;
+    } else |_| {}
+    return .{
+        .hwndOwner = owner,
+        .lpLogFont = lf,
+        .Flags = cf.screen_fonts | cf.init_to_logfont | cf.effects | cf.enable_hook,
+        .lCustData = @bitCast(@intFromPtr(title)),
+        .lpfnHook = fontHook,
+    };
+}
+
+fn fontHook(h: ?w32.HWND, msg: u32, _: usize, lp: isize) callconv(.winapi) usize {
+    if (msg != WM_INITDIALOG) return 0;
+    // The lParam of WM_INITDIALOG is the structure of the call.
+    const c: *const CHOOSEFONTW = @ptrFromInt(@as(usize, @bitCast(lp)));
+    const title: [*:0]const u16 = @ptrFromInt(@as(usize, @bitCast(c.lCustData)));
+    if (h) |hw| if (title[0] != 0) {
+        _ = SetWindowTextW(hw, title);
+    };
+    return 0;
+}
+
+/// The font of an answer of `ChooseFontW`: the family of `lf`, the size
+/// of `tenths` (tenths of a point) as the nearest point, and the styles.
+/// The family is in memory of `gpa`.
+pub fn fontOf(gpa: std.mem.Allocator, lf: *const LOGFONTW, tenths: i32) !plat.FontChoice {
+    const face = std.mem.sliceTo(&lf.lfFaceName, 0);
+    return .{
+        .family = try std.unicode.utf16LeToUtf8Alloc(gpa, face),
+        .size = @intCast(std.math.clamp(@divTrunc(tenths + 5, 10), 1, 999)),
+        .bold = lf.lfWeight >= 600,
+        .italic = lf.lfItalic != 0,
+        .underline = lf.lfUnderline != 0,
+        .overstrike = lf.lfStrikeOut != 0,
+    };
+}
+
+/// Runs the font dialog to its end: the chosen font, or null for a
+/// cancel.
+pub fn chooseFont(gpa: std.mem.Allocator, opts: *const plat.FontDialog, owner: ?w32.HWND) ?plat.FontChoice {
+    const title = std.unicode.utf8ToUtf16LeAllocZ(gpa, opts.title) catch return null;
+    defer gpa.free(title);
+    var lf: LOGFONTW = .{};
+    var c = fontConfig(opts, owner, title.ptr, &lf, GetDpiForSystem());
+    if (ChooseFontW(&c) == 0) return null;
+    return fontOf(gpa, &lf, c.iPointSize) catch null;
 }
 
 pub const mb = struct {
