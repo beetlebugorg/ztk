@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## v1.0.0-beta.1 (2026-11-28)
 
+The first beta of ztk 1.0. ztk adds native clients for Wayland and X11 with no C library, the native look of each platform, drag and drop, the tray, the taskbar, and the jump lists, `ztk bundle --target` for each platform from any host, the `ttk` widgets, the canvas, `ztk::debug` and `ztk --mcp` for agents, and the WebGPU renderer of the web build. ztk follows Tcl 9.1 by default (the breaking change below).
+
+- **Breaking:** ztk follows Tcl and Tk 9.1 by default: the `ztk` program, the programs of `ztk bundle`, and the web build. Tk reports 9.1.0. A script of 8.6 can break on the differences of the language: an integer with a leading zero is decimal, a bad byte in an encoding is an error, and the other changes of [Tcl 9.1 and Tcl 8.6](https://github.com/beetlebugorg/ztcl/blob/main/docs/tcl91.md). Run such a script with `ztk --tcl 8.6`, `ZTCL_TCL=8.6`, or `ztk bundle --tcl 8.6`. The widgets are the same in both releases, and the widget changes of Tk 9.0 and 9.1 are not in ztk yet. libztk, the drop-in libtk8.6, stays at 8.6. See [Differences from Tk](docs/differences.md).
 - Adds the Wayland client of ztk, with no C library: the wire protocol, the XKB key map, the pointer shapes, the clipboard, and the input method. The static Linux programs of a release open a window. The main window renders with Vulkan into dma-bufs, or with the CPU renderer. See [On Linux](docs/linux.md).
 - Adds an X11 client for a Linux desktop with no Wayland compositor.
 - Adds drops of files and text from other apps (`tkdnd::drop_target`) and drags to them (`ztk::dnd drag`) on Windows, macOS, and Wayland. See [ztk::dnd](docs/commands/dnd.md).
