@@ -76,6 +76,12 @@ The first file is the main script. Each file keeps its path relative to the main
 
 A program file for Windows (`--target x86_64-windows` or `aarch64-windows`, or this computer on Windows) gets the resources of a Windows app: the icon of `--icon` (an `.ico`, or a `.png` of 256 pixels or less), a manifest with per-monitor DPI and version 6 of the common controls, and the version information of `--name` and `--version`, which Explorer shows in the properties of the file. It uses the GUI subsystem, so it opens no console window. Started from a terminal, it writes `puts` and its errors to that terminal. `--console` gives a program with a console window of its own.
 
+`--sign-cert FILE` with `--sign-key FILE` gives a Windows program an Authenticode signature, from any host and with no `signtool`. The certificate file is PEM, with the certificate of the signer first and then the rest of its chain. The key file is PEM with no password, with a P-256, P-384, or RSA key. The signature has no timestamp, so Windows accepts it only while the certificate is valid.
+
+```sh
+ztk bundle -o notes.exe --target x86_64-windows --sign-cert signer.pem --sign-key signer-key.pem notes.tcl
+```
+
 On Linux, `--desktop` also writes a desktop entry and an icon next to the program file: `ztk bundle -o notes --desktop --name "My Notes" --icon notes.png notes.tcl` gives `notes`, `notes.desktop`, and `notes.png` (256 pixels or less). The entry has `Exec=notes`, so put the program in a folder of `PATH` such as `~/.local/bin`, the entry in `~/.local/share/applications`, and the icon in `~/.local/share/icons/hicolor/256x256/apps`. A bundled program gives its file name as the app id of its Wayland window, so the desktop finds the entry and its icon. A renamed program needs an entry of the new name.
 
 `wm iconphoto` sets the icon of the window on Linux. On X11 the photos go in the property `_NET_WM_ICON`. On Wayland they go to the compositor with the protocol `xdg-toplevel-icon-v1`, and a compositor without the protocol shows the icon of the desktop entry.
