@@ -1,10 +1,23 @@
 //! Event patterns, the binding table, and the commands `bind` and
 //! `bindtags`. A pattern is one event: a type, the modifiers that it
-//! needs, a click count, and a detail (a button or a key symbol). The
+//! needs, a click count, and a detail (a button or a key symbol). A
+//! sequence such as `<Control-x><Control-s>` is the pattern of its last
+//! event with the patterns of the earlier events as its prefix. The
 //! table keeps the scripts of each tag in the order that they were made.
-//! `match` picks the most specific pattern that fits an event: a detail
-//! first, then a higher count, then more modifiers, then a physical
-//! pattern before a virtual one, and the newest pattern for equal rank.
+//! `match` picks the most specific pattern that fits an event: a longer
+//! sequence first, then a detail, then a higher count, then more
+//! modifiers, then a physical pattern before a virtual one, and the
+//! newest pattern for equal rank.
+//!
+//! `History` has the last 32 events that `deliver` got. A sequence fits
+//! when its last pattern fits the event and a walk back through the
+//! history finds an event for each pattern of the prefix, as in wish
+//! 8.6.16. The walk skips an event of another type and the press of a
+//! modifier key. It stops with no match at an event of another widget,
+//! at a button event for a key pattern or a key event for a button
+//! pattern, and at an event of the type of the pattern that does not
+//! fit it. A sequence does not fit when the event before its first
+//! event also fits its first pattern.
 //! `substitute` fills the `%` fields. `deliver` runs the scripts of the
 //! tags of a widget in order, and a script can stop the later tags with
 //! `break`. A script with no `%` field compiles once and compiles again
@@ -59,12 +72,115 @@ pub const Pattern = struct {
     detail: u32 = 0,
     /// The name of a virtual event.
     virtual: []const u8 = "",
+    /// The patterns of the earlier events of a sequence, the first event
+    /// first. A pattern of the prefix has no prefix.
+    prefix: []const Pattern = &.{},
 
     fn eql(a: Pattern, b: Pattern) bool {
+        if (a.prefix.len != b.prefix.len) return false;
+        for (a.prefix, b.prefix) |x, y| if (!x.eql(y)) return false;
         return a.type == b.type and @as(u16, @bitCast(a.mods)) == @as(u16, @bitCast(b.mods)) and
             a.count == b.count and a.detail == b.detail and std.mem.eql(u8, a.virtual, b.virtual);
     }
+
+    /// A copy with its own name and prefix.
+    pub fn dupe(p: Pattern, gpa: std.mem.Allocator) !Pattern {
+        var out = p;
+        out.virtual = if (p.virtual.len > 0) try gpa.dupe(u8, p.virtual) else "";
+        errdefer if (out.virtual.len > 0) gpa.free(out.virtual);
+        out.prefix = if (p.prefix.len > 0) try gpa.dupe(Pattern, p.prefix) else &.{};
+        return out;
+    }
+
+    /// Frees the name and the prefix of a copy of `dupe`.
+    pub fn free(p: Pattern, gpa: std.mem.Allocator) void {
+        if (p.virtual.len > 0) gpa.free(p.virtual);
+        if (p.prefix.len > 0) gpa.free(p.prefix);
+    }
 };
+
+/// One event of the history: the fields that a pattern checks.
+const Past = struct {
+    type: EventType,
+    detail: u32,
+    mods: event.Mods,
+    count: u8,
+    widget: *const Widget,
+};
+
+/// The last events that `deliver` got, for the sequences.
+pub const History = struct {
+    ring: [32]Past = undefined,
+    /// The count of all events. Event `i` is in `ring[i % 32]`.
+    n: u64 = 0,
+    /// The number of the event that `deliver` handles now, or null
+    /// outside `deliver`.
+    cur: ?u64 = null,
+
+    fn push(h: *History, ev: *const WidgetEvent) u64 {
+        h.ring[h.n % h.ring.len] = .{ .type = ev.type, .detail = detailOf(ev), .mods = ev.mods, .count = ev.count, .widget = ev.widget };
+        h.n += 1;
+        return h.n - 1;
+    }
+
+    /// The event before event `i`, or null when the ring does not have it.
+    fn before(h: *const History, i: u64) ?struct { u64, Past } {
+        if (i == 0 or h.n - (i - 1) > h.ring.len) return null;
+        return .{ i - 1, h.ring[(i - 1) % h.ring.len] };
+    }
+};
+
+fn detailOf(ev: *const WidgetEvent) u32 {
+    return if (isButtonType(ev.type)) ev.button else if (isKeyType(ev.type)) ev.keysym else 0;
+}
+
+/// A modifier key: Shift_L to Hyper_R.
+fn isModifierKey(sym: u32) bool {
+    return sym >= 0xffe1 and sym <= 0xffee;
+}
+
+const Step = enum { fit, skip, stop };
+
+/// Compares an event of the history with a pattern of a prefix.
+fn step(p: Pattern, r: Past, w: *const Widget) Step {
+    if (r.widget != w) return .stop;
+    if (r.type != p.type) {
+        if (isKeyType(p.type) and isButtonType(r.type)) return .stop;
+        if (isButtonType(p.type) and isKeyType(r.type)) return .stop;
+        return .skip;
+    }
+    const need: u16 = @bitCast(p.mods);
+    const got: u16 = @bitCast(r.mods);
+    if ((p.detail == 0 or p.detail == r.detail) and need & got == need and (p.count <= 1 or r.count >= p.count)) return .fit;
+    if (r.type == .key_press and isModifierKey(r.detail)) return .skip;
+    return .stop;
+}
+
+/// True when the events before the event `ev` fit the prefix.
+fn prefixFits(prefix: []const Pattern, ev: *const WidgetEvent) bool {
+    const h = &ev.widget.app.history;
+    var i = h.cur orelse h.n;
+    var k = prefix.len;
+    while (k > 0) {
+        const b = h.before(i) orelse return false;
+        i = b[0];
+        switch (step(prefix[k - 1], b[1], ev.widget)) {
+            .fit => k -= 1,
+            .skip => {},
+            .stop => return false,
+        }
+    }
+    // The event before the sequence must not fit the first pattern.
+    while (h.before(i)) |b| {
+        i = b[0];
+        switch (step(prefix[0], b[1], ev.widget)) {
+            .fit => return false,
+            .skip => {},
+            .stop => break,
+        }
+    }
+    return true;
+}
 
 /// One event for a widget, with the data of the `%` fields.
 pub const WidgetEvent = struct {
@@ -232,23 +348,47 @@ fn isButtonType(t: EventType) bool {
     return t == .button_press or t == .button_release;
 }
 
-/// Parses one event pattern: "<Control-Button-1>", "<<Copy>>", "a".
+/// Parses an event pattern: "<Control-Button-1>", "<<Copy>>", "a", or
+/// a sequence of patterns: "<Control-x><Control-s>", "abc". The name and
+/// the prefix of the result are in the arena of the interpreter.
 pub fn parsePattern(it: *ztcl.Interp, text: []const u8) ztcl.Error!Pattern {
     if (text.len >= 4 and std.mem.startsWith(u8, text, "<<") and std.mem.endsWith(u8, text, ">>")) {
         const name = text[2 .. text.len - 2];
+        if (std.mem.indexOf(u8, name, ">>") != null) return it.fail("virtual events may not be composed", .{});
         if (name.len == 0 or std.mem.indexOfAny(u8, name, "<>") != null) return it.fail("virtual event \"{s}\" is badly formed", .{text});
         return .{ .type = .virtual, .virtual = try it.alloc().dupe(u8, name) };
     }
-    if (text.len == 0 or text[0] != '<') {
-        // A plain character is a key press. More than one is a sequence.
+    if (text.len == 0) return it.fail("no event type or button # or keysym", .{});
+    var list: std.ArrayListUnmanaged(Pattern) = .empty;
+    const a = it.alloc();
+    var rest = text;
+    while (rest.len > 0) {
+        var n: usize = undefined;
+        if (rest[0] == '<') {
+            if (std.mem.startsWith(u8, rest, "<<")) return it.fail("virtual events may not be composed", .{});
+            n = 1 + (std.mem.indexOfScalar(u8, rest, '>') orelse return it.fail("missing \">\" in binding", .{}));
+        } else {
+            n = std.unicode.utf8ByteSequenceLength(rest[0]) catch return it.fail("bad event type or keysym \"{s}\"", .{text});
+            if (n > rest.len) return it.fail("bad event type or keysym \"{s}\"", .{text});
+        }
+        try list.append(a, try parseOne(it, rest[0..n]));
+        rest = rest[n..];
+    }
+    var p = list.items[list.items.len - 1];
+    p.prefix = list.items[0 .. list.items.len - 1];
+    return p;
+}
+
+/// Parses the pattern of one event: "<Control-Button-1>" or "a".
+fn parseOne(it: *ztcl.Interp, text: []const u8) ztcl.Error!Pattern {
+    if (text[0] != '<') {
+        // A plain character is a key press.
         const view = std.unicode.Utf8View.init(text) catch return it.fail("bad event type or keysym \"{s}\"", .{text});
         var cps = view.iterator();
         const first = cps.nextCodepoint() orelse return it.fail("no event type or button # or keysym", .{});
-        if (cps.nextCodepoint() != null) return it.fail("event sequences are not supported in this stage", .{});
         return .{ .type = .key_press, .detail = keysym.fromCodepoint(first) };
     }
-    const close = std.mem.indexOfScalar(u8, text, '>') orelse return it.fail("missing \">\" in binding", .{});
-    if (close != text.len - 1) return it.fail("event sequences are not supported in this stage", .{});
+    const close = text.len - 1;
     const body = text[1..close];
     var p: Pattern = .{ .type = .key_press };
     var have_type = false;
@@ -335,6 +475,7 @@ pub fn formatPattern(p: Pattern, buf: []u8) []const u8 {
 }
 
 fn writePattern(w: *std.Io.Writer, p: Pattern) !void {
+    for (p.prefix) |q| try writePattern(w, q);
     if (p.type == .virtual) {
         try w.print("<<{s}>>", .{p.virtual});
         return;
@@ -438,7 +579,7 @@ pub const Table = struct {
 
     fn freeEntry(gpa: std.mem.Allocator, e: *Entry) void {
         gpa.free(e.script);
-        if (e.pattern.virtual.len > 0) gpa.free(e.pattern.virtual);
+        e.pattern.free(gpa);
     }
 
     /// Sets, appends to ("+script"), or deletes ("") a binding.
@@ -473,9 +614,8 @@ pub const Table = struct {
         if (body.len == 0) return;
         const copy = try gpa.dupe(u8, body);
         errdefer gpa.free(copy);
-        var pat = p;
-        if (p.virtual.len > 0) pat.virtual = try gpa.dupe(u8, p.virtual);
-        errdefer if (p.virtual.len > 0) gpa.free(pat.virtual);
+        const pat = try p.dupe(gpa);
+        errdefer pat.free(gpa);
         try entries.append(gpa, .{ .pattern = pat, .script = copy, .has_percent = std.mem.indexOfScalar(u8, copy, '%') != null });
     }
 
@@ -504,7 +644,7 @@ pub const Table = struct {
         const got: u16 = @bitCast(ev.mods);
         if (need & got != need) return false;
         if (p.count > 1 and ev.count < p.count) return false;
-        return true;
+        return p.prefix.len == 0 or prefixFits(p.prefix, ev);
     }
 
     fn virtualRank(p: Pattern, ev: *const WidgetEvent) ?u32 {
@@ -512,6 +652,9 @@ pub const Table = struct {
         const app = ev.widget.app;
         var best: ?u32 = null;
         for (app.virtual_events.items) |d| {
+            // As in wish 8.6.16, a sequence of more than one event runs
+            // no binding of its virtual event.
+            if (d.pattern.prefix.len > 0) continue;
             if (!std.mem.eql(u8, d.name, p.virtual) or !fits(d.pattern, ev)) continue;
             const r = rank(d.pattern) & ~@as(u32, 1);
             if (best == null or r > best.?) best = r;
@@ -521,7 +664,7 @@ pub const Table = struct {
 
     fn rank(p: Pattern) u32 {
         const mods: u16 = @bitCast(p.mods);
-        return (@as(u32, @intFromBool(p.detail != 0)) << 16) | (@as(u32, p.count) << 12) | (@as(u32, @popCount(mods)) << 4) | @as(u32, @intFromBool(p.type != .virtual));
+        return (@as(u32, @min(p.prefix.len, 63)) << 20) | (@as(u32, @intFromBool(p.detail != 0)) << 16) | (@as(u32, p.count) << 12) | (@as(u32, @popCount(mods)) << 4) | @as(u32, @intFromBool(p.type != .virtual));
     }
 
     fn matchEntry(t: *Table, tag: []const u8, ev: *const WidgetEvent) ?*Entry {
@@ -699,6 +842,9 @@ pub fn deliver(app: *App, ev: *const WidgetEvent) void {
     app.enter();
     defer app.leave();
     const w = ev.widget;
+    const saved_cur = app.history.cur;
+    app.history.cur = app.history.push(ev);
+    defer app.history.cur = saved_cur;
     const saved_cause = app.dbg.trace.cause;
     defer app.dbg.trace.cause = saved_cause;
     if (app.dbg.trace.mask != 0) {
@@ -753,7 +899,7 @@ pub const VirtualDef = struct { name: []u8, pattern: Pattern, text: []u8 };
 pub fn freeVirtual(gpa: std.mem.Allocator, d: VirtualDef) void {
     gpa.free(d.name);
     gpa.free(d.text);
-    if (d.pattern.virtual.len > 0) gpa.free(d.pattern.virtual);
+    d.pattern.free(gpa);
 }
 
 pub fn cmdBind(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.Error!Value {
@@ -767,7 +913,7 @@ pub fn cmdBind(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl
         const pats = try app.bindings.list(tag, a);
         const items = try a.alloc(Value, pats.len);
         for (pats, items) |p, *slot| {
-            var buf: [128]u8 = undefined;
+            var buf: [512]u8 = undefined;
             slot.* = .{ .str = try a.dupe(u8, formatPattern(p, &buf)) };
         }
         return ztcl.value.wrapList(a, items);

@@ -144,6 +144,8 @@ pub const App = struct {
     render_ready: bool = false,
     wm: wm_mod.State = .{},
     bindings: bind.Table,
+    /// The last events, for the sequences of `bind`.
+    history: bind.History = .{},
     focus: focus_mod.Focus = .{},
     dispatch: dispatch.State = .{},
     /// Counts up when a compact of the interpreter makes compiled scripts invalid.

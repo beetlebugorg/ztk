@@ -61,7 +61,7 @@ This page lists what a Stage 1 widget, command, or part does not have, compared 
 
 ## bind, bindtags, and event (task 12)
 
-- A pattern is one event. A sequence such as `<Control-x><Control-s>` gives `event sequences are not supported in this stage`. A plain string of more than one character is also a sequence.
+- A pattern is one event or a sequence of events, such as `<Control-x><Control-s>`. A plain string of more than one character is also a sequence. The history for a sequence has the last 32 events.
 - `Meta` and `M` are the same as `Alt` and `Mod1`. `wish` on X11 can map `Meta` to another modifier.
 - `bind` has the event types `ButtonPress`, `ButtonRelease`, `Motion`, `Enter`, `Leave`, `KeyPress`, `KeyRelease`, `FocusIn`, `FocusOut`, `Configure`, `Destroy`, `Map`, `Unmap`, and virtual events. A virtual event runs only from `event generate`.
 - `event add`, `event delete`, and `event info` give `event <name> is not supported in this stage`.

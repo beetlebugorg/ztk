@@ -440,8 +440,8 @@ fn virtualCmd(app: *App, it: *ztcl.Interp, sub: []const u8, args: []const Value)
         errdefer gpa.free(n);
         const t = try gpa.dupe(u8, text);
         errdefer gpa.free(t);
-        var p = pat;
-        p.virtual = "";
+        const p = try pat.dupe(gpa);
+        errdefer p.free(gpa);
         try list.append(gpa, .{ .name = n, .pattern = p, .text = t });
     }
     return Value.empty;
@@ -471,13 +471,8 @@ pub fn cmdEvent(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztc
     // `wish` delivers no event to a widget that is being deleted.
     if (!w.alive()) return Value.empty;
     const ptext = try it.str(argv[3]);
-    const pat = bind.parsePattern(it, ptext) catch |e| {
-        if (e == error.TclError) {
-            const msg = try it.str(it.result);
-            if (std.mem.startsWith(u8, msg, "event sequences are not supported")) return it.fail("only one event specification allowed", .{});
-        }
-        return e;
-    };
+    const pat = try bind.parsePattern(it, ptext);
+    if (pat.prefix.len > 0) return it.fail("only one event specification allowed", .{});
     if (pat.count > 1) return it.fail("Double, Triple, or Quadruple modifier not allowed", .{});
     var ev: WidgetEvent = .{ .type = pat.type, .widget = w, .mods = pat.mods, .virtual = pat.virtual, .serial = nextSerial(app) };
     if (pat.type == .key_press or pat.type == .key_release) ev.keysym = pat.detail;
