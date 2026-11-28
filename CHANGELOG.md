@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## v1.0.0-beta.1 (2026-11-28)
+
+The first beta of ztk 1.0. ztk adds native clients for Wayland and X11 with no C library, the native look of each platform, drag and drop, the tray, the taskbar, and the jump lists, `ztk bundle --target` for each platform from any host, the `ttk` widgets, the canvas, `ztk::debug` and `ztk --mcp` for agents, and the WebGPU renderer of the web build. Scripts of ztk keep Tcl 8.6: the 9.1 default of the ztcl runner does not change ztk.
 
 - Adds the Wayland client of ztk, with no C library: the wire protocol, the XKB key map, the pointer shapes, the clipboard, and the input method. The static Linux programs of a release open a window. The main window renders with Vulkan into dma-bufs, or with the CPU renderer. See [On Linux](docs/linux.md).
 - Adds an X11 client for a Linux desktop with no Wayland compositor.
