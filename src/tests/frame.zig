@@ -95,6 +95,9 @@ test "wm: title, geometry, protocol, and state" {
     try t.expectEqualStrings("bad window path name \".zz\"", try h.evalError("wm title .zz"));
     try t.expectEqualStrings("bad option \"foo\": must be aspect, attributes, client, colormapwindows, command, deiconify, focusmodel, forget, frame, geometry, grid, group, iconbitmap, iconify, iconmask, iconname, iconphoto, iconposition, iconwindow, manage, maxsize, minsize, overrideredirect, positionfrom, protocol, resizable, sizefrom, stackorder, state, title, transient, or withdraw", try h.evalError("wm foo ."));
     try t.expectEqualStrings("-alpha 1.0 -topmost 0 -zoomed 0 -fullscreen 0 -type {}", try h.eval("wm attributes ."));
+    // A backend with no zoomed state keeps the value, and the state stays normal.
+    try t.expectEqualStrings("1 normal", try h.eval("wm attributes . -zoomed 1; wm state . zoomed; list [wm attributes . -zoomed] [wm state .]"));
+    try t.expectEqualStrings("0", try h.eval("wm attributes . -zoomed 0; wm attributes . -zoomed"));
     try t.expectEqualStrings("bad attribute \"-bogus\": must be -alpha, -topmost, -zoomed, -fullscreen, or -type", try h.evalError("wm attributes . -bogus"));
     try t.expectEqualStrings("normal", try h.eval("wm state ."));
     try t.expectEqualStrings("withdrawn", try h.eval("wm withdraw .; wm state ."));

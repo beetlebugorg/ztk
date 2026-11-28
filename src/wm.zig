@@ -195,10 +195,16 @@ pub fn cmdWm(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.E
         return Value.empty;
     }
     if (eq(name, "state")) {
-        if (args.len == 0) return .{ .str = if (st.withdrawn) "withdrawn" else if (st.iconic) "iconic" else "normal" };
+        if (args.len == 0) return .{ .str = if (st.withdrawn) "withdrawn" else if (st.iconic) "iconic" else if (isZoomed(app, w)) "zoomed" else "normal" };
         const t = try it.str(args[0]);
         // The headless and direct backends have no icons: an iconic or
         // zoomed window stays on the screen, and `wm state` gives the state.
+        // A backend with the zoomed state maximizes the window, or puts
+        // it back for `normal`.
+        if ((eq(t, "normal") or eq(t, "zoomed")) and app.platform.vtable.windowZoomed != null) {
+            st.setProp(app.gpa, "-zoomed", if (eq(t, "zoomed")) "1" else "0") catch return it.memError();
+            applyState(app, w, st);
+        }
         st.iconic = false;
         if (eq(t, "normal") or eq(t, "zoomed")) st.withdrawn = false else if (eq(t, "withdrawn")) st.withdrawn = true else if (eq(t, "iconic") or eq(t, "icon")) {
             st.iconic = true;
@@ -279,6 +285,24 @@ pub fn cmdWm(it: *ztcl.Interp, argv: []const Value, _: ?*ztcl.interp.Cmd) ztcl.E
 }
 
 /// `wm attributes window ?option? ?value option value ...?`: -alpha,
+/// True when the backend has the zoomed state and the window is
+/// maximized now.
+fn isZoomed(app: *App, w: *Widget) bool {
+    const win = app.winOf(w) orelse return false;
+    return app.platform.windowZoomed(win) orelse false;
+}
+
+/// Gives the backend the state of the window from its attributes
+/// (ztk#68).
+fn applyState(app: *App, w: *Widget, st: *State) void {
+    const win = app.winOf(w) orelse return;
+    app.platform.setWindowState(win, .{
+        .fullscreen = options.parseBool(st.prop("-fullscreen")) orelse false,
+        .topmost = options.parseBool(st.prop("-topmost")) orelse false,
+        .zoomed = options.parseBool(st.prop("-zoomed")) orelse false,
+    });
+}
+
 /// -topmost, -zoomed, -fullscreen, and -type, stored for the window, in
 /// the order of `wish` 8.6 on X11.
 fn attributes(app: *App, w: *Widget, st: *State, args: []const Value) ztcl.Error!Value {
@@ -291,6 +315,11 @@ fn attributes(app: *App, w: *Widget, st: *State, args: []const Value) ztcl.Error
             for (keys, 0..) |n, i| if (eq(n, k)) return i;
             return null;
         }
+    };
+    // The user can maximize a window with its title bar, so a backend
+    // with the zoomed state gives the value of the window now.
+    if (app.winOf(w)) |win| if (app.platform.windowZoomed(win)) |z| {
+        st.setProp(app.gpa, "-zoomed", if (z) "1" else "0") catch return it.memError();
     };
     if (args.len == 0) {
         var out = try a.alloc(Value, keys.len * 2);
@@ -313,18 +342,14 @@ fn attributes(app: *App, w: *Widget, st: *State, args: []const Value) ztcl.Error
     while (k < args.len) : (k += 2) {
         const name = try it.str(args[k]);
         const i = index.of(name) orelse return it.fail("bad attribute \"{s}\": must be -alpha, -topmost, -zoomed, -fullscreen, or -type", .{name});
-        // -topmost and -fullscreen are booleans of Tcl.
-        if (i == 1 or i == 3) {
+        // -topmost, -zoomed, and -fullscreen are booleans of Tcl.
+        if (i == 1 or i == 3 or (i == 2 and app.platform.vtable.windowZoomed != null)) {
             _ = options.parseBool(try it.str(args[k + 1])) orelse return it.fail("expected boolean value but got \"{s}\"", .{try it.str(args[k + 1])});
             state_changed = true;
         }
         st.setProp(app.gpa, keys[i], try it.str(args[k + 1])) catch return it.memError();
     }
-    // A backend with the window state applies it (ztk#68).
-    if (state_changed) if (app.winOf(w)) |win| app.platform.setWindowState(win, .{
-        .fullscreen = options.parseBool(st.prop("-fullscreen")) orelse false,
-        .topmost = options.parseBool(st.prop("-topmost")) orelse false,
-    });
+    if (state_changed) applyState(app, w, st);
     return Value.empty;
 }
 

@@ -235,6 +235,8 @@ pub const WindowState = struct {
     fullscreen: bool = false,
     /// The window stays above the windows that are not topmost.
     topmost: bool = false,
+    /// The window is maximized: it covers the work area of its monitor.
+    zoomed: bool = false,
 };
 /// The options of a native color dialog. The title is UTF-8 and is valid
 /// only during the call.
@@ -445,6 +447,9 @@ pub const Platform = struct {
         /// The setting of the system to show less motion, which
         /// `ztk::animate` follows unless a script sets `reduce`. The core
         /// reads it at the start and on each `appearance` event.
+        /// True when a window is maximized now, for `wm state` and
+        /// `wm attributes -zoomed`.
+        windowZoomed: ?*const fn (ptr: *anyopaque, w: *Window) bool = null,
         reducedMotion: ?*const fn (ptr: *anyopaque) bool = null,
 
         // The native menus. A backend with `native_menus` has each of these
@@ -666,6 +671,12 @@ pub const Platform = struct {
     }
     pub fn setWindowState(p: Platform, w: *Window, s: WindowState) void {
         if (p.vtable.setWindowState) |f| f(p.ptr, w, s);
+    }
+    /// True when the window is maximized now, or null on a backend that
+    /// does not know. The user can change the state with the title bar.
+    pub fn windowZoomed(p: Platform, w: *Window) ?bool {
+        const f = p.vtable.windowZoomed orelse return null;
+        return f(p.ptr, w);
     }
     /// Null: the backend does not know the setting.
     pub fn reducedMotion(p: Platform) ?bool {
