@@ -118,7 +118,7 @@ pub const History = struct {
     cur: ?u64 = null,
 
     fn push(h: *History, ev: *const WidgetEvent) u64 {
-        h.ring[h.n % h.ring.len] = .{ .type = ev.type, .detail = detailOf(ev), .mods = ev.mods, .count = ev.count, .widget = ev.widget };
+        h.ring[@intCast(h.n % h.ring.len)] = .{ .type = ev.type, .detail = detailOf(ev), .mods = ev.mods, .count = ev.count, .widget = ev.widget };
         h.n += 1;
         return h.n - 1;
     }
@@ -126,7 +126,7 @@ pub const History = struct {
     /// The event before event `i`, or null when the ring does not have it.
     fn before(h: *const History, i: u64) ?struct { u64, Past } {
         if (i == 0 or h.n - (i - 1) > h.ring.len) return null;
-        return .{ i - 1, h.ring[(i - 1) % h.ring.len] };
+        return .{ i - 1, h.ring[@intCast((i - 1) % h.ring.len)] };
     }
 };
 
