@@ -102,3 +102,45 @@ test "r4 style: a failed allocation in each step of a style compute" {
         h.app.styles.gpa = saved;
     }
 }
+
+test "send: a script runs in the application of the caller, with the results of wish" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval(
+        \\tk appname sendtest
+        \\proc t {script} { set r [list [catch $script m] $m $::errorCode]; set ::errorCode NONE; return $r }
+        \\set errorCode NONE
+    );
+    // Each expected value is the output of wish 8.6.16.
+    const cases = [_][2][]const u8{
+        .{ "t {send}", "1 {wrong # args: should be \"send ?-option value ...? interpName arg ?arg ...?\"} {TCL WRONGARGS}" },
+        .{ "t {send sendtest}", "1 {wrong # args: should be \"send ?-option value ...? interpName arg ?arg ...?\"} {TCL WRONGARGS}" },
+        .{ "t {send sendtest set x 5}", "0 5 NONE" },
+        .{ "t {send sendtest {expr {1 + 2}}}", "0 3 NONE" },
+        .{ "t {send sendtest expr 1 + 2}", "0 3 NONE" },
+        .{ "t {send -async sendtest set y 7}", "0 7 NONE" },
+        .{ "t {send -displayof . sendtest set z 1}", "0 1 NONE" },
+        .{ "t {send -displayof .nope sendtest set z 1}", "1 {bad window path name \".nope\"} {TK LOOKUP WINDOW .nope}" },
+        .{ "t {send -- sendtest set z 2}", "0 2 NONE" },
+        .{ "t {send -bogus sendtest set z 2}", "1 {no application named \"-bogus\"} {TK LOOKUP APPLICATION -bogus}" },
+        .{ "t {send nosuchapp set z 2}", "1 {no application named \"nosuchapp\"} {TK LOOKUP APPLICATION nosuchapp}" },
+        .{ "t {send sendtest error boom}", "1 boom NONE" },
+        .{ "t {send sendtest {error boom info CODE}}", "1 boom CODE" },
+        .{ "t {send -async sendtest error boom}", "1 boom NONE" },
+        .{ "t {send sendtest {return -code 3 x}}", "2 x NONE" },
+        .{ "t {send sendtest break}", "3 {} NONE" },
+        .{ "t {proc p {} {send sendtest {set local 1; info level}}; p}", "0 0 NONE" },
+        .{ "t {send sendtest {list a {b c}} d}", "0 {a {b c} d} NONE" },
+        .{ "t {send -async}", "1 {wrong # args: should be \"send ?-option value ...? interpName arg ?arg ...?\"} {TCL WRONGARGS}" },
+        .{ "t {send -a sendtest set q 1}", "0 1 NONE" },
+        .{ "t {send -d . sendtest set q 2}", "0 2 NONE" },
+    };
+    for (cases) |c| {
+        t.expectEqualStrings(c[1], try h.eval(c[0])) catch |e| {
+            std.debug.print("script {s}\n", .{c[0]});
+            return e;
+        };
+    }
+    try t.expectEqualStrings("5 7 2", try h.eval("list $x $y $z"));
+}

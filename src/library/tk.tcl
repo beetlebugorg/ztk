@@ -306,6 +306,48 @@ proc ::ztk::priv::readbinary {path} {
     }
 }
 
+# send ?-async? ?-displayof window? ?--? interpName arg ?arg ...?: runs
+# a script in the application with that name. The one application that
+# ztk reaches is the application of the caller, so the script runs at
+# the global level of this interpreter, and each other name gives the
+# message of wish for an application that is not on the display. An
+# option can have a short form of two or more characters, as in wish.
+proc ::send {args} {
+    set n [llength $args]
+    set i 0
+    while {$i < $n} {
+        set a [lindex $args $i]
+        set len [string length $a]
+        if {$a eq "--"} {
+            incr i
+            break
+        } elseif {$len >= 2 && [string equal -length $len $a -async]} {
+            incr i
+        } elseif {$len >= 2 && [string equal -length $len $a -displayof] && $i + 1 < $n} {
+            set w [lindex $args $i+1]
+            if {![winfo exists $w]} {
+                return -code error -errorcode [list TK LOOKUP WINDOW $w] \
+                    "bad window path name \"$w\""
+            }
+            incr i 2
+        } else {
+            break
+        }
+    }
+    if {$n - $i < 2} {
+        return -code error -errorcode {TCL WRONGARGS} \
+            "wrong # args: should be \"send ?-option value ...? interpName arg ?arg ...?\""
+    }
+    set name [lindex $args $i]
+    if {$name ne [tk appname]} {
+        return -code error -errorcode [list TK LOOKUP APPLICATION $name] \
+            "no application named \"$name\""
+    }
+    catch {uplevel #0 [concat {*}[lrange $args $i+1 end]]} result opts
+    dict incr opts -level
+    return -options $opts $result
+}
+
 # tk_optionMenu pathName varName value ?value ...?: a menubutton that
 # shows the global variable, and a menu with a radio entry for each
 # value. Gives the name of the menu.

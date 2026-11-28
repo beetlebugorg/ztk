@@ -27,7 +27,6 @@ Each platform has a native backend of its own, with no toolkit library between z
 
 | Feature of Tk | State in ztk | Issue |
 |---|---|---|
-| `send` | Not in ztk. | [#257](https://github.com/beetlebugorg/ztk/issues/257) |
 | Text peers (`text peer create`) | `peer names` gives an empty list, and `peer create` gives an error. | [#249](https://github.com/beetlebugorg/ztk/issues/249) |
 | `canvas postscript` | Gives an error. | [#181](https://github.com/beetlebugorg/ztk/issues/181) |
 | Rotated canvas text (`-angle`) | The option is stored, and the text renders level. | |
