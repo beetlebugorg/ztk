@@ -52,6 +52,7 @@ const windialog = @import("windialog.zig");
 const winbox = @import("winbox.zig");
 const winstate = @import("winstate.zig");
 const winjump = @import("winjump.zig");
+const winassoc = @import("winassoc.zig");
 const windrag = @import("windrag.zig");
 const wintaskbar = @import("wintaskbar.zig");
 const winrecent = @import("winrecent.zig");
@@ -237,6 +238,7 @@ pub const Win32 = struct {
         .setWindowDark = vSetWindowDark,
         .setIcon = vSetIcon,
         .winJumpTasks = vWinJumpTasks,
+        .winFileAssoc = vWinFileAssoc,
         .winThumbBar = vWinThumbBar,
         .dragStart = vDragStart,
         .taskbarSet = vTaskbarSet,
@@ -776,6 +778,10 @@ pub const Win32 = struct {
 
     fn vWinJumpTasks(ptr: *anyopaque, tasks: []const plat.JumpTask) bool {
         return winjump.set(self(ptr).gpa, tasks);
+    }
+
+    fn vWinFileAssoc(ptr: *anyopaque, assoc: plat.FileAssoc, remove: bool) bool {
+        return winassoc.set(self(ptr).gpa, assoc, remove);
     }
 
     fn vWinThumbBar(ptr: *anyopaque, w: *Window, buttons: []const plat.ThumbButton) void {

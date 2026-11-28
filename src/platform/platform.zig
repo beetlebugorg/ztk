@@ -215,6 +215,20 @@ pub const ThumbButton = struct {
 /// The system backdrop of a window on Windows 11 (`ztk::win::backdrop`),
 /// in the order of DWM_SYSTEMBACKDROP_TYPE.
 pub const Backdrop = enum(u32) { auto = 0, none = 1, mica = 2, acrylic = 3, tabbed = 4 };
+/// A file extension that this program opens, for `ztk::win::fileassoc`.
+/// The strings are UTF-8 and are valid only during the call.
+pub const FileAssoc = struct {
+    /// The extension with its dot, such as `.note`.
+    ext: []const u8,
+    /// The name of the file type, or empty for `EXT file`.
+    name: []const u8 = "",
+    /// The arguments of this program before the path of the file.
+    args: []const u8 = "",
+    /// A file with the icon, and the index of the icon in it. With no
+    /// file, the icon is the first icon of this program.
+    icon: []const u8 = "",
+    icon_index: i32 = 0,
+};
 /// The state of a window that `wm attributes` sets (ztk#68).
 pub const WindowState = struct {
     /// The window covers its monitor with no frame.
@@ -509,6 +523,9 @@ pub const Platform = struct {
         /// The tasks of the jump list of the app; an empty list removes
         /// it. False when the shell refused the list.
         winJumpTasks: ?*const fn (ptr: *anyopaque, tasks: []const JumpTask) bool = null,
+        /// Makes this program a handler of a file extension for the user,
+        /// or with `remove` takes it back. False when the system refused.
+        winFileAssoc: ?*const fn (ptr: *anyopaque, assoc: FileAssoc, remove: bool) bool = null,
         /// The buttons of the thumbnail of the taskbar button of a window,
         /// at most `max_thumb_buttons`. A click gives a `thumb` event with
         /// the index of the button.
