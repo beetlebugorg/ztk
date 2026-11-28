@@ -40,7 +40,7 @@ for demo in dirViewer styles embeddedWindows config browse browseTree; do
     run "Tablelist $demo" "$apps/tablelist.tcl" "$src/tablelist/tablelist7.12" "$demo" "$shots"
 done
 run "tklib widgets" "$apps/tklib.tcl" "$src/tklib/tklib-0.9" widgets "$shots"
-for n in 1 2 3 4 5 6 7 8 9 10 11 12 14 15 16 17 18 19; do
+for n in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19; do
     run "tklib plotdemos$n" "$apps/tklib.tcl" "$src/tklib/tklib-0.9" "plotchart/plotdemos$n.tcl" "$shots"
 done
 rm -rf "$work/repo" && mkdir "$work/repo"

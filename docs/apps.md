@@ -46,7 +46,7 @@ Version 7.12, six demos. Status: **works**. A click selects a row, a click on a 
 
 ![Plotchart charts of tklib 0.9 on ztk](site/shots/app-tklib.png)
 
-Version 0.9. Status: **works with gaps**. Eighteen Plotchart examples draw their charts, and a tooltip, a ctext widget, and a datefield take a hover and typed text. Gap: [plotdemos13 (#255)](https://github.com/beetlebugorg/ztk/issues/255).
+Version 0.9. Status: **works**. Nineteen Plotchart examples draw their charts, and a tooltip, a ctext widget, and a datefield take a hover and typed text.
 
 ## gitk
 
