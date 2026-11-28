@@ -37,3 +37,10 @@
 .prose .ref-ex .ref-run { cursor: pointer; border-radius: 4px; }
 .prose .ref-ex .ref-run:hover, .prose .ref-ex .ref-run:focus-visible { background: var(--accent-soft); outline: none; }
 .prose .ref-opts td code, .prose .ref-subs td code, .prose .ref-args td var { overflow-wrap: normal; white-space: nowrap; }
+/* The option and argument tables keep each name on one line and scroll
+   in their box on a narrow screen. The last column keeps a width that
+   reads as text, so a row stays short. */
+@media (max-width: 640px) {
+  .prose .ref-opts td:last-child, .prose .ref-args td:last-child { min-width: 15em; }
+}
+.prose .ref-opts td:first-child, .prose .ref-args td:first-child { white-space: nowrap; }
