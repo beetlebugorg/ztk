@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "ztcl": {
+      "command": "ztcl",
+      "args": ["debug", "--mcp"]
+    }
+  }
+}
