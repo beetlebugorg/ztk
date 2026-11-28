@@ -21,6 +21,7 @@ const Io = std.Io;
 const ztcl = @import("ztcl");
 const bn = ztcl.buildnative;
 const Capability = ztcl.interp.Capability;
+const TclVersion = ztcl.interp.TclVersion;
 
 pub const File = struct { name: []const u8, data: []const u8 };
 
@@ -43,6 +44,12 @@ fn lessThan(_: void, x: ztcl.zipwrite.Entry, y: ztcl.zipwrite.Entry) bool {
 /// entries are in the order of their names, so the same files give the
 /// same bytes.
 pub fn payload(a: std.mem.Allocator, files: []const File, allow: []const u8, root: ?[]const u8) Error![]u8 {
+    return payloadFor(a, files, allow, root, TclVersion.host_default);
+}
+
+/// `payload` for the Tcl release `tcl`. The manifest names a release
+/// other than the default (`tcl 8.6`), as the one of `ztcl build` does.
+pub fn payloadFor(a: std.mem.Allocator, files: []const File, allow: []const u8, root: ?[]const u8, tcl: TclVersion) Error![]u8 {
     if (files.len == 0) return error.NoFiles;
     if (allow.len > 0 and Capability.parse(allow) == null) return error.BadCapability;
     var zips: std.ArrayList(ztcl.zipwrite.Entry) = .empty;
@@ -51,7 +58,7 @@ pub fn payload(a: std.mem.Allocator, files: []const File, allow: []const u8, roo
         for (zips.items) |z| if (std.mem.eql(u8, z.name, f.name)) return error.Duplicate;
         try zips.append(a, .{ .name = f.name, .data = f.data });
     }
-    const manifest: bn.Manifest = .{ .scripts = &.{files[0].name}, .allow = allow, .root = root };
+    const manifest: bn.Manifest = .{ .scripts = &.{files[0].name}, .allow = allow, .root = root, .tcl = tcl };
     try zips.append(a, .{ .name = bn.manifest_name, .data = try manifest.write(a) });
     std.mem.sort(ztcl.zipwrite.Entry, zips.items, {}, lessThan);
     return ztcl.zipwrite.write(a, zips.items, false);
@@ -60,7 +67,12 @@ pub fn payload(a: std.mem.Allocator, files: []const File, allow: []const u8, roo
 /// A copy of `runtime` with the app in it. `ident` is the identifier of
 /// the code signature of a Mach-O file.
 pub fn build(a: std.mem.Allocator, runtime: []const u8, files: []const File, allow: []const u8, root: ?[]const u8, ident: []const u8) (Error || bn.Error)![]u8 {
-    return bn.bundle(a, runtime, try payload(a, files, allow, root), ident, &.{});
+    return buildFor(a, runtime, files, allow, root, ident, TclVersion.host_default);
+}
+
+/// `build` for the Tcl release `tcl`.
+pub fn buildFor(a: std.mem.Allocator, runtime: []const u8, files: []const File, allow: []const u8, root: ?[]const u8, ident: []const u8, tcl: TclVersion) (Error || bn.Error)![]u8 {
+    return bn.bundle(a, runtime, try payloadFor(a, files, allow, root, tcl), ident, &.{});
 }
 
 /// The text of an error of `build` for a person.
@@ -108,6 +120,8 @@ pub fn mount(it: *ztcl.Interp, a: std.mem.Allocator, bytes: []const u8) !App {
     const m = try bn.Manifest.parse(a, try z.extract(a, entry));
     if (m.scripts.len == 0) return error.NoManifest;
     const bits = if (m.allow.len == 0) 0 else Capability.parse(m.allow) orelse return error.BadCapability;
+    // The release of the app: 9.1, or the `tcl 8.6` of its manifest.
+    try it.setTclVersion(m.tcl);
     return .{
         .main = try std.fmt.allocPrint(a, "//zipfs:/app/{s}", .{m.scripts[0]}),
         .allow = bits | @backingInt(Capability.embedded),
@@ -162,4 +176,18 @@ test "appbin: ztk::style load reads a style sheet of the app" {
     const app = try mount(&h.it, a, zip);
     try h.it.allow(app.allow);
     try t.expect(std.mem.startsWith(u8, try h.eval("ztk::style load look.css"), "style"));
+}
+
+test "appbin: an app runs on Tcl 9.1, or on the release of its manifest" {
+    var arena: std.heap.ArenaAllocator = .init(t.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    for ([_]TclVersion{ .v9_1, .v8_6 }) |release| {
+        const zip = try payloadFor(a, &.{.{ .name = "app.tcl", .data = "" }}, "", null, release);
+        var it: ztcl.Interp = undefined;
+        try it.init(t.allocator);
+        defer it.deinit();
+        _ = try mount(&it, a, zip);
+        try t.expectEqualStrings(release.version(), try it.str(try it.eval("info tclversion")));
+    }
 }
