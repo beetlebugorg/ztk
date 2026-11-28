@@ -6,9 +6,8 @@ name: npm
 #
 # The publish uses npm trusted publishing: GitHub Actions gives npm an
 # OIDC token (id-token: write), and npm adds a provenance statement.
-# The job has no token and no registry-url: an .npmrc with an empty token
-# stops npm from asking GitHub for the OIDC token. To publish a tag again,
-# run the workflow on main with the input tag.
+# The secret NPM_TOKEN, when set, is used instead. To publish a tag
+# again, run the workflow on main with the input tag.
 on:
   push:
     branches: [main]
@@ -29,9 +28,11 @@ on:
 permissions:
   contents: read
 
+# A publish of a tag (a tag push, or the input tag) has its own group and
+# is never cancelled by a push to main.
 concurrency:
-  group: npm-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  group: npm-${{ inputs.tag || github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') && !inputs.tag }}
 
 env:
   ZIG_VERSION: "0.17.0"
@@ -96,6 +97,16 @@ jobs:
       - run: npm install -g npm@^11.20.0
       # Each v0 version goes to the "latest" dist-tag, also an -alpha or
       # -beta version. npm needs --tag for a prerelease version.
+      # With the secret NPM_TOKEN, npm publishes with the token. With no
+      # secret, npm uses the OIDC token of the trusted publisher. The token
+      # goes into the npm config only when it is set: an empty token stops
+      # npm from asking for the OIDC token.
       - name: Publish
         working-directory: package
-        run: npm stage publish --provenance --access public --tag latest
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "$NPM_TOKEN" ]; then
+            npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
+          fi
+          npm stage publish --provenance --access public --tag latest
