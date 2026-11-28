@@ -955,7 +955,7 @@ fn pixSize(w: *Widget, item: *const ItemT) [2]f64 {
     switch (item.type) {
         .image => {
             const p = w.app.images.find(imageName(w, item)) orelse return .{ 0, 0 };
-            return .{ @floatFromInt(p.width), @floatFromInt(p.height) };
+            return .{ @floatFromInt(p.logicalWidth()), @floatFromInt(p.logicalHeight()) };
         },
         .bitmap => {
             const bm = findBitmap(w.app, bitmapName(w, item)) orelse return .{ 0, 0 };
@@ -2237,9 +2237,12 @@ const Painter = struct {
                 const name = imageName(w, it);
                 const ph = w.app.images.find(name) orelse return;
                 if (c.len < 2) return;
-                const o = items.anchorPixel(it.attr.anchor, c[0], c[1], @floatFromInt(ph.width), @floatFromInt(ph.height));
-                const key = std.hash.Wyhash.hash(ph.version, ph.name) ^ (@as(u64, @intFromPtr(ph)) << 1);
-                const qs = try p.pixQuads(key, ph.width, ph.height, PixSrc{ .photo = ph });
+                // The item has the logical size of the photo. A photo of
+                // a density above 1 draws each pixel as a part of a
+                // logical pixel, so it reaches a screen of that scale 1:1.
+                const o = items.anchorPixel(it.attr.anchor, c[0], c[1], @floatFromInt(ph.logicalWidth()), @floatFromInt(ph.logicalHeight()));
+                const key = std.hash.Wyhash.hash(ph.version, ph.name) ^ (@as(u64, @intFromPtr(ph)) << 1) ^ (@as(u64, ph.density) << 56);
+                const qs = try p.pixQuads(key, ph.width, ph.height, ph.density, PixSrc{ .photo = ph });
                 try p.blit(qs, o);
             },
             .bitmap => {
@@ -2262,7 +2265,7 @@ const Painter = struct {
                 const bgk: geom.Color = bgc orelse .{ .r = 0, .g = 0, .b = 0, .a = 0 };
                 const seed = @as(u64, fgc.r) | @as(u64, fgc.g) << 8 | @as(u64, fgc.b) << 16 | @as(u64, fgc.a) << 24 | @as(u64, bgk.r) << 32 | @as(u64, bgk.g) << 40 | @as(u64, bgk.b) << 48 | @as(u64, bgk.a) << 56;
                 const key = std.hash.Wyhash.hash(seed, bm.name);
-                const qs = try p.pixQuads(key, bm.w, bm.h, PixSrc{ .bits = .{ .bm = bm, .fg = fgc, .bg = bgc } });
+                const qs = try p.pixQuads(key, bm.w, bm.h, 1, PixSrc{ .bits = .{ .bm = bm, .fg = fgc, .bg = bgc } });
                 try p.blit(qs, o);
             },
             .window => {},
@@ -2292,10 +2295,13 @@ const Painter = struct {
     };
 
     /// The quads of an image at the origin, from the cache: one for each run of equal pixels in a row.
-    fn pixQuads(p: *Painter, key: u64, wd: u32, ht: u32, src: PixSrc) ![]const scene.Quad {
+    /// `density` is the count of source pixels in one logical pixel along
+    /// each side.
+    fn pixQuads(p: *Painter, key: u64, wd: u32, ht: u32, density: u8, src: PixSrc) ![]const scene.Quad {
         const d = dataOf(p.w);
-        const s: f32 = @floatCast(p.xf.s);
-        for (d.pix_cache.items) |pc| if (pc.key == key and pc.scale == s) return pc.quads;
+        const scale: f32 = @floatCast(p.xf.s);
+        const s: f32 = scale / @as(f32, @floatFromInt(density));
+        for (d.pix_cache.items) |pc| if (pc.key == key and pc.scale == scale) return pc.quads;
         if (d.pix_cache.items.len > 64) freePix(p.gpa, d);
         var out: std.ArrayListUnmanaged(scene.Quad) = .empty;
         errdefer out.deinit(p.gpa);
@@ -2314,7 +2320,7 @@ const Painter = struct {
             }
         }
         const qs = try out.toOwnedSlice(p.gpa);
-        try d.pix_cache.append(p.gpa, .{ .key = key, .scale = s, .quads = qs });
+        try d.pix_cache.append(p.gpa, .{ .key = key, .scale = scale, .quads = qs });
         return qs;
     }
 
