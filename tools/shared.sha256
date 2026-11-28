@@ -1,5 +1,5 @@
 # The files that ztk shares with ztcl, and their SHA-256. tools/check-shared.sh
 # checks each copy, and with --remote the files of ztcl at this commit.
-# ztcl commit: efc3c88a57ee21682ec9594644fcdf11167c18b5
-ede9ef61aad9610fd4b21927ec6012480d53a3ac213ffd0fee83827275767f96  tools/refdoc.tcl
+# ztcl commit: 64198ac87d535c42ced772298bc4cc4cea9a3e96
+195571031001d9108fff18c6bb10bf77ac95be8613c3a6767544f47e3babeeb5  tools/refdoc.tcl
 33935f681991b7b773108b82318ca3d4577e996981094818ba8d6086322ac81d  docs/site/reference.css

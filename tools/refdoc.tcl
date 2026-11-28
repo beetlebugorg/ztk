@@ -56,7 +56,7 @@ namespace eval refdoc {
     variable KEYS {
         command block subcommand block option block argument block
         summary prose description prose returns prose noerrors prose
-        since text tcl text capability text cost text page text area text kind text
+        since text tcl text capability text cost text page text area text kind text setup text
         type text default text value text dbname text dbclass text
         synopsis repeat release repeat difference repeat
         see list names list flags list values list
@@ -66,7 +66,7 @@ namespace eval refdoc {
     # The keys of each kind of node. A key in REQUIRED must be there.
     variable ALLOWED
     array set ALLOWED {
-        command {area kind since synopsis summary description returns tcl capability flags cost names page see release difference noerrors argument option example error subcommand}
+        command {area kind since setup synopsis summary description returns tcl capability flags cost names page see release difference noerrors argument option example error subcommand}
         subcommand {since synopsis summary description returns tcl capability flags cost see release difference noerrors argument option example error}
         option {value type default values choice summary description since tcl see noerrors dbname dbclass example error}
         argument {type summary description default optional repeats values choice}
@@ -84,6 +84,7 @@ namespace eval refdoc {
     variable N
     variable stack {}
     variable seq 0
+    variable runs 0
 }
 
 # ---------------------------------------------------------------------------
@@ -445,8 +446,9 @@ proc refdoc::groups {e} {
     return $out
 }
 
-proc refdoc::run {runner flags release items} {
-    set script {}
+proc refdoc::run {runner flags release items {setup {}}} {
+    # The setup of the entry, such as `package require`, runs first.
+    set script "$setup\n"
     foreach item $items {
         append script "puts -nonewline \"\\x1d\"\n"
         append script "set ::__s [tclword [dict get [lindex $item 2] code]]\n"
@@ -454,12 +456,24 @@ proc refdoc::run {runner flags release items} {
         append script "puts -nonewline \"\\x1f\$::__c\\x1f\$::__v\\x1f\[expr {\[dict exists \$::__o -errorcode\] ? \[dict get \$::__o -errorcode\] : {}}\]\\x1e\"\n"
     }
     append script [dict get [settings] epilog] "\n"
-    set f [file tempfile path]
-    close $f
+    # Each run has a new empty folder of zig-out/ as its working folder, so
+    # an example that makes files, also with `--root .`, makes them there.
+    variable root
+    variable runs
+    set dir [file join $root zig-out refdoc-run [incr runs]]
+    file delete -force $dir
+    file mkdir $dir
+    set path [file join $dir examples.tcl]
     writefile $path $script
     set args [concat [dict get [settings] flags] [dict get $release flags] $flags [list $path]]
-    catch {exec -ignorestderr -- $runner {*}$args} out
-    file delete $path
+    set here [pwd]
+    cd $dir
+    try {
+        catch {exec -ignorestderr -- $runner {*}$args} out
+    } finally {
+        cd $here
+        file delete -force $dir
+    }
     set got {}
     foreach chunk [lrange [split $out "\x1d"] 1 end] {
         if {[regexp {^(.*)\x1f(\d+)\x1f(.*)\x1f(.*)\x1e} $chunk -> o c v ec]} {
@@ -489,7 +503,7 @@ proc refdoc::check {runner {only {}}} {
                     if {$rel eq "" || ![dict exists $x tcl] || [dict get $x tcl] eq $rel} { lappend run $item }
                 }
                 if {![llength $run]} continue
-                lassign [run $runner $flags $r $run] out got
+                lassign [run $runner $flags $r $run [get $e setup]] out got
                 set tag [expr {$rel eq "" ? "" : " (Tcl $rel)"}]
                 if {[llength $got] != [llength $run]} {
                     lappend fails "[get $e file]: $label$tag: [llength $got] of [llength $run] examples ran: [string trim $out]"
@@ -837,7 +851,8 @@ proc refdoc::pages {} {
             }
             lappend body [arguments_html $t] [options_html $t [expr {$kind eq "widget" && !$sub}]]
             if {[has $t returns]} { lappend body "<h2 id=\"returns\">Returns</h2>[blocks [get $t returns]]" }
-            if {[llength [get $t examples]]} { lappend body "<h2 id=\"examples\">Examples</h2>[examples_html [get $t examples] example]" }
+            set pre [expr {[has $e setup] ? "<p class=\"ref-setup\">Each example of this page runs after <code>[esc [get $e setup]]</code>.</p>" : ""}]
+            if {[llength [get $t examples]]} { lappend body "<h2 id=\"examples\">Examples</h2>$pre[examples_html [get $t examples] example]" }
             if {[llength [get $t errors]]} {
                 lappend body "<h2 id=\"errors\">Errors</h2>[examples_html [get $t errors] error]"
             } elseif {[has $t noerrors]} {
@@ -1032,7 +1047,8 @@ proc refdoc::convert {runner name {remove 0}} {
     foreach line [{*}$v sub] {
         lassign [split_sub $line] syn text
         set words [split $syn]
-        set key [expr {[llength $words] > 1 ? [lindex $words 1] : [lindex $words 0]}]
+        # A subcommand of a module has no command name in front.
+        set key [expr {[llength $words] > 1 && [lindex $words 0] eq $name ? [lindex $words 1] : [lindex $words 0]}]
         dict lappend groups $key [list $syn $text]
     }
     dict for {key lines} $groups {
@@ -1068,7 +1084,7 @@ proc refdoc::convert {runner name {remove 0}} {
             } elseif {$k in {sub err}} {
                 set parts [split_sub $val]
             } elseif {$k eq "ex"} {
-                regexp {^(.*?) =>(?: (.*))?$} $val -> c r
+                if {![regexp {^(.*?) =>(?: (.*))?$} $val -> c r]} { set c $val; set r "" }
                 set parts [list [string trim $c] $r]
             } else {
                 set parts [list $val]
@@ -1076,7 +1092,7 @@ proc refdoc::convert {runner name {remove 0}} {
             foreach p $parts {
                 set p [regsub {\s*Tcl (9\.1|8\.6) only\.$} $p ""]
                 foreach w [expr {$k in {flags names} ? [split $p] : [list $p]}] {
-                    if {[string first $w $have] < 0} { lappend lost $w }
+                    if {$w ne "" && [string first $w $have] < 0} { lappend lost $w }
                 }
             }
         }
@@ -1125,6 +1141,9 @@ proc refdoc::lambda1 {e} {
 # selftest: a file of an entry cannot run a command.
 
 proc refdoc::selftest {} {
+    variable root
+    file mkdir [file join $root zig-out]
+    set path [file join $root zig-out refdoc-selftest.tcl]
     set fails 0
     set bad {
         exec {command x { summary [exec cmd.exe /c echo hi] }}
@@ -1136,8 +1155,6 @@ proc refdoc::selftest {} {
         nested {command x { subcommand y { description [file delete x] } }}
     }
     foreach {what script} $bad {
-        set f [file tempfile path]
-        close $f
         writefile $path $script
         variable N
         if {[catch {loadfile $path} msg]} {
@@ -1153,8 +1170,6 @@ proc refdoc::selftest {} {
         }
         file delete $path
     }
-    set f [file tempfile path]
-    close $f
     writefile $path {command x { summary {A command.}; example {x} {} }}
     if {[catch {loadfile $path} id]} {
         puts "FAIL a file of declarations does not load: $id"
