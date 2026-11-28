@@ -711,6 +711,49 @@ test "windows: a file association writes its values under a key of the test, and
     try t.expect(o.b.platform().vtable.winFileAssoc != null);
 }
 
+test "windows: the zoomed state maximizes a window that shows, and a hidden window keeps the state" {
+    if (!enabled()) return;
+    const Z = struct {
+        extern "user32" fn IsZoomed(hwnd: w32.HWND) callconv(.winapi) i32;
+        extern "user32" fn IsWindowVisible(hwnd: w32.HWND) callconv(.winapi) i32;
+    };
+    var events: std.ArrayListUnmanaged(Event) = .empty;
+    defer events.deinit(t.allocator);
+    // A hidden window keeps the state and stays hidden.
+    {
+        const o = try openHidden(&events);
+        defer o.b.deinit();
+        const p = o.b.platform();
+        try t.expectEqual(false, p.windowZoomed(o.w).?);
+        p.setWindowState(o.w, .{ .zoomed = true });
+        try t.expectEqual(true, p.windowZoomed(o.w).?);
+        try t.expectEqual(@as(i32, 0), Z.IsWindowVisible(o.hwnd));
+        try t.expectEqual(@as(i32, 0), Z.IsZoomed(o.hwnd));
+        p.setWindowState(o.w, .{});
+        try t.expectEqual(false, p.windowZoomed(o.w).?);
+    }
+    // A window that shows: this part opens a window on the desktop for
+    // the time of the test.
+    const b = try be.Win32.init(t.allocator, .{ .visible = true, .renderer = .cpu });
+    defer b.deinit();
+    const p = b.platform();
+    const w = try p.createWindow(.{ .size = .{ .w = 200, .h = 100 } });
+    try pollAll(b, &events);
+    const hwnd = b.hwndOf(w).?;
+    try t.expect(Z.IsWindowVisible(hwnd) != 0);
+    try t.expectEqual(false, p.windowZoomed(w).?);
+    p.setWindowState(w, .{ .zoomed = true });
+    try pollAll(b, &events);
+    try t.expect(Z.IsZoomed(hwnd) != 0);
+    try t.expectEqual(true, p.windowZoomed(w).?);
+    // The resize event has the size of the maximized window.
+    try t.expect(has(events.items, .resize) != null);
+    p.setWindowState(w, .{});
+    try pollAll(b, &events);
+    try t.expectEqual(@as(i32, 0), Z.IsZoomed(hwnd));
+    try t.expectEqual(false, p.windowZoomed(w).?);
+}
+
 test "windows: a jump list of tasks builds, and the test drops it with no commit" {
     if (!enabled()) return;
     const jump = @import("../platform/winjump.zig");

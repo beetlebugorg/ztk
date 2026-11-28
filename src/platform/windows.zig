@@ -106,6 +106,8 @@ const WinRec = struct {
     drop: ?*windrop.Target = null,
     /// The buttons of the thumbnail of the taskbar button (`ztk::win::thumbbar`).
     thumbs: wintaskbar.Thumbs = .{},
+    /// The zoomed state that `wm` asked for, for a window that is hidden.
+    zoom_wanted: bool = false,
     /// The style and the rect before a full screen of `wm attributes`.
     fullscreen: ?winstate.Saved = null,
     /// The icons of the window from `wm iconphoto`, which it owns.
@@ -233,6 +235,7 @@ pub const Win32 = struct {
         .fontDialog = vFontDialog,
         .messageBox = vMessageBox,
         .setWindowState = vSetWindowState,
+        .windowZoomed = vWindowZoomed,
         .reducedMotion = vReducedMotion,
         .winBackdrop = vWinBackdrop,
         .setWindowDark = vSetWindowDark,
@@ -722,6 +725,12 @@ pub const Win32 = struct {
         const r = self(ptr).recOf(w) orelse return;
         winstate.setFullscreen(r.hwnd, s.fullscreen, &r.fullscreen);
         winstate.setTopmost(r.hwnd, s.topmost);
+        winstate.setZoomed(r.hwnd, s.zoomed, &r.zoom_wanted);
+    }
+
+    fn vWindowZoomed(ptr: *anyopaque, w: *Window) bool {
+        const r = self(ptr).recOf(w) orelse return false;
+        return winstate.zoomed(r.hwnd, r.zoom_wanted);
     }
 
     fn vReducedMotion(_: *anyopaque) bool {

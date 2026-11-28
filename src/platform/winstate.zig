@@ -85,6 +85,28 @@ pub fn setFullscreen(hwnd: w32.HWND, on: bool, saved: *?Saved) void {
     }
 }
 
+extern "user32" fn IsZoomed(hwnd: w32.HWND) callconv(.winapi) i32;
+extern "user32" fn IsWindowVisible(hwnd: w32.HWND) callconv(.winapi) i32;
+const SW_MAXIMIZE: c_int = 3;
+const SW_RESTORE: c_int = 9;
+
+/// True when the window is maximized. A hidden window gives `wanted`,
+/// the state that `setZoomed` kept for it.
+pub fn zoomed(hwnd: w32.HWND, wanted: bool) bool {
+    if (IsWindowVisible(hwnd) == 0) return wanted;
+    return IsZoomed(hwnd) != 0;
+}
+
+/// Maximizes a window that shows, or puts it back. `ShowWindow` with
+/// SW_MAXIMIZE shows a hidden window, so a hidden window only keeps the
+/// state in `wanted`.
+pub fn setZoomed(hwnd: w32.HWND, on: bool, wanted: *bool) void {
+    wanted.* = on;
+    if (IsWindowVisible(hwnd) == 0) return;
+    if ((IsZoomed(hwnd) != 0) == on) return;
+    _ = w32.ShowWindow(hwnd, if (on) SW_MAXIMIZE else SW_RESTORE);
+}
+
 pub fn setTopmost(hwnd: w32.HWND, on: bool) void {
     _ = w32.SetWindowPos(hwnd, after(on), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
 }
