@@ -133,3 +133,44 @@ test "toplevel: tk_focusFollowsMouse" {
     try h.update();
     try t.expectEqualStrings(".b", try h.eval("focus"));
 }
+
+test "toplevel: wm geometry has grid units for a toplevel with a grid" {
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval(
+        \\text .t -setgrid 1 -width 40 -height 10
+        \\pack .t -fill both -expand 1
+        \\update
+        \\set f [.t cget -font]
+        \\set cw [font measure $f 0]; set lh [font metrics $f -linespace]
+        \\set w0 [winfo width .t]; set h0 [winfo height .t]
+        \\proc size {top} { lindex [split [wm geometry $top] +] 0 }
+        \\proc grew {} { global w0 h0 cw lh; list [expr {([winfo width .t] - $w0) / $cw}] [expr {([winfo height .t] - $h0) / $lh}] }
+        \\toplevel .p; frame .p.f -width 200 -height 100; pack .p.f
+        \\wm grid .p 10 5 20 20
+        \\update
+    );
+    // Each expected value is the output of wish 8.6.16.
+    const cases = [_][2][]const u8{
+        .{ "size .", "40x10" },
+        .{ "wm geometry . 60x20; update; size .", "60x20" },
+        .{ "grew", "20 10" },
+        .{ "wm geometry . 50x12+10+10; update; size .", "50x12" },
+        .{ "grew", "10 2" },
+        .{ "wm geometry . {}; update; size .", "40x10" },
+        .{ "grew", "0 0" },
+        .{ "wm grid .p", "10 5 20 20" },
+        .{ "size .p", "10x5" },
+        .{ "wm geometry .p 12x6; update; size .p", "12x6" },
+        .{ "list [winfo width .p] [winfo height .p]", "240 120" },
+        .{ "wm grid .p {} {} {} {}; update; wm grid .p", "" },
+        .{ "size .p", "240x120" },
+    };
+    for (cases) |c| {
+        t.expectEqualStrings(c[1], try h.eval(c[0])) catch |e| {
+            std.debug.print("script {s}\n", .{c[0]});
+            return e;
+        };
+    }
+}
