@@ -658,11 +658,11 @@ class Build:
         # with each refdoc: link resolved.
         pages = self.refdoc_pages()
         self.ref_pages = {p["title"]: p["page"] for p in pages}
-        meta = {}
+        ref_meta = {}
         for p in pages:
             body = re.sub(r'href="refdoc:([^"]*)"', lambda m, at=p["page"]: f'href="{html.escape(self.ref_link(html.unescape(m.group(1)), at))}"', p["body"])
             self.anchors[p["page"]] = set(re.findall(r'id="([^"]+)"', body))
-            meta[p["page"]] = {"description": p["description"], "head": p["head"]}
+            ref_meta[p["page"]] = {"description": p["description"], "head": p["head"]}
             rendered.append((p["page"], p["title"], body))
         for src, page, anchor in self.links:
             if anchor not in self.anchors.get(page, set()):
@@ -690,7 +690,7 @@ class Build:
         for page, title, body in rendered:
             folder = out / page
             folder.mkdir(parents=True, exist_ok=True)
-            (folder / "index.html").write_text(self.document(page, title, body, meta.get(page)), encoding="utf-8")
+            (folder / "index.html").write_text(self.document(page, title, body, ref_meta.get(page)), encoding="utf-8")
         (out / "index.html").write_text(landing, encoding="utf-8")
         (out / "assets").mkdir()
         for name in ("site.css", "reference.css", "favicon.svg", "live.js", "replay.js", "stage.js", "toys.js", "toysound.js", "showcase.js"):
