@@ -115,6 +115,8 @@ Tool calls:
 
 `ztcl code` has `exec`. Use it only on your own tree.
 
+`.mcp.json` gives an agent the tools of `ztcl debug --mcp` (`docs/debugging.md` of ztcl): `ztcl_run`, `ztcl_explain`, `ztcl_records`, `ztcl_eval`, and `ztcl_disasm`. It needs `ztcl` 1.0.0-beta.2 or later on the PATH, for example from the Homebrew tap.
+
 Work:
 
 - Reproduce a bug with the smallest script before you read the code.
