@@ -201,6 +201,26 @@ pub const RenderThread = struct {
         r.flush();
         r.mutex.lockUncancelable(r.io);
         defer r.mutex.unlock(r.io);
+        r.dropHeld();
+        r.last = null;
+        r.ptr_serial = 0;
+        r.held_ptr = 0;
+        r.target = target;
+    }
+
+    /// Waits for the submitted frames, then stops the draws of the held
+    /// frame and waits for a draw of it that runs. After it, the target
+    /// gets no draw until the next `submit`, so a reader of the image of
+    /// the target (the screenshot at the exit) reads a complete image.
+    pub fn stopHeld(r: *RenderThread) void {
+        r.flush();
+        r.mutex.lockUncancelable(r.io);
+        defer r.mutex.unlock(r.io);
+        r.dropHeld();
+    }
+
+    /// Drops the held frame. The caller has the mutex.
+    fn dropHeld(r: *RenderThread) void {
         // The thread draws the held frame again only while `held` is set,
         // so it starts no new draw of it after this. A draw that runs puts
         // the frame in the free list when it ends, because `held` differs.
@@ -212,10 +232,6 @@ pub const RenderThread = struct {
         r.held_running = false;
         if (h) |f| if (!r.held_drawing) r.pushFree(f);
         while (r.held_drawing) r.cond.waitUncancelable(r.io, &r.mutex);
-        r.last = null;
-        r.ptr_serial = 0;
-        r.held_ptr = 0;
-        r.target = target;
     }
 
     /// Blocks until the render thread showed all submitted frames.

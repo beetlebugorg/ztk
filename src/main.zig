@@ -487,6 +487,10 @@ pub fn main(init: std.process.Init) !void {
         status = 1;
     }
     app.render.flush();
+    // The render thread draws the held frame of an animation again into
+    // the image of the window. The screenshot reads that image, so the
+    // draws stop first: a copy during a draw has a part of the old image.
+    if (screenshot != null) app.stopRenders();
     if (own_app == null) try err.print("frames: {d}\n", .{app.frames});
     if (want_stats) {
         app.stats.report(err) catch {};

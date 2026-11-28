@@ -281,3 +281,39 @@ test "renderthread: destroy of the root during a keyframe animation ends the dra
     @import("../sys/host.zig").sleepUs(30_000);
     _ = try h.eval("destroy .");
 }
+
+test "renderthread: stopHeld ends the draws of a running animation" {
+    // ztk --headless --screenshot reads the image of the window at the
+    // exit. While an animation runs, the render thread draws the held
+    // frame again into that image, so a copy during a draw has a part of
+    // the old image (issue 202). After `stopRenders`, no draw comes.
+    var h: Harness = undefined;
+    h.render_mode = .threaded;
+    h.animations = true;
+    h.dark = false;
+    try h.initWith(null);
+    defer h.deinit();
+    _ = try h.eval(
+        \\ztk::style add {
+        \\    @keyframes pulse { from { background-color: #dbeafe; } to { background-color: #2563eb; } }
+        \\    #badge { animation: pulse 800ms ease-in-out infinite alternate; }
+        \\}
+        \\label .badge -text New
+        \\pack .badge
+    );
+    var i: usize = 0;
+    while (i < 10) : (i += 1) {
+        h.head.advance(16);
+        try h.update();
+    }
+    const host = @import("../sys/host.zig");
+    // The render thread draws the held frame again by itself.
+    var before = h.head.frames_drawn;
+    var k: usize = 0;
+    while (k < 200 and h.head.frames_drawn == before) : (k += 1) host.sleepUs(5_000);
+    try t.expect(h.head.frames_drawn > before);
+    h.app.stopRenders();
+    before = h.head.frames_drawn;
+    host.sleepUs(50_000);
+    try t.expectEqual(before, h.head.frames_drawn);
+}
