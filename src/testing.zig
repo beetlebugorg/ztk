@@ -106,6 +106,13 @@ pub const Harness = struct {
     pub fn initFull(h: *Harness, style_root: ?[]const u8, look: ?[]const u8, text: ?@import("text/system.zig").System) !void {
         try h.it.init(std.testing.allocator);
         errdefer h.it.deinit();
+        // The JIT is off in the tests. The testing allocator records a
+        // stack trace for each allocation, and a stack with a frame of
+        // JIT code has an address in no module, so std.debug lists the
+        // modules again and loads their unwind tables again into its
+        // global arena, which keeps all of them: about 1 MB for each
+        // allocation under a compiled proc, and 6 GB by the 200th test.
+        h.it.disableJit();
         h.err = .empty;
         h.head = try Headless.init(std.testing.allocator);
         h.head.native_look = look;
