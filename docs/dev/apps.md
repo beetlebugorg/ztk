@@ -22,7 +22,7 @@ The release archives are data. `tools/fetch-apps.sh` checks the SHA-256 of each 
 | tkcon | 2.5 | Yes | Type `expr`, `set`, an unknown command, and Up for the history; the console shows each result. | Works | |
 | BWidget demo | 1.10.1 | Yes | A click on each of the 6 notebook tabs shows its page; typing into an entry; a click on a button. | Works | |
 | Tablelist demos | 7.12 | Yes | dirViewer, styles, embeddedWindows, config, browse, browseTree: a click selects a row, a click on a label sorts, a double click opens a folder. | Works | miscWidgets needs other packages (Iwidgets, combobox) |
-| tklib | 0.9 | Yes | 18 Plotchart examples draw their charts; tooltip on a hover, ctext colors a typed keyword, datefield takes a typed date. | Works with gaps | #255 plotdemos13 does not end |
+| tklib | 0.9 | Yes | 19 Plotchart examples draw their charts; tooltip on a hover, ctext colors a typed keyword, datefield takes a typed date. | Works | |
 | gitk | git 2.56.0 | Yes | The list shows three commits; a click on a commit shows its diff; the key Up selects the commit above. | Works | #258 snapshot after a long vwait |
 | TkDiff | 5.7 | Yes | The toolbar and the diff count show. | In progress | #253 the text panes do not show |
 | git gui | git 2.56.0 | Not tried | | In progress | #254 |

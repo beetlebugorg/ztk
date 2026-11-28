@@ -128,6 +128,8 @@ pub const ItemT = struct {
     tags: std.ArrayListUnmanaged([]u8) = .empty,
     /// The text of each option of the type that the script set, or null. Owned.
     vals: []?[]u8,
+    /// True only while `raise` or `lower` moves the item.
+    moving: bool = false,
     attr: items.Attr = .{},
     /// The default black of Tk for the fill or the outline: the paint uses the color of the theme.
     fill_theme: bool = false,
@@ -1190,15 +1192,14 @@ fn subcommand(w: *Widget, it: *ztcl.Interp, argv: []const Value) ztcl.Error!?Val
     if (std.mem.eql(u8, sub, "raise") or std.mem.eql(u8, sub, "lower")) {
         const up = sub[0] == 'r';
         if (args.len < 1 or args.len > 2) return it.fail("wrong # args: should be \"{s} {s} tagOrId ?{s}?\"", .{ w.path, sub, if (up) "aboveThis" else "belowThis" });
-        const list = try matching(w, it, args[0]);
-        if (list.len == 0) return Value.empty;
         var ref: ?*ItemT = null;
         if (args.len == 2) {
             const r = try matching(w, it, args[1]);
             if (r.len == 0) return it.fail("tagOrId \"{s}\" doesn't match any items", .{try it.str(args[1])});
             ref = if (up) r[r.len - 1] else r[0];
         }
-        try restack(w, list, ref, up);
+        if (try markMoving(w, it, args[0]) == 0) return Value.empty;
+        try restack(w, ref, up);
         changed(w);
         return Value.empty;
     }
@@ -1325,30 +1326,61 @@ fn moveItem(item: *ItemT, dx: f64, dy: f64) void {
     }
 }
 
-/// Moves the items of `list` above or below `ref`, or to the top or the bottom, in their order.
-fn restack(w: *Widget, list: []const *ItemT, ref: ?*ItemT, up: bool) !void {
+/// Moves the items with the `moving` flag above or below `ref`, or to
+/// the top or the bottom, in their order, and clears the flags. The work
+/// is linear in the count of items and uses one list of the allocator of
+/// the application: a plot lowers a tag of thousands of items for each
+/// point.
+fn restack(w: *Widget, ref: ?*ItemT, up: bool) !void {
     const d = dataOf(w);
     const gpa = w.app.gpa;
-    var keep: std.ArrayListUnmanaged(*ItemT) = .empty;
-    defer keep.deinit(gpa);
-    for (d.list.items) |x| {
-        var moving = false;
-        for (list) |m| if (m == x) {
-            moving = true;
-        };
-        if (!moving or x == ref) try keep.append(gpa, x);
+    const all = d.list.items;
+    defer for (all) |x| {
+        x.moving = false;
+    };
+    // The place is after the items that stay and that are below `ref`,
+    // and after `ref` for a raise when it stays. A reference item that
+    // also moves goes with the others, as in Tk.
+    var keep: usize = 0;
+    var at: usize = if (up or ref != null) all.len else 0;
+    for (all) |x| {
+        if (x == ref) at = keep + @intFromBool(up and !x.moving);
+        if (!x.moving) keep += 1;
     }
-    // A reference item that also moves stays in place.
-    var at: usize = if (up) keep.items.len else 0;
-    if (ref) |r| {
-        for (keep.items, 0..) |x, i| if (x == r) {
-            at = if (up) i + 1 else i;
-        };
+    if (keep == all.len) return;
+    at = @min(at, keep);
+    const out = try gpa.alloc(*ItemT, all.len);
+    defer gpa.free(out);
+    const moved = all.len - keep;
+    var ki: usize = 0;
+    var mi: usize = 0;
+    for (all) |x| {
+        if (x.moving) {
+            out[at + mi] = x;
+            mi += 1;
+        } else {
+            out[if (ki < at) ki else ki + moved] = x;
+            ki += 1;
+        }
     }
-    d.list.clearRetainingCapacity();
-    try d.list.appendSlice(gpa, keep.items[0..at]);
-    for (list) |m| if (m != ref) try d.list.append(gpa, m);
-    try d.list.appendSlice(gpa, keep.items[at..]);
+    @memcpy(all, out);
+}
+
+/// Sets the `moving` flag of each item that matches. Gives the count.
+fn markMoving(w: *Widget, it: *ztcl.Interp, v: Value) ztcl.Error!usize {
+    const s = try search(w, it, v);
+    const d = dataOf(w);
+    if (s.q == .id) {
+        const one = d.ids.get(s.q.id) orelse return 0;
+        one.moving = true;
+        return 1;
+    }
+    var n: usize = 0;
+    for (d.list.items) |item| if (s.matches(item)) {
+        item.moving = true;
+        n += 1;
+    };
+    return n;
 }
 
 fn bindItem(w: *Widget, it: *ztcl.Interp, args: []const Value) ztcl.Error!Value {
