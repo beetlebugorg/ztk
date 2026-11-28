@@ -6,8 +6,9 @@ name: npm
 #
 # The publish uses npm trusted publishing: GitHub Actions gives npm an
 # OIDC token (id-token: write), and npm adds a provenance statement.
-# The NPM_TOKEN secret is a fallback for a package that has no trusted
-# publisher yet, for example the first publish.
+# The job has no token and no registry-url: an .npmrc with an empty token
+# stops npm from asking GitHub for the OIDC token. To publish a tag again,
+# run the workflow on main with the input tag.
 on:
   push:
     branches: [main]
@@ -20,6 +21,10 @@ on:
       - "v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
   pull_request:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "A version tag to package and publish again (it must exist)"
+        required: false
 
 permissions:
   contents: read
@@ -37,6 +42,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
         with:
           version: ${{ env.ZIG_VERSION }}
@@ -45,9 +52,11 @@ jobs:
           node-version: 24
       - run: zig build wasm
       - name: Put the package files in zig-out/npm
+        env:
+          TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
         run: |
-          if [ "$GITHUB_REF_TYPE" = tag ]; then
-            node npm/build.mjs --version "$GITHUB_REF_NAME"
+          if [ -n "$TAG" ]; then
+            node npm/build.mjs --version "$TAG"
           else
             node npm/build.mjs
           fi
@@ -69,7 +78,7 @@ jobs:
   publish:
     name: Publish
     needs: package
-    if: github.ref_type == 'tag'
+    if: github.ref_type == 'tag' || inputs.tag != ''
     runs-on: ubuntu-latest
     environment: npm
     permissions:
@@ -83,13 +92,10 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
-          registry-url: https://registry.npmjs.org
       # Staged publishing needs npm 11.20 or later.
       - run: npm install -g npm@^11.20.0
       # Each v0 version goes to the "latest" dist-tag, also an -alpha or
       # -beta version. npm needs --tag for a prerelease version.
       - name: Publish
         working-directory: package
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm stage publish --provenance --access public --tag latest
