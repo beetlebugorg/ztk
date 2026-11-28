@@ -372,17 +372,39 @@ fn shownOrigin(w: *Widget) [2]f64 {
 
 // ---- Items ----
 
+/// A built-in bitmap, or the bitmap of an `@file` name that an item read.
+fn findBitmap(app: *const App, name: []const u8) ?*const bitmaps.Bitmap {
+    return bitmaps.find(name) orelse app.file_bitmaps.find(name);
+}
+
 const NameCheck = struct {
     w: *Widget,
+    /// Reads the file of a new `@file` bitmap name. Off for a parse that
+    /// must run no script.
+    load: bool = false,
 
     fn image(ctx: *anyopaque, name: []const u8) bool {
         const c: *NameCheck = @ptrCast(@alignCast(ctx));
         return c.w.app.images.find(name) != null;
     }
 
-    fn bitmap(ctx: *anyopaque, name: []const u8) bool {
-        _ = ctx;
-        return bitmaps.find(name) != null;
+    /// A built-in name is good. An `@file` name is good when the store
+    /// has it, or when `load` is on and the XBM file reads. The messages
+    /// are those of wish.
+    fn bitmap(ctx: *anyopaque, name: []const u8) ?[]const u8 {
+        const c: *NameCheck = @ptrCast(@alignCast(ctx));
+        const app = c.w.app;
+        if (findBitmap(app, name) != null) return null;
+        const a = app.it.alloc();
+        if (c.load and name.len > 1 and name[0] == '@') {
+            const file = name[1..];
+            const bad = std.fmt.allocPrint(a, "error reading bitmap file \"{s}\"", .{file}) catch "error reading bitmap file";
+            const text = image_mod.bitmapText(app.it, "", file) catch return bad;
+            const x = image_mod.parseXbm(a, text) orelse return bad;
+            app.file_bitmaps.add(app.gpa, name, x.w, x.h, x.bits) catch return bad;
+            return null;
+        }
+        return std.fmt.allocPrint(a, "bitmap \"{s}\" not defined", .{name}) catch "bitmap not defined";
     }
 
     fn window(ctx: *anyopaque, name: []const u8) ?[]const u8 {
@@ -434,7 +456,7 @@ fn reparse(w: *Widget, item: *ItemT) void {
 fn configureItem(w: *Widget, it: *ztcl.Interp, item: *ItemT, pairs: []const Value) ztcl.Error!void {
     const gpa = w.app.gpa;
     const opts = items.optsOf(item.type);
-    var nc: NameCheck = .{ .w = w };
+    var nc: NameCheck = .{ .w = w, .load = true };
     var buf: [256]u8 = undefined;
     // Check each value first.
     var probe = item.attr;
@@ -934,7 +956,7 @@ fn pixSize(w: *Widget, item: *const ItemT) [2]f64 {
             return .{ @floatFromInt(p.width), @floatFromInt(p.height) };
         },
         .bitmap => {
-            const bm = bitmaps.find(bitmapName(w, item)) orelse return .{ 0, 0 };
+            const bm = findBitmap(w.app, bitmapName(w, item)) orelse return .{ 0, 0 };
             return .{ @floatFromInt(bm.w), @floatFromInt(bm.h) };
         },
         .window => {
@@ -2190,7 +2212,7 @@ const Painter = struct {
             },
             .bitmap => {
                 const name = bitmapName(w, it);
-                const bm = bitmaps.find(name) orelse return;
+                const bm = findBitmap(w.app, name) orelse return;
                 if (c.len < 2) return;
                 const a = &it.attr;
                 const st = effState(w, it);

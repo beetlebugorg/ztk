@@ -85,9 +85,9 @@ const bitmap_opts = [_][]const u8{ "-background", "-data", "-file", "-foreground
 
 /// The bits of an XBM text: width, height, and one bit for each pixel,
 /// rows from the top, the low bit first in each byte.
-const Xbm = struct { w: u32, h: u32, bits: []const u8 };
+pub const Xbm = struct { w: u32, h: u32, bits: []const u8 };
 
-fn parseXbm(a: std.mem.Allocator, text: []const u8) ?Xbm {
+pub fn parseXbm(a: std.mem.Allocator, text: []const u8) ?Xbm {
     var w: ?u32 = null;
     var h: ?u32 = null;
     var lines = std.mem.splitScalar(u8, text, '\n');
@@ -160,7 +160,7 @@ fn renderBitmap(app: *App, it: *ztcl.Interp, p: *Photo) ztcl.Error!void {
 }
 
 /// The XBM text of -data, or of the file of -file when -data is empty.
-fn bitmapText(it: *ztcl.Interp, data: []const u8, file: []const u8) ztcl.Error![]const u8 {
+pub fn bitmapText(it: *ztcl.Interp, data: []const u8, file: []const u8) ztcl.Error![]const u8 {
     if (data.len > 0) return data;
     if (file.len == 0) return "";
     const words = [_]Value{ .{ .str = "::ztk::priv::readbinary" }, .{ .str = file } };

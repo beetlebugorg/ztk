@@ -378,3 +378,40 @@ test "canvas: ztk::limit bounds a child interpreter of the console of the vector
     try t.expectEqualStrings("100", try h.eval("set n 0; for {set i 0} {$i < 100} {incr i} {incr n}; set n"));
     try t.expectEqualStrings("wrong # args: should be \"ztk::limit ?-compute units? ?-memory bytes? script\"", try h.evalError("ztk::limit -compute 1"));
 }
+
+test "canvas: a bitmap item reads the XBM file of an @file name" {
+    var tmp = t.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(t.io, .{ .sub_path = "dot.xbm", .data = "#define dot_width 10\n#define dot_height 3\nstatic char dot_bits[] = {\n 0xff, 0x03, 0x01, 0x02, 0xff, 0x03};\n" });
+    try tmp.dir.writeFile(t.io, .{ .sub_path = "bad.xbm", .data = "no bitmap" });
+    var buf: [512]u8 = undefined;
+    const n = try tmp.dir.realPathFile(t.io, ".", &buf);
+    var h: Harness = undefined;
+    try h.init();
+    defer h.deinit();
+    _ = try h.eval("canvas .c -width 100 -height 100; pack .c");
+    _ = try h.eval(try std.fmt.allocPrint(h.it.alloc(), "set dir {{{s}}}", .{buf[0..n]}));
+    // With no file commands the read fails, and the item is not made.
+    try t.expectEqualStrings("1", try h.eval("catch {.c create bitmap 20 20 -bitmap @$dir/dot.xbm}"));
+    try t.expectEqualStrings("", try h.eval(".c find all"));
+    try h.it.allow(@backingInt(ztcl.interp.Capability.file) | @backingInt(ztcl.interp.Capability.channels));
+    try ztcl.fsroot.setHost(&h.it);
+    try expectAll(&h, &.{
+        .{ ".c create bitmap 20 20 -bitmap @$dir/dot.xbm -anchor nw -foreground #ff0000", "1" },
+        .{ ".c bbox 1", "20 20 30 23" },
+        .{ "string equal [.c itemcget 1 -bitmap] @$dir/dot.xbm", "1" },
+        .{ ".c create bitmap 50 50 -bitmap error -activebitmap @$dir/dot.xbm", "2" },
+    });
+    try expectErrors(&h, &.{
+        .{ ".c create bitmap 0 0 -bitmap @/nonexistent.xbm", "error reading bitmap file \"/nonexistent.xbm\"" },
+        .{ ".c create bitmap 0 0 -bitmap nope", "bitmap \"nope\" not defined" },
+    });
+    try t.expectEqualStrings("1 1", try h.eval("list [catch {.c itemconfigure 1 -bitmap @$dir/bad.xbm} m] [string match {error reading bitmap file \"*bad.xbm\"} $m]"));
+    // The bitmap paints its 22 set bits as 4 runs in the foreground.
+    _ = try h.eval(".c delete 2; update");
+    var red: usize = 0;
+    for (h.app.lastScene().quads.items) |q| {
+        if (q.fill[0] == 1 and q.fill[1] == 0 and q.fill[2] == 0) red += 1;
+    }
+    try t.expectEqual(@as(usize, 4), red);
+}
