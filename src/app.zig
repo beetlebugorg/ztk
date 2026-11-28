@@ -1015,6 +1015,13 @@ pub const App = struct {
         for (app.tops.items) |t| if (app.topOf(t)) |d| d.render.flush();
     }
 
+    /// As `flushRender`, and stops the draws of the held frames of the
+    /// animations. Call it before the image of a window is read at the exit.
+    pub fn stopRenders(app: *App) void {
+        if (app.render_ready) app.render.stopHeld();
+        for (app.tops.items) |t| if (app.topOf(t)) |d| d.render.stopHeld();
+    }
+
     /// The scene of the last frame that was drawn. In threaded mode, call it after `update`.
     pub fn lastScene(app: *App) *const scene_mod.Scene {
         return &app.render.lastFrame().scene;
